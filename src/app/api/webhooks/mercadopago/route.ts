@@ -1,4 +1,4 @@
-import { query, queryOne, queryMany, withTransaction } from "@/lib/db";
+Ôªøimport { query, queryOne, queryMany, withTransaction } from "@/lib/db";
 import { logApiError } from "@/lib/api-error";
 import { adjustStockForItems, OutOfStockError } from "@/lib/stock";
 import { sendPushToUser } from "@/lib/push";
@@ -14,11 +14,11 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 
 /**
- * VerificaciÛn de firma de webhooks de Mercado Pago (esquema v1).
+ * Verificaci√≥n de firma de webhooks de Mercado Pago (esquema v1).
  * Header: `x-signature: ts=<ts>,v1=<sha256hex>`.
  * MP NO firma el body: firma el manifiesto
  *   `id:<data.id>;request-id:<x-request-id>;ts:<ts>;`
- * con HMAC-SHA256 usando el secret del panel (Docs MP ? Webhooks ? "Validar
+ * con HMAC-SHA256 usando el secret del panel (Docs MP ‚Üí Webhooks ‚Üí "Validar
  * firma"). Por eso la parseamos por clave/valor y comparamos timing-safe.
  */
 function verifyMercadoPagoSignature(
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
     body = JSON.parse(bodyText);
   } catch {
     // Body roto: 400 (no reintentable) en vez de 500.
-    return NextResponse.json({ error: "Body inv·lido" }, { status: 400 });
+    return NextResponse.json({ error: "Body inv√°lido" }, { status: 400 });
   }
 
   if (MP_WEBHOOK_SECRET) {
@@ -60,15 +60,15 @@ export async function POST(request: Request) {
     const requestId = request.headers.get("x-request-id");
     const url = new URL(request.url);
     // data.id puede venir en el query param (webhook de app) o en el body
-    // (notification_url de la preferencia). Si no est· en ninguno, no podemos
-    // armar el manifiesto ó logueamos y dejamos pasar (la URL solo la conoce MP).
+    // (notification_url de la preferencia). Si no est√° en ninguno, no podemos
+    // armar el manifiesto ‚Äî logueamos y dejamos pasar (la URL solo la conoce MP).
     const dataId =
       url.searchParams.get("data.id") ||
       (body?.data?.id != null ? String(body.data.id) : null) ||
       (body?.id != null ? String(body.id) : null);
     if (!dataId) {
       console.warn(
-        `[mp-webhook] sin data.id para verificar firma (type=${body?.type || "?"}, request-id=${requestId || "?"}) ó se omite verificaciÛn`
+        `[mp-webhook] sin data.id para verificar firma (type=${body?.type || "?"}, request-id=${requestId || "?"}) ‚Äî se omite verificaci√≥n`
       );
     } else if (!verifyMercadoPagoSignature(signature, requestId, dataId, MP_WEBHOOK_SECRET)) {
       console.warn(
@@ -83,7 +83,7 @@ export async function POST(request: Request) {
     if (!paymentId) return NextResponse.json({ ok: true });
 
     // Multi-tenant: responder con el token del comercio al que pertenece el pago.
-    // El checkeo de email a vendors.mp_user_id nos dice quÈ cuenta de MP cobrÛ.
+    // El checkeo de email a vendors.mp_user_id nos dice qu√© cuenta de MP cobr√≥.
     const mpUserId = body.user_id != null ? Number(body.user_id) : null;
 
     let accessToken: string | null = null;
@@ -154,7 +154,7 @@ export async function POST(request: Request) {
                 if (vendor?.user_id) {
                   await sendPushToUser(vendor.user_id, {
                     title: "Cobro QR acreditado",
-                    body: `Se acreditÛ un cobro por QR de $${qrOrder.amount}.`,
+                    body: `Se acredit√≥ un cobro por QR de $${qrOrder.amount}.`,
                     link: "/vendor/dashboard",
                   });
                 }
@@ -166,7 +166,7 @@ export async function POST(request: Request) {
           return NextResponse.json({ ok: true });
         }
 
-        // Rama suscripciÛn: portal659_sub_{vendorId}_{planSlug}_{periodStart}
+        // Rama suscripci√≥n: portal659_sub_{vendorId}_{planSlug}_{periodStart}
         if (externalRef?.startsWith("portal659_sub_")) {
           const parts = externalRef.split("_");
           const vendorId = parts[2];
@@ -197,12 +197,12 @@ export async function POST(request: Request) {
               await query(
                 `INSERT INTO vendor_subscriptions (vendor_id, plan_id, status, current_period_start, current_period_end, note)
                  VALUES ($1, $2, 'active', $3, $4, $5)`,
-                [vendorId, plan.id, periodStart, periodEnd, `Pago Mercado Pago aprobado ó 1 mes ${plan.name}`]
+                [vendorId, plan.id, periodStart, periodEnd, `Pago Mercado Pago aprobado ‚Äî 1 mes ${plan.name}`]
               );
 
               if (vendor?.user_id) {
-                const title = "°SuscripciÛn activada!";
-                const body = `Tu plan ${plan.name} est· activo por 1 mes (pago MP).`;
+                const title = "¬°Suscripci√≥n activada!";
+                const body = `Tu plan ${plan.name} est√° activo por 1 mes (pago MP).`;
                 await query(
                   `INSERT INTO notifications (user_id, title, body, type, link)
                    VALUES ($1, $2, $3, 'payment', '/vendor/suscripcion')`,
@@ -216,9 +216,9 @@ export async function POST(request: Request) {
           return NextResponse.json({ ok: true });
         }
 
-        // Rama seÒa de TURNO: portal659_sena_turno_{bookingId}_{ts}. Marca la
-        // seÒa del turno como pagada (plan Oficios; estÈtica y servicios).
-        // Va ANTES de la rama de presupuestos: el ref tambiÈn empieza con
+        // Rama se√±a de TURNO: portal659_sena_turno_{bookingId}_{ts}. Marca la
+        // se√±a del turno como pagada (plan Oficios; est√©tica y servicios).
+        // Va ANTES de la rama de presupuestos: el ref tambi√©n empieza con
         // "portal659_sena_" pero el segmento [2] es "turno", no un quoteId.
         if (externalRef?.startsWith("portal659_sena_turno_")) {
           const bookingId = externalRef.split("_")[3];
@@ -240,7 +240,7 @@ export async function POST(request: Request) {
               const expected = Number(booking.deposit_amount) || 0;
               const mismatch = expected > 0 && Math.abs(paidAmount - expected) > 1;
               // Persistencia verificada: si falla, 500 para que MP reintente
-              // (plata cobrada pero seÒa sin marcar = estado roto).
+              // (plata cobrada pero se√±a sin marcar = estado roto).
               try {
                 const marked = await queryOne<{ id: string }>(
                   `UPDATE bookings SET deposit_status = 'paid', mp_payment_id = $1, status = CASE WHEN status = 'pending' THEN 'confirmed' ELSE status END WHERE id = $2 RETURNING id`,
@@ -259,8 +259,8 @@ export async function POST(request: Request) {
                 `SELECT user_id, store_name FROM vendors WHERE id = $1 LIMIT 1`,
                 [booking.vendor_id]
               ).catch(() => undefined);
-              // Al acreditar la seÒa el turno empieza a ocupar el horario:
-              // si mientras tanto otra clienta lo tomÛ (confirmado), avisar.
+              // Al acreditar la se√±a el turno empieza a ocupar el horario:
+              // si mientras tanto otra clienta lo tom√≥ (confirmado), avisar.
               try {
                 const own = await queryOne<{ booking_date: string; starts_at: string | null; ends_at: string | null; staff_id: string | null }>(
                   `SELECT booking_date::text AS booking_date, starts_at::text AS starts_at, ends_at::text AS ends_at, staff_id::text AS staff_id
@@ -286,8 +286,8 @@ export async function POST(request: Request) {
                     return os < xe && xs < oe;
                   });
                   if (clash && vrow?.user_id) {
-                    const wtitle = "?? Turno tomado: seÒa pagada";
-                    const wbody = `${booking.customer_name || "La clienta"} pagÛ la seÒa, pero el horario ya habÌa sido reservado por otro turno confirmado. Revis· la agenda y contactala.`;
+                    const wtitle = "‚ö†Ô∏è Turno tomado: se√±a pagada";
+                    const wbody = `${booking.customer_name || "La clienta"} pag√≥ la se√±a, pero el horario ya hab√≠a sido reservado por otro turno confirmado. Revis√° la agenda y contactala.`;
                     await query(
                       `INSERT INTO notifications (user_id, title, body, type, link)
                        VALUES ($1, $2, $3, 'payment', $4)`,
@@ -295,10 +295,10 @@ export async function POST(request: Request) {
                     ).catch(() => undefined);
                   }
                 }
-              } catch { /* best-effort: el aviso de seÒa pagada igual sale */ }
+              } catch { /* best-effort: el aviso de se√±a pagada igual sale */ }
               if (vrow?.user_id) {
-                const title = "°SeÒa de turno pagada!";
-                const body = `${booking.customer_name || "La clienta"} pagÛ $${paidAmount.toLocaleString("es-AR")} de seÒa${mismatch ? ` (difiere de $${expected.toLocaleString("es-AR")}, revisar)` : ""}.`;
+                const title = "¬°Se√±a de turno pagada!";
+                const body = `${booking.customer_name || "La clienta"} pag√≥ $${paidAmount.toLocaleString("es-AR")} de se√±a${mismatch ? ` (difiere de $${expected.toLocaleString("es-AR")}, revisar)` : ""}.`;
                 await query(
                   `INSERT INTO notifications (user_id, title, body, type, link)
                     VALUES ($1, $2, $3, 'payment', $4)`,
@@ -313,18 +313,18 @@ export async function POST(request: Request) {
                 try {
                   const { notifyServiceClient } = await import("@/lib/service-notify");
                   await notifyServiceClient(booking.customer_phone, {
-                    title: `SeÒa recibida ó ${(booking.customer_name || "").split(" ")[0] || "gracias"}`,
-                    body: "Tu seÒa fue acreditada. Te esperamos en tu turno.",
+                    title: `Se√±a recibida ‚Äî ${(booking.customer_name || "").split(" ")[0] || "gracias"}`,
+                    body: "Tu se√±a fue acreditada. Te esperamos en tu turno.",
                   });
                 } catch { /* best-effort */ }
               }
-              console.log(`[mp-webhook] seÒa turno ok booking=${bookingId} mismatch=${mismatch}`);
+              console.log(`[mp-webhook] se√±a turno ok booking=${bookingId} mismatch=${mismatch}`);
             }
           }
           return NextResponse.json({ ok: true });
         }
 
-        // Rama seÒa de servicio: portal659_sena_{quoteId}_{ts}. Marca la seÒa
+        // Rama se√±a de servicio: portal659_sena_{quoteId}_{ts}. Marca la se√±a
         // como pagada y acepta el presupuesto (plan Oficios).
         if (externalRef?.startsWith("portal659_sena_")) {
           const quoteId = externalRef.split("_")[2];
@@ -346,7 +346,7 @@ export async function POST(request: Request) {
               const paidAmount = Number(payment.transaction_amount) || 0;
               const expected = Number(quote.deposit_amount) || 0;
               // Tolerancia de $1 por redondeo; si difiere mucho igual se marca
-              // (la plata entrÛ) pero se avisa en la notificaciÛn.
+              // (la plata entr√≥) pero se avisa en la notificaci√≥n.
               const mismatch = expected > 0 && Math.abs(paidAmount - expected) > 1;
               try {
                 const marked = await queryOne<{ id: string }>(
@@ -368,8 +368,8 @@ export async function POST(request: Request) {
                 [quote.vendor_id]
               );
               if (vrow?.user_id) {
-                const title = "°SeÒa pagada!";
-                const body = `${quote.customer_name} pagÛ $${paidAmount.toLocaleString("es-AR")} de seÒa${mismatch ? ` (difiere de $${expected.toLocaleString("es-AR")}, revisar)` : ""}. ${vrow.vertical === "estetica" ? "Consulta aceptada." : "Presupuesto aceptado."}`;
+                const title = "¬°Se√±a pagada!";
+                const body = `${quote.customer_name} pag√≥ $${paidAmount.toLocaleString("es-AR")} de se√±a${mismatch ? ` (difiere de $${expected.toLocaleString("es-AR")}, revisar)` : ""}. ${vrow.vertical === "estetica" ? "Consulta aceptada." : "Presupuesto aceptado."}`;
                 await query(
                   `INSERT INTO notifications (user_id, title, body, type, link)
                    VALUES ($1, $2, $3, 'payment', '/vendor/dashboard')`,
@@ -383,18 +383,18 @@ export async function POST(request: Request) {
               try {
                 const { notifyServiceClient } = await import("@/lib/service-notify");
                 await notifyServiceClient(quote.customer_phone, {
-                  title: `SeÒa recibida ó ${quote.customer_name.split(" ")[0] || "gracias"}`,
-                  body: "Tu seÒa fue acreditada. El profesional coordina el trabajo con vos.",
+                  title: `Se√±a recibida ‚Äî ${quote.customer_name.split(" ")[0] || "gracias"}`,
+                  body: "Tu se√±a fue acreditada. El profesional coordina el trabajo con vos.",
                 });
               } catch { /* best-effort */ }
-              console.log(`[mp-webhook] seÒa ok quote=${quoteId} amount=${paidAmount} mismatch=${mismatch}`);
+              console.log(`[mp-webhook] se√±a ok quote=${quoteId} amount=${paidAmount} mismatch=${mismatch}`);
             }
           }
           return NextResponse.json({ ok: true });
         }
 
         // Rama compra de PACK online: portal659_pack_{vendorId}_{packId}_{ts}.
-        // Acredita las sesiones al telÈfono de la compradora (plan Oficios).
+        // Acredita las sesiones al tel√©fono de la compradora (plan Oficios).
         if (externalRef?.startsWith("portal659_pack_")) {
           const metadata = payment.metadata || {};
           const pVendorId = String(metadata.vendor_id || externalRef.split("_")[2] || "");
@@ -418,8 +418,8 @@ export async function POST(request: Request) {
                   [pVendorId]
                 ).catch(() => undefined);
                 if (vrow?.user_id) {
-                  const title = "°Pack vendido online!";
-                  const body = `${String(metadata.customer_name || phone).slice(0, 60)} comprÛ el pack ${pack.name} (${pack.sessions_total} sesiones). Ya acreditadas a ${phone}.`;
+                  const title = "¬°Pack vendido online!";
+                  const body = `${String(metadata.customer_name || phone).slice(0, 60)} compr√≥ el pack ${pack.name} (${pack.sessions_total} sesiones). Ya acreditadas a ${phone}.`;
                   await query(
                     `INSERT INTO notifications (user_id, title, body, type, link)
                      VALUES ($1, $2, $3, 'payment', '/vendor/dashboard')`,
@@ -440,7 +440,7 @@ export async function POST(request: Request) {
         }
 
         // Rama compra de GIFTCARD online: portal659_giftcard_{vendorId}_{monto}_{ts}.
-        // Emite el cÛdigo con saldo y se lo avisa al comercio (lo reenvÌa por WA).
+        // Emite el c√≥digo con saldo y se lo avisa al comercio (lo reenv√≠a por WA).
         if (externalRef?.startsWith("portal659_giftcard_")) {
           const metadata = payment.metadata || {};
           const gVendorId = String(metadata.vendor_id || externalRef.split("_")[2] || "");
@@ -452,7 +452,7 @@ export async function POST(request: Request) {
               const { randomBytes } = await import("crypto");
               const { giftCodePrefix } = await import("@/lib/giftcards");
               // Idempotencia: un payment.id emite una sola giftcard aunque
-              // MP re-notifique (mismo patrÛn que la rama de fiado).
+              // MP re-notifique (mismo patr√≥n que la rama de fiado).
               const mpId = String(payment.id ?? "");
               if (mpId) {
                 const dup = await queryOne<{ id: string }>(
@@ -466,8 +466,8 @@ export async function POST(request: Request) {
                 [gVendorId]
               ).catch(() => null);
               const prefix = giftCodePrefix(vvert?.vertical);
-              // Tolerante a migraciÛn sin aplicar (sin mp_payment_id no hay
-              // idempotencia, pero la emisiÛn no se rompe).
+              // Tolerante a migraci√≥n sin aplicar (sin mp_payment_id no hay
+              // idempotencia, pero la emisi√≥n no se rompe).
               let hasMpCol = true;
               try {
                 const chk = await queryOne<{ exists: boolean }>(
@@ -502,8 +502,8 @@ export async function POST(request: Request) {
                   [gVendorId]
                 ).catch(() => undefined);
                 if (vrow?.user_id) {
-                  const title = "°Giftcard vendida online!";
-                  const body = `${gName || gPhone} comprÛ una giftcard de $${gAmount.toLocaleString("es-AR")}. CÛdigo ${card.code} ó pas·selo por WhatsApp al ${gPhone}.`;
+                  const title = "¬°Giftcard vendida online!";
+                  const body = `${gName || gPhone} compr√≥ una giftcard de $${gAmount.toLocaleString("es-AR")}. C√≥digo ${card.code} ‚Äî pas√°selo por WhatsApp al ${gPhone}.`;
                   await query(
                     `INSERT INTO notifications (user_id, title, body, type, link)
                      VALUES ($1, $2, $3, 'payment', '/vendor/dashboard')`,
@@ -556,7 +556,7 @@ export async function POST(request: Request) {
                   [fVendorId]
                 );
                 if (vrow?.user_id) {
-                  const title = "°Cobro de fiado por MP! ??";
+                  const title = "¬°Cobro de fiado por MP! üìì";
                   const body = `Se acreditaron $${paidAmount.toLocaleString("es-AR")} de ${debtPhone}${covered.length > 0 ? ` (${covered.length} pedido(s) saldado(s))` : ""}.`;
                   await query(
                     `INSERT INTO notifications (user_id, title, body, type, link)
@@ -577,7 +577,7 @@ export async function POST(request: Request) {
           return NextResponse.json({ ok: true });
         }
 
-        // Rama seÒa de apartado (moda): portal659_apartado_{orderId}_{ts}.        // Marca la seÒa como cobrada; el saldo se cobra aparte y el pedido
+        // Rama se√±a de apartado (moda): portal659_apartado_{orderId}_{ts}.        // Marca la se√±a como cobrada; el saldo se cobra aparte y el pedido
         // sigue en 'new' hasta que el comercio lo acepta por el flujo normal.
         if (externalRef?.startsWith("portal659_apartado_")) {
           const orderId = externalRef.split("_")[2];
@@ -609,8 +609,8 @@ export async function POST(request: Request) {
                 [order.vendor_id]
               );
               if (vrow?.user_id) {
-                const title = "°SeÒa de apartado pagada! ???";
-                const body = `${order.customer_name} pagÛ $${paidAmount.toLocaleString("es-AR")} de seÒa${mismatch ? ` (difiere de $${expected.toLocaleString("es-AR")}, revisar)` : ""}. Falta cobrar el saldo.`;
+                const title = "¬°Se√±a de apartado pagada! üè∑Ô∏è";
+                const body = `${order.customer_name} pag√≥ $${paidAmount.toLocaleString("es-AR")} de se√±a${mismatch ? ` (difiere de $${expected.toLocaleString("es-AR")}, revisar)` : ""}. Falta cobrar el saldo.`;
                 await query(
                   `INSERT INTO notifications (user_id, title, body, type, link)
                    VALUES ($1, $2, $3, 'payment', '/vendor/dashboard')`,
@@ -628,9 +628,9 @@ export async function POST(request: Request) {
         }
 
         // Rama cobro de pedido post-peso (pesables, modo "confirmar"):
-        // portal659_order_{orderId}_{ts}. El pedido YA existe (naciÛ pendiente
-        // de peso): ac· solo se marca pagado y se avisa a comercio y cliente.
-        // Idempotente: si ya est· pagado, no toca nada.
+        // portal659_order_{orderId}_{ts}. El pedido YA existe (naci√≥ pendiente
+        // de peso): ac√° solo se marca pagado y se avisa a comercio y cliente.
+        // Idempotente: si ya est√° pagado, no toca nada.
         if (externalRef?.startsWith("portal659_order_")) {
           const orderId = externalRef.split("_")[2];
           if (orderId) {
@@ -686,8 +686,8 @@ export async function POST(request: Request) {
                 [wOrder.vendor_id]
               );
               if (vrow?.user_id) {
-                const title = "°Pago acreditado! ??";
-                const body = `El cliente pagÛ el pedido${wOrder.pickup_number != null ? ` Nro. ${wOrder.pickup_number}` : ""} de $${Number(wOrder.total || 0).toLocaleString("es-AR")} por Mercado Pago.`;
+                const title = "¬°Pago acreditado! üí∞";
+                const body = `El cliente pag√≥ el pedido${wOrder.pickup_number != null ? ` Nro. ${wOrder.pickup_number}` : ""} de $${Number(wOrder.total || 0).toLocaleString("es-AR")} por Mercado Pago.`;
                 await query(
                   `INSERT INTO notifications (user_id, title, body, type, link)
                    VALUES ($1, $2, $3, 'payment', '/vendor/dashboard')`,
@@ -698,7 +698,7 @@ export async function POST(request: Request) {
                 } catch { /* best-effort */ }
               }
 
-              // Aviso al cliente (el pago online reciÈn confirmÛ el total real).
+              // Aviso al cliente (el pago online reci√©n confirm√≥ el total real).
               if (wOrder.customer_phone && !wOrder.customer_phone.startsWith("lid:")) {
                 try {
                   const { phoneVariantsAR } = await import("@/lib/phone");
@@ -710,7 +710,7 @@ export async function POST(request: Request) {
                     [phoneVariantsAR(wOrder.customer_phone)]
                   );
                   if (cProfile) {
-                    const cTitle = "? °Pago aprobado!";
+                    const cTitle = "‚úÖ ¬°Pago aprobado!";
                     const cBody = `Tu pago de $${Number(wOrder.total || 0).toLocaleString("es-AR")} en ${vrow?.store_name || "el comercio"} fue aprobado. Ya preparan tu pedido.`;
                     await query(
                       `INSERT INTO notifications (user_id, title, body, type, link)
@@ -740,15 +740,15 @@ export async function POST(request: Request) {
         const isPickup = metadata.delivery_method === "pickup";
         const customerPhone = metadata.customer_phone || payment.payer?.phone?.number || "";
         const customerAddress = metadata.customer_address || null;
-        // Nombre del cliente: el que escribiÛ en el checkout (metadata) gana ó
-        // payment.payer suele venir vacÌo y caÌa en "Cliente MP" genÈrico.
+        // Nombre del cliente: el que escribi√≥ en el checkout (metadata) gana ‚Äî
+        // payment.payer suele venir vac√≠o y ca√≠a en "Cliente MP" gen√©rico.
         const customerName =
           typeof metadata.customer_name === "string" && metadata.customer_name.trim()
             ? metadata.customer_name.trim()
             : payment.payer?.first_name || "Cliente MP";
 
-        // N˙mero correlativo (solo si es retiro en local): misma regla central
-        // que el resto de los canales (diaria en gastronomÌa, continua en
+        // N√∫mero correlativo (solo si es retiro en local): misma regla central
+        // que el resto de los canales (diaria en gastronom√≠a, continua en
         // retail), con lock anti-carrera y medianoche argentina.
         let pickupNumber: number | null = null;
         if (isPickup) {
@@ -760,7 +760,7 @@ export async function POST(request: Request) {
         const customerE164 = toE164(customerPhone);
         const trackToken = crypto.randomBytes(20).toString("hex");
         // Snapshot de combos por unidad: viaja en metadata.stock_items (mismo
-        // orden que additional_info.items). Se cuelga al Ìtem para que el
+        // orden que additional_info.items). Se cuelga al √≠tem para que el
         // pedido persista el armado (desglose y stock por variante).
         let mpComboByIndex: (({ product_id: string; name?: string; qty: number; variant_id?: string; color?: string; talle?: string }[] | null)[]) | null = null;
         try {
@@ -781,9 +781,9 @@ export async function POST(request: Request) {
           qty: Number(i.quantity),
           ...(mpComboByIndex?.[idx] ? { combo_members: mpComboByIndex[idx] } : {}),
         }));
-        // Zona de envÌo (metadata del checkout): se valida contra el comercio.
-        // Zona inexistente/inactiva ? fuera de zona (entra a convenir).
-        // Zona extendida del cat·logo (Portal 659 EnvÌos) ? shipping_zone_id.
+        // Zona de env√≠o (metadata del checkout): se valida contra el comercio.
+        // Zona inexistente/inactiva ‚Üí fuera de zona (entra a convenir).
+        // Zona extendida del cat√°logo (Portal 659 Env√≠os) ‚Üí shipping_zone_id.
         let mpZoneId: string | null = null;
         let mpZoneName: string | null = null;
         let mpOutOfArea = false;
@@ -796,7 +796,7 @@ export async function POST(request: Request) {
             const rawZone = typeof metadata.delivery_zone_id === "string" ? metadata.delivery_zone_id : "";
             const rawShip = typeof metadata.shipping_zone_id === "string" ? metadata.shipping_zone_id : "";
             const resolveShipZone = async (): Promise<boolean> => {
-              // true = zona extendida v·lida asignada.
+              // true = zona extendida v√°lida asignada.
               if (!rawShip) return false;
               try {
                 const { fetchVendorShipZones } = await import("@/lib/shipping-server");
@@ -808,7 +808,7 @@ export async function POST(request: Request) {
                   return true;
                 }
               } catch {
-                /* sin migraciÛn: ignora */
+                /* sin migraci√≥n: ignora */
               }
               return false;
             };
@@ -823,21 +823,21 @@ export async function POST(request: Request) {
                 mpOutOfArea = true;
               }
             } else if (!(await resolveShipZone())) {
-              // Sin zona regular v·lida ni extendida v·lida: se guarda sin
-              // zona (o fuera de zona si el flujo web asÌ lo pedÌa).
+              // Sin zona regular v√°lida ni extendida v√°lida: se guarda sin
+              // zona (o fuera de zona si el flujo web as√≠ lo ped√≠a).
             }
           } catch {
             /* sin config: se guarda sin zona */
           }
         }
-        // Fee pagado = total MP - suma de Ìtems (en MP no hay cash ni cuotas
-        // raras: el espejo del checkout ya sumÛ el envÌo al total).
+        // Fee pagado = total MP ‚àí suma de √≠tems (en MP no hay cash ni cuotas
+        // raras: el espejo del checkout ya sum√≥ el env√≠o al total).
         const mpItemsSum = orderItems.reduce((s: number, i: any) => s + (Number(i.price) || 0) * (Number(i.qty) || 0), 0);
         const mpFee = !isPickup ? Math.max(0, Math.round(((Number(payment.transaction_amount) || 0) - mpItemsSum) * 100) / 100) : 0;
         // Turno de entrega retail (metadata del checkout): se valida contra
-        // los prÛximos slots; si viene vacÌo/trucho se auto-asigna el prÛximo.
-        // Zona extendida (Portal 659 EnvÌos): el horario lo maneja la
-        // logÌstica (eta del carrier) ó no se promete el turno del local.
+        // los pr√≥ximos slots; si viene vac√≠o/trucho se auto-asigna el pr√≥ximo.
+        // Zona extendida (Portal 659 Env√≠os): el horario lo maneja la
+        // log√≠stica (eta del carrier) ‚Äî no se promete el turno del local.
         let mpWindow: string | null = null;
         let mpExtZone = false;
         try {
@@ -882,7 +882,7 @@ export async function POST(request: Request) {
             mpWindow = null;
           }
         }
-        // Columna del turno (tolerante a migraciÛn sin aplicar).
+        // Columna del turno (tolerante a migraci√≥n sin aplicar).
         let mpWindowCol = false;
         try {
           const wc = await queryOne<{ exists: boolean }>(
@@ -895,7 +895,7 @@ export async function POST(request: Request) {
         } catch {
           mpWindowCol = false;
         }
-        // Columnas de zona (tolerante a migraciÛn sin aplicar).
+        // Columnas de zona (tolerante a migraci√≥n sin aplicar).
         let mpZoneCols = false;
         try {
           const zc = await queryOne<{ exists: boolean }>(
@@ -908,7 +908,7 @@ export async function POST(request: Request) {
         } catch {
           mpZoneCols = false;
         }
-        // Columnas de zona extendida (tolerante a migraciÛn sin aplicar).
+        // Columnas de zona extendida (tolerante a migraci√≥n sin aplicar).
         let mpShipCols = false;
         try {
           const sc = await queryOne<{ exists: boolean }>(
@@ -967,7 +967,7 @@ export async function POST(request: Request) {
             paid_at: new Date().toISOString(),
           };
 
-          // CRM: el pago MP trae el telÈfono del cliente ? ficha.
+          // CRM: el pago MP trae el tel√©fono del cliente ‚Üí ficha.
           if (customerE164) {
             await upsertCustomerFromOrder(tx, vendorId, {
               phone: customerE164,
@@ -987,7 +987,7 @@ export async function POST(request: Request) {
               ? stockItems.filter((s: any) => s?.unit !== "kg")
               : stockItems;
             const moved = await adjustStockForItems(tx, stockable, "decrement");
-            // Kardex: la venta MP tambiÈn deja rastro (antes era invisible).
+            // Kardex: la venta MP tambi√©n deja rastro (antes era invisible).
             const { logStockMovement } = await import("@/lib/stock-ledger");
             for (const m of moved || []) {
               await logStockMovement(tx, {
@@ -1000,17 +1000,17 @@ export async function POST(request: Request) {
               });
             }
           } catch (e) {
-            // Sin stock: el pedido entra igual (best-effort de diseÒo ó el
+            // Sin stock: el pedido entra igual (best-effort de dise√±o ‚Äî el
             // pago ya fue aprobado por MP). Un error SQL real NO se traga:
-            // la tx ya est· abortada y el catch-and-continue solo cambia
+            // la tx ya est√° abortada y el catch-and-continue solo cambia
             // el punto de falla; re-lanzar = rollback limpio = MP reintenta.
             if (!(e instanceof OutOfStockError)) throw e;
           }
 
-          // EmisiÛn autom·tica de giftcards vendidas (F2): el pago ya est·
+          // Emisi√≥n autom√°tica de giftcards vendidas (F2): el pago ya est√°
           // aprobado (pedidos MP nunca son preview). Idempotente: los
-          // reintentos del webhook no duplican cÛdigos. Sin try/catch: un
-          // fallo genuino ac· deja la tx abortada, se loguea rompiendo igual
+          // reintentos del webhook no duplican c√≥digos. Sin try/catch: un
+          // fallo genuino ac√° deja la tx abortada, se loguea rompiendo igual
           // en el COMMIT (mejor rollback limpio + reintento de MP).
           try {
             const { issueGiftcardsForOrder } = await import("@/lib/giftcards");
@@ -1035,11 +1035,11 @@ export async function POST(request: Request) {
         );
 
         if (vendor?.user_id) {
-          const title = "°Pago aprobado! Nuevo pedido";
+          const title = "¬°Pago aprobado! Nuevo pedido";
           const giftTxt = mpIssued.length > 0
-            ? ` ∑ ?? ${mpIssued.length} tarjeta(s): ${mpIssued.map((g) => g.code).join(", ")}`
+            ? ` ¬∑ üéÅ ${mpIssued.length} tarjeta(s): ${mpIssued.map((g) => g.code).join(", ")}`
             : "";
-          const body = `Nuevo pedido pagado de $${Number(payment.transaction_amount).toLocaleString("es-AR")} vÌa Mercado Pago${pickupNumber ? ` ∑ Pedido #${pickupNumber}` : ""}${giftTxt}`;
+          const body = `Nuevo pedido pagado de $${Number(payment.transaction_amount).toLocaleString("es-AR")} v√≠a Mercado Pago${pickupNumber ? ` ¬∑ Pedido #${pickupNumber}` : ""}${giftTxt}`;
           await query(
             `INSERT INTO notifications (user_id, title, body, type, link)
              VALUES ($1, $2, $3, 'payment', '/vendor/dashboard')`,
@@ -1069,7 +1069,7 @@ export async function POST(request: Request) {
                 orderNumber: pickupNumber,
                 customerName: order.customer_name,
                 customerPhone: customerPhone,
-                paymentLabel: "?? Mercado Pago (online)",
+                paymentLabel: "üí≥ Mercado Pago (online)",
                 items: orderItems,
                 total: payment.transaction_amount,
                 method: isPickup ? "pickup" : "delivery",
@@ -1084,7 +1084,7 @@ export async function POST(request: Request) {
           }
         }
 
-        // Comanda autom·tica al aprobar el pago: solo con auto_print ON y plan
+        // Comanda autom√°tica al aprobar el pago: solo con auto_print ON y plan
         // con impresora. Best-effort; un fallo no rompe el webhook ni el pedido.
         try {
           if (order?.id) {
@@ -1099,7 +1099,7 @@ export async function POST(request: Request) {
             if (printerVendor?.auto_print) {
               const planRows = await queryMany<any>(`SELECT * FROM plans`);
               if (resolveVendorPlan(printerVendor as any, planRows || []).can("printer")) {
-                // Sin Ìtems de cocina: retail (comercio/moda/estÈtica) imprime el
+                // Sin √≠tems de cocina: retail (comercio/moda/est√©tica) imprime el
                 // comprobante de venta; el resto, el stub de retiro.
                 const isRetailVendor =
                   printerVendor?.vertical === "moda" || printerVendor?.vertical === "comercio" || printerVendor?.vertical === "estetica";
@@ -1112,7 +1112,7 @@ export async function POST(request: Request) {
                     ? { extra: { docTitle: "COMPROBANTE", retail: true } }
                     : {}),
                 });
-                if (!printed.ok) logApiError("mp-webhook/print", new Error(printed.error || "print fallÛ"));
+                if (!printed.ok) logApiError("mp-webhook/print", new Error(printed.error || "print fall√≥"));
               }
             }
           }
@@ -1121,7 +1121,7 @@ export async function POST(request: Request) {
         }
       }
     } catch (e) {
-      // Mercado Pago reintenta, no fallar (pero se loguea: un fallo ac· es plata sin pedido)
+      // Mercado Pago reintenta, no fallar (pero se loguea: un fallo ac√° es plata sin pedido)
       logApiError("mp-webhook", e);
     }
   }

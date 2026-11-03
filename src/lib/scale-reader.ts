@@ -271,16 +271,25 @@ export async function readScaleFromPort(
   let bestRaw = "";
   let bestBaud = 0;
   for (const baud of bauds) {
+    const openOpts = { baudRate: baud };
     try {
-      await port.open({ baudRate: baud });
+      await port.open(openOpts);
     } catch {
       // Puerto ya abierto de un intento anterior: cerrar y reintentar una vez.
       try {
         await port.close();
-        await port.open({ baudRate: baud });
+        await port.open(openOpts);
       } catch {
         throw new ScalePortError();
       }
+    }
+    // Activar DTR/RTS: muchas balanzas (Systel incluida) y adaptadores
+    // USB-serie requieren DTR=1 para habilitar la transmisión. Sin esto la
+    // balanza no responde aunque el puerto se abra bien.
+    try {
+      await port.setSignals?.({ dataTerminalReady: true, requestToSend: true });
+    } catch {
+      /* noop: no todos los navegadores/adaptadores lo soportan */
     }
     let raw = "";
     let writer: any = null;

@@ -30,10 +30,19 @@ export async function GET(
   );
   const total = (orders || []).reduce((s, o) => s + (Number(o.total) || 0), 0);
 
-  let payments: { id: string; amount: number; payment_method: string; kind: string; created_at: string }[] = [];
+  type ItemPayment = {
+    id: string;
+    amount: number;
+    payment_method: string;
+    kind: string;
+    created_at: string;
+    items: { orderId: string; lineIndex: number; qty: number }[] | null;
+  };
+
+  let payments: ItemPayment[] = [];
   try {
-    payments = await queryMany<{ id: string; amount: number; payment_method: string; kind: string; created_at: string }>(
-      `SELECT id, amount, payment_method, kind, created_at FROM table_payments WHERE vendor_id = $1 AND table_id = $2 ORDER BY created_at ASC`,
+    payments = await queryMany<ItemPayment>(
+      `SELECT id, amount, payment_method, kind, created_at, items FROM table_payments WHERE vendor_id = $1 AND table_id = $2 ORDER BY created_at ASC`,
       [gate.vendor.id, id]
     );
   } catch {

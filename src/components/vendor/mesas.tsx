@@ -547,11 +547,14 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
   const [partialPending, setPartialPending] = useState<number | null>(null);
   // Checklist de ítems para cobro por consumición (id de línea -> cantidad a cobrar).
   const [partialItemQty, setPartialItemQty] = useState<Record<string, number>>({});
+  // Cantidad ya pagada por cada línea (orderId__lineIndex -> qty cobrada en parciales).
+  const [paidQtyByKey, setPaidQtyByKey] = useState<Record<string, number>>({});
   // Refresca el saldo parcial cuando cambia la mesa seleccionada.
   useEffect(() => {
     if (!selected?.id) {
       setPartialPaid(0);
       setPartialPending(null);
+      setPaidQtyByKey({});
       return;
     }
     fetch(`/api/vendor/tables/${selected.id}/partial-payment`)
@@ -559,6 +562,16 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
       .then((d) => {
         setPartialPaid(Number(d?.paid) || 0);
         setPartialPending(d?.pending != null ? Number(d.pending) : null);
+        const acc: Record<string, number> = {};
+        (d?.payments || []).forEach((p: any) => {
+          if (p.kind === "items" && Array.isArray(p.items)) {
+            p.items.forEach((it: any) => {
+              const key = `${it.orderId}__${it.lineIndex}`;
+              acc[key] = (acc[key] || 0) + (Number(it.qty) || 0);
+            });
+          }
+        });
+        setPaidQtyByKey(acc);
       })
       .catch(() => {});
   }, [selected?.id]);
@@ -2962,36 +2975,42 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
               </div>
             ) : (
               <div className="space-y-2 max-h-60 overflow-y-auto">
-                <p className="text-xs text-muted-foreground">Tildá las consumiciones a cobrar (cantidad editable).</p>
+                <p className="text-xs text-muted-foreground">Tildá las consumiciones a cobrar (cantidad editable). Las líneas ya pagadas quedan bloqueadas.</p>
                 {openOrders.flatMap((o: any, oi: number) =>
                   (o.items || []).map((it: any, ii: number) => {
                     const key = `${o.id}__${ii}`;
+                    const totalQty = Number(it.qty) || 1;
+                    const paidQty = Number(paidQtyByKey[key] || 0);
+                    const availableQty = Math.max(0, totalQty - paidQty);
                     const qty = partialItemQty[key] ?? 0;
+                    const fullyPaid = paidQty >= totalQty;
                     return (
-                      <div key={key} className="flex items-center gap-2 text-sm border border-border rounded-lg px-2 py-1.5">
+                      <div key={key} className={`flex items-center gap-2 text-sm border rounded-lg px-2 py-1.5 ${fullyPaid ? "opacity-50" : ""}`}>
                         <input
                           type="checkbox"
-                          checked={qty > 0}
+                          disabled={fullyPaid || availableQty <= 0}
+                          checked={qty > 0 && !fullyPaid}
                           onChange={(e) =>
                             setPartialItemQty((prev) => ({
                               ...prev,
-                              [key]: e.target.checked ? (Number(it.qty) || 1) : 0,
-                            }))
-                          }
+                              [key]: e.target.checked && availableQty > 0 ? availableQty : 0,
+                            }))}
                         />
-                        <span className="flex-1 truncate">{it.name || "Ítem"}</span>
+                        <span className="flex-1 truncate">
+                          {it.name || "Ítem"}{fullyPaid ? " — cobrado" : ""}
+                        </span>
                         <input
                           type="number"
                           min="0"
-                          max={Number(it.qty) || 1}
+                          max={availableQty}
                           step="0.001"
-                          value={qty || ""}
+                          value={qty > 0 && availableQty > 0 ? qty : ""}
+                          disabled={fullyPaid || availableQty <= 0}
                           onChange={(e) =>
                             setPartialItemQty((prev) => ({
                               ...prev,
-                              [key]: Math.min(Number(it.qty) || 1, Math.max(0, Number(e.target.value) || 0)),
-                            }))
-                          }
+                              [key]: Math.min(availableQty, Math.max(0, Number(e.target.value) || 0)),
+                            }))}
                           className="w-16 h-7 text-xs rounded border border-input bg-background px-1"
                         />
                         <span className="text-xs text-muted-foreground tabular-nums">

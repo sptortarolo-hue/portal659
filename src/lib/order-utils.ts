@@ -47,9 +47,13 @@ const VALID_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   // emite — retail acepta directo new → preparing (como gastronomía).
   // Mostrador/mesa saltean "preparación": de new pasan directo a ready
   // ("Listo p/ entregar"); la cocina igual los ve en la comanda.
-  new: ["confirmed", "preparing", "ready", "cancelled"],
-  confirmed: ["preparing", "cancelled"],
-  preparing: ["ready", "cancelled"],
+  // Atajo "Entregar ya" (un toque): desde los estados operativos se puede ir
+  // DIRECTO a completed salteando los pasos intermedio. Solo lo ofrece la UI
+  // cuando realmente salta algo (ver `jumpToDone`); `nextStatusFor` no cambia,
+  // así que el flujo normal sigue dando un paso por vez.
+  new: ["confirmed", "preparing", "ready", "completed", "cancelled"],
+  confirmed: ["preparing", "completed", "cancelled"],
+  preparing: ["ready", "completed", "cancelled"],
   ready: ["sent", "completed", "cancelled"],
   sent: ["completed", "cancelled"],
   completed: [],

@@ -491,6 +491,23 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
   // Mobile: la mesa se divide en 2 pantallas — "catalog" (sticky buscador +
   // pastillas + grilla) y "detail" (cuenta: consumiciones, precuenta, cobro).
   const [mobileView, setMobileView] = useState<"catalog" | "detail">("catalog");
+  // Botón físico "volver" del celular: al abrir la cuenta (detail) se agrega
+  // una entrada al historial. Al presionar volver, en vez de salir de la
+  // página se cierra la cuenta y se vuelve al catálogo.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (mobileView === "detail") {
+      // Empuja una entrada al historial para interceptar el "volver".
+      window.history.pushState({ mesaView: "detail" }, "", window.location.href);
+    }
+    const onPopState = () => {
+      if (mobileView === "detail") {
+        setMobileView("catalog");
+      }
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [mobileView]);
   // Borrador de mesa (24h): mesa + carrito no enviado + pago.
   const [mesaRestored, setMesaRestored] = useState(false);
   const mesaDraftReady = useRef(false);

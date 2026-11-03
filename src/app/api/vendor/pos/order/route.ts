@@ -538,7 +538,7 @@ export async function POST(request: Request) {
       ...(hasVolumeCol ? [volumeDiscount] : []),
       ...(hasManualCol ? [manualDiscountAmount, manualIn ? manualIn.kind : null, manualIn ? manualIn.reason : null, manualIn ? manualIn.value : null] : []),
       ...(direct && !deferPayment && hasClosedAt ? [now] : []),
-      ...(direct && hasDirectCol ? [true] : []),
+      ...(direct && !deferPayment && hasDirectCol ? [true] : []),
       ...(hasPayStatus ? [deferPayment === true ? "pending" : (payment === "fiado" ? "pending" : "paid")] : []),
       ...(caps.ordersClientKey ? [clientKey] : []),
       ...(caps.ordersOccurredAt ? [occurredAt] : []),

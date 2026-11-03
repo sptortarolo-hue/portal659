@@ -13,10 +13,10 @@
  * Client-safe: no importar desde server (usa navigator/localStorage).
  */
 
-const BAUDS = [9600, 19200, 4800, 2400];
+const BAUDS = [9600, 19200, 38400, 115200, 4800, 2400];
 
-const READ_MS_FIRST = 5000; // primer intento (baud recordado o 9600): más margen
-const READ_MS_SCAN = 3200; // resto del barrido
+const READ_MS_FIRST = 7000; // primer intento (baud recordado o 9600): más margen
+const READ_MS_SCAN = 4000; // resto del barrido
 
 /** Peso máximo plausible de una balanza de mostrador (kg). */
 const MAX_KG = 1000;
@@ -32,7 +32,9 @@ export class ScaleNotSupportedError extends Error {
 
 export class ScalePortError extends Error {
   constructor() {
-    super("No se pudo abrir la balanza (revisá el cable y el puerto)");
+    super(
+      "No se pudo abrir la balanza (revisá el cable/puerto, cerrá otras pestañas que usen el mismo puerto y volvé a elegir el dispositivo)"
+    );
     this.name = "ScalePortError";
   }
 }
@@ -40,7 +42,9 @@ export class ScalePortError extends Error {
 /** No llegó ningún byte en ningún baudrate. */
 export class ScaleNoDataError extends Error {
   constructor() {
-    super("No llegó ningún dato de la balanza (revisá el cable y probá de nuevo)");
+    super(
+      "No llegó ningún dato de la balanza. Revisá: (1) que el cable/adaptador esté bien conectado y con driver instalado, (2) que la balanza esté encendida y con peso estable, (3) que el puerto elegido sea el de la balanza, (4) probá apretar la tecla Imprimir/Enviar de la balanza mientras lee."
+    );
     this.name = "ScaleNoDataError";
   }
 }
@@ -50,9 +54,11 @@ export class ScaleUnparsedError extends Error {
   raw: string;
   baud: number;
   constructor(raw: string, baud: number) {
-    super(
-      `No se pudo leer el peso. La balanza envió: «${truncRaw(raw)}» (a ${baud} baudios)`
-    );
+    const hasWack = raw.includes("\x11");
+    const msg = hasWack
+      ? `La balanza respondió "peso inestable" (WACK). Estabilizá el peso en el plato y volvé a probar (a ${baud} baudios).`
+      : `No se pudo leer el peso. La balanza envió: «${truncRaw(raw)}» (a ${baud} baudios)`;
+    super(msg);
     this.name = "ScaleUnparsedError";
     this.raw = raw;
     this.baud = baud;
@@ -291,6 +297,8 @@ export async function readScaleFromPort(
     } catch {
       /* noop: no todos los navegadores/adaptadores lo soportan */
     }
+    // Dar tiempo a que la balanza detecte DTR antes de enviar ENQ.
+    await new Promise((r) => setTimeout(r, 150));
     let raw = "";
     let writer: any = null;
     try {

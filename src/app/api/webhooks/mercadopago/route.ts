@@ -78,6 +78,76 @@ export async function POST(request: Request) {
     }
   }
 
+  // Rama Orders API (QR): MP notifica con type "orders" (NO "payment").
+  // Traemos la orden con el token del comercio y, si está procesada (pagada),
+  // marcamos el cobro QR como acreditado.
+  if (body.type === "orders" || body.type === "order") {
+    const orderId = body.data?.id || body.id;
+    if (!orderId) return NextResponse.json({ ok: true });
+    const mpUserId = body.user_id != null ? Number(body.user_id) : null;
+
+    // Token del comercio dueño de la orden (multi-tenant).
+    let accessToken: string | null = null;
+    if (mpUserId != null) {
+      const matched = await queryOne<{
+        id: string; mp_user_id: number | null; mp_access_token: string | null;
+        mp_refresh_token: string | null; mp_public_key: string | null;
+        mp_expires_at: string | null; mp_connected_at: string | null;
+      }>(
+        `SELECT id, mp_user_id, mp_access_token, mp_refresh_token, mp_public_key, mp_expires_at, mp_connected_at
+         FROM vendors WHERE mp_user_id = $1 LIMIT 1`,
+        [mpUserId]
+      );
+      if (matched) accessToken = await getVendorMpToken(matched);
+    }
+    if (!accessToken) accessToken = process.env.MP_ACCESS_TOKEN || null;
+    if (!accessToken) return NextResponse.json({ ok: true });
+
+    try {
+      const res = await fetch(`https://api.mercadopago.com/v1/orders/${orderId}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const order = await res.json();
+      console.log(`[mp-webhook] orders QR: id=${orderId} status=${order?.status} ext=${order?.external_reference}`);
+      if (order?.status === "processed" && order?.external_reference?.startsWith("mpqr_")) {
+        const qrOrder = await queryOne<{ id: string; vendor_id: string; order_id: string | null; amount: number }>(
+          `SELECT id, vendor_id, order_id, amount FROM mp_qr_orders WHERE external_reference = $1 LIMIT 1`,
+          [order.external_reference]
+        );
+        if (qrOrder) {
+          await queryOne(
+            `UPDATE mp_qr_orders SET status = 'paid', payment_id = $1, paid_at = now(), updated_at = now() WHERE id = $2`,
+            [String(orderId), qrOrder.id]
+          );
+          if (qrOrder.order_id) {
+            try {
+              await queryOne(
+                `UPDATE orders SET payment_status = 'paid', paid_at = now(), payment_method = 'mercadopago' WHERE id = $1`,
+                [qrOrder.order_id]
+              );
+            } catch { /* columnas sin migrar */ }
+          }
+          try {
+            const vendor = await queryOne<{ user_id: string }>(
+              `SELECT user_id FROM vendors WHERE id = $1 LIMIT 1`,
+              [qrOrder.vendor_id]
+            );
+            if (vendor?.user_id) {
+              await sendPushToUser(vendor.user_id, {
+                title: "Cobro QR acreditado",
+                body: `Se acreditó un cobro por QR de $${qrOrder.amount}.`,
+                link: "/vendor/dashboard",
+              });
+            }
+          } catch { /* push best-effort */ }
+        }
+      }
+    } catch (e) {
+      console.warn("[mp-webhook] orders QR error:", (e as any)?.message);
+    }
+    return NextResponse.json({ ok: true });
+  }
+
   if (body.type === "payment") {
     const paymentId = body.data?.id;
     if (!paymentId) return NextResponse.json({ ok: true });

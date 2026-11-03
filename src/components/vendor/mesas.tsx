@@ -1673,7 +1673,18 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
       setPartialPending(data.pending != null ? Number(data.pending) : null);
       setPartialPayAmount("");
       setPartialItemQty({});
-      setPartialPayOpen(false);
+      // Refresh inline: acumular los ítems pagados en paidQtyByKey para que se vean bloqueados
+      // inmediatamente sin cerrar y volver a abrir el modal.
+      if (partialPayMode === "items" && items.length > 0) {
+        setPaidQtyByKey((prev) => {
+          const acc = { ...prev };
+          items.forEach((it) => {
+            const key = `${it.orderId}__${it.lineIndex}`;
+            acc[key] = (acc[key] || 0) + (Number(it.qty) || 0);
+          });
+          return acc;
+        });
+      }
       setMsg(`✅ Cobro parcial registrado ($${Number(data.payment?.amount || amount).toLocaleString("es-AR")})`);
       setTimeout(() => setMsg(""), 3000);
     } catch {
@@ -3035,7 +3046,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
             )}
             <div className="grid grid-cols-3 gap-2">
               <Button variant="outline" disabled={partialPayBusy} onClick={() => setPartialPayOpen(false)}>
-                Cancelar
+                Cerrar
               </Button>
               <Button
                 variant="outline"

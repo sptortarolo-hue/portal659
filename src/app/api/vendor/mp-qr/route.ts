@@ -194,42 +194,39 @@ export async function POST(request: Request) {
   let qrImage: string | null = null;
   let mpOrderId: string | null = null;
 
-  if (storeId && externalPosId) {
+  if (vendor.mp_user_id && externalPosId) {
     try {
-      const orderRes = await fetch(
-        `https://api.mercadopago.com/instore/qr/seller/collectors/${vendor.mp_user_id}/stores/${storeId}/pos/${externalPosId}/orders`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${mpToken}` },
-          body: JSON.stringify({
-            external_reference: externalReference,
-            title: concept || `Cobro ${vendor.store_name}`,
-            description: concept || `Cobro en ${vendor.store_name}`,
-            notification_url: `${getSiteUrl()}/api/webhooks/mercadopago`,
-            total_amount: amount,
-            items: [
-              {
-                sku_number: "cobro",
-                category: "services",
-                title: concept || "Cobro",
-                description: concept || "Cobro presencial",
-                unit_price: amount,
-                quantity: 1,
-                unit_measure: "unit",
-                total_amount: amount,
-              },
-            ],
-          }),
-        }
-      );
+      // Nueva Orders API de MP: devuelve qr_data (string EMVCo interoperable).
+      const orderRes = await fetch("https://api.mercadopago.com/v1/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${mpToken}` },
+        body: JSON.stringify({
+          type: "qr",
+          external_reference: externalReference,
+          title: concept || `Cobro ${vendor.store_name}`,
+          description: concept || `Cobro en ${vendor.store_name}`,
+          total_amount: amount,
+          config: { qr: { mode: "dynamic" } },
+          notification_url: `${getSiteUrl()}/api/webhooks/mercadopago`,
+          items: [
+            {
+              title: concept || "Cobro",
+              description: concept || `Cobro en ${vendor.store_name}`,
+              unit_price: amount,
+              quantity: 1,
+              total_amount: amount,
+            },
+          ],
+        }),
+      });
       const orderData = await orderRes.json().catch(() => null);
-      console.log("[mp-qr] instore order response:", JSON.stringify(orderData)?.slice(0, 500), "status:", orderRes.status);
+      console.log("[mp-qr] orders api response:", JSON.stringify(orderData)?.slice(0, 500), "status:", orderRes.status);
       if (orderData?.qr_data) {
         qrData = orderData.qr_data;
-        mpOrderId = orderData.in_store_order_id || null;
+        mpOrderId = orderData.id || null;
       }
     } catch (e) {
-      console.warn("[mp-qr] instore order failed:", (e as any)?.message);
+      console.warn("[mp-qr] orders api failed:", (e as any)?.message);
     }
   }
 

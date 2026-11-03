@@ -35,6 +35,7 @@ export async function POST(request: Request) {
   const orderId = typeof body?.orderId === "string" ? body.orderId : null;
   const amount = Number(body?.amount);
   const concept = typeof body?.concept === "string" ? body.concept.slice(0, 120) : null;
+  const isDirect = body?.isDirect === true;
 
   if (!Number.isFinite(amount) || amount <= 0) {
     return NextResponse.json({ error: "Monto inválido" }, { status: 400 });
@@ -57,6 +58,17 @@ export async function POST(request: Request) {
     );
   }
 
+  // Columna is_direct (migrate-mp-qr-direct.sql, tolerante sin aplicar).
+  let hasDirectCol = false;
+  try {
+    const dc = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'mp_qr_orders' AND column_name = 'is_direct') AS exists`
+    );
+    hasDirectCol = dc?.exists === true;
+  } catch {
+    hasDirectCol = false;
+  }
+
   const externalReference = `mpqr_${vendor.id}_${Date.now()}`;
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
@@ -76,6 +88,9 @@ export async function POST(request: Request) {
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
       [vendor.id, orderId, amount, concept, externalReference, expiresAt]
     );
+    if (row?.id && hasDirectCol && isDirect) {
+      await queryOne(`UPDATE mp_qr_orders SET is_direct = true WHERE id = $1`, [row.id]).catch(() => {});
+    }
     if (orderId && row?.id) {
       try {
         await queryOne(`UPDATE orders SET mp_qr_order_id = $1 WHERE id = $2 AND vendor_id = $3`, [row.id, orderId, vendor.id]);
@@ -274,6 +289,9 @@ export async function POST(request: Request) {
      VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
     [vendor.id, orderId, amount, concept, mpOrderId, externalReference, expiresAt]
   );
+  if (row?.id && hasDirectCol && isDirect) {
+    await queryOne(`UPDATE mp_qr_orders SET is_direct = true WHERE id = $1`, [row.id]).catch(() => {});
+  }
 
   // Vincular la orden al pedido si corresponde.
   if (orderId && row?.id) {

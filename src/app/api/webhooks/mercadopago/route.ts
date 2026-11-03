@@ -110,8 +110,8 @@ export async function POST(request: Request) {
       const order = await res.json();
       console.log(`[mp-webhook] orders QR: id=${orderId} status=${order?.status} ext=${order?.external_reference}`);
       if (order?.status === "processed" && order?.external_reference?.startsWith("mpqr_")) {
-        const qrOrder = await queryOne<{ id: string; vendor_id: string; order_id: string | null; amount: number }>(
-          `SELECT id, vendor_id, order_id, amount FROM mp_qr_orders WHERE external_reference = $1 LIMIT 1`,
+        const qrOrder = await queryOne<{ id: string; vendor_id: string; order_id: string | null; amount: number; is_direct: boolean | null }>(
+          `SELECT id, vendor_id, order_id, amount, is_direct FROM mp_qr_orders WHERE external_reference = $1 LIMIT 1`,
           [order.external_reference]
         );
         if (qrOrder) {
@@ -120,12 +120,23 @@ export async function POST(request: Request) {
             [String(orderId), qrOrder.id]
           );
           if (qrOrder.order_id) {
-            try {
-              await queryOne(
-                `UPDATE orders SET payment_status = 'paid', paid_at = now(), payment_method = 'mercadopago' WHERE id = $1`,
-                [qrOrder.order_id]
-              );
-            } catch { /* columnas sin migrar */ }
+            await queryOne(
+              `UPDATE orders SET payment_status = 'paid', paid_at = now(), payment_method = 'mercadopago' WHERE id = $1`,
+              [qrOrder.order_id]
+            );
+            if (qrOrder.is_direct) {
+              try {
+                await queryOne(
+                  `UPDATE orders SET status = 'completed', closed_at = now() WHERE id = $1`,
+                  [qrOrder.order_id]
+                );
+              } catch {
+                await queryOne(
+                  `UPDATE orders SET status = 'completed' WHERE id = $1`,
+                  [qrOrder.order_id]
+                );
+              }
+            }
           }
           try {
             const vendor = await queryOne<{ user_id: string }>(
@@ -198,8 +209,8 @@ export async function POST(request: Request) {
         // Rama cobro por QR MP interoperable: portal659_mpqr_{vendorId}_{ts}.
         if (externalRef?.startsWith("mpqr_")) {
           try {
-            const qrOrder = await queryOne<{ id: string; vendor_id: string; order_id: string | null; amount: number }>(
-              `SELECT id, vendor_id, order_id, amount FROM mp_qr_orders WHERE external_reference = $1 LIMIT 1`,
+            const qrOrder = await queryOne<{ id: string; vendor_id: string; order_id: string | null; amount: number; is_direct: boolean | null }>(
+              `SELECT id, vendor_id, order_id, amount, is_direct FROM mp_qr_orders WHERE external_reference = $1 LIMIT 1`,
               [externalRef]
             );
             if (qrOrder) {
@@ -208,12 +219,23 @@ export async function POST(request: Request) {
                 [String(paymentId), qrOrder.id]
               );
               if (qrOrder.order_id) {
-                try {
-                  await queryOne(
-                    `UPDATE orders SET payment_status = 'paid', paid_at = now(), payment_method = 'mercadopago' WHERE id = $1`,
-                    [qrOrder.order_id]
-                  );
-                } catch { /* columnas sin migrar */ }
+                await queryOne(
+                  `UPDATE orders SET payment_status = 'paid', paid_at = now(), payment_method = 'mercadopago' WHERE id = $1`,
+                  [qrOrder.order_id]
+                );
+                if (qrOrder.is_direct) {
+                  try {
+                    await queryOne(
+                      `UPDATE orders SET status = 'completed', closed_at = now() WHERE id = $1`,
+                      [qrOrder.order_id]
+                    );
+                  } catch {
+                    await queryOne(
+                      `UPDATE orders SET status = 'completed' WHERE id = $1`,
+                      [qrOrder.order_id]
+                    );
+                  }
+                }
               }
               try {
                 const { sendPushToUser } = await import("@/lib/push");

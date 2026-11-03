@@ -3200,6 +3200,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         }}
         amount={qrAmount || payableTotal}
         orderId={qrOrderId}
+        isDirect={method === "direct"}
         concept={`Cobro ${storeBrand?.name || ""}`.trim()}
         fiscalAutoEmit={fiscalAutoEmit}
         onPaid={(id) => {

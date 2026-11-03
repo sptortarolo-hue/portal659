@@ -91,14 +91,16 @@ export const metadata: Metadata = {
     siteName: "Portal 659",
     url: "/",
     // Tarjeta de marca para WhatsApp/redes (sin esto, WA rasca el HTML y
-    // mostraba una foto de producto al azar). Estática: /og-cover.jpg.
-    images: [{ url: "/og-cover.jpg", width: 1200, height: 630, alt: "Portal 659 — El centro comercial de tu barrio" }],
+    // mostraba una foto de producto al azar). Ahora es el logo del portal:
+    // PNG con transparencia (~1487×836), así WhatsApp/redes no lo muestran
+    // con un fondo negro. og-cover.jpg queda sin uso.
+    images: [{ url: "/Portal659Logo.png", width: 1200, height: 630, alt: "Portal 659 — El centro comercial de tu barrio" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "Portal 659 — El centro comercial de tu barrio",
     description: "Comida, almacenes y servicios del barrio, con pedido o contacto directo por WhatsApp.",
-    images: ["/og-cover.jpg"],
+    images: ["/Portal659Logo.png"],
   },
   robots: {
     index: true,

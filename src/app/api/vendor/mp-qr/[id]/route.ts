@@ -31,8 +31,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     order_id: string | null;
     mp_order_id: string | null;
     vendor_id: string;
+    is_direct: boolean | null;
   }>(
-    `SELECT id, status, amount, paid_at, expires_at, order_id, mp_order_id, vendor_id
+    `SELECT id, status, amount, paid_at, expires_at, order_id, mp_order_id, vendor_id, is_direct
      FROM mp_qr_orders WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
     [id, vendorId]
   );
@@ -47,12 +48,29 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       [id]
     );
     if (row.order_id) {
-      try {
-        await queryOne(
-          `UPDATE orders SET payment_status = 'paid', paid_at = now(), payment_method = 'mercadopago' WHERE id = $1`,
-          [row.order_id]
-        );
-      } catch { /* columnas sin migrar */ }
+      if (row.is_direct) {
+        // Venta directa: al cobrar se completa y cierra (no forma pedido con flow).
+        try {
+          await queryOne(
+            `UPDATE orders SET payment_status = 'paid', paid_at = now(), payment_method = 'mercadopago', status = 'completed', closed_at = now() WHERE id = $1`,
+            [row.order_id]
+          );
+        } catch {
+          // Tolerante: sin columna closed_at (migración vieja).
+          await queryOne(
+            `UPDATE orders SET payment_status = 'paid', paid_at = now(), payment_method = 'mercadopago', status = 'completed' WHERE id = $1`,
+            [row.order_id]
+          ).catch(() => {});
+        }
+      } else {
+        // Retiro/envío: solo marca pagada y sigue el flow normal.
+        try {
+          await queryOne(
+            `UPDATE orders SET payment_status = 'paid', paid_at = now(), payment_method = 'mercadopago' WHERE id = $1`,
+            [row.order_id]
+          );
+        } catch { /* columnas sin migrar */ }
+      }
     }
     try {
       const v = await queryOne<{ user_id: string }>(

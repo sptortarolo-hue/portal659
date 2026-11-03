@@ -9,11 +9,12 @@ type Props = {
   amount: number;
   orderId?: string | null;
   concept?: string;
+  isDirect?: boolean;
   fiscalAutoEmit?: boolean;
   onPaid?: (qrId: string) => void;
 };
 
-export function MpQrModal({ open, onClose, amount, orderId, concept, fiscalAutoEmit, onPaid }: Props) {
+export function MpQrModal({ open, onClose, amount, orderId, concept, isDirect, fiscalAutoEmit, onPaid }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [qrImage, setQrImage] = useState<string | null>(null);
@@ -39,7 +40,7 @@ export function MpQrModal({ open, onClose, amount, orderId, concept, fiscalAutoE
         const res = await fetch("/api/vendor/mp-qr", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ orderId: orderId || null, amount, concept: concept || null }),
+          body: JSON.stringify({ orderId: orderId || null, amount, concept: concept || null, isDirect: isDirect === true }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || "No se pudo generar el QR");

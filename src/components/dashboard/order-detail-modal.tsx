@@ -16,6 +16,9 @@ import {
   statusLabel,
   flowSteps,
   nextStatusFor,
+  jumpToDoneAvailable,
+  jumpSkippedSteps,
+  orderJumpLabel,
   CONDITION_META,
 } from "@/lib/order-utils";
 import { buildModifiedOrderMessage, buildTransferInstructionsMessage } from "@/lib/whatsapp-message";
@@ -380,6 +383,11 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
   // (bot o manual): acá abajo duplicaría. Las demás variantes sí se muestran.
   const contextualWa = contextualWaRaw?.variant === "transfer" ? null : contextualWaRaw;
   const isBlockedByPayment = blockUnpaid && isTransferAppPending;
+  // Atajo "Entregar ya": si el comercio exige tildado y falta tildar, no se
+  // ofrece (el server devolvería 409 kitchen_incomplete). Misma regla que el
+  // cierre normal: gastro con elaboración y retail siempre.
+  const jumpBlockedByPack =
+    strictPack && !packAllDone && (isRetail || orderNeedsKitchen(order));
 
   // Pesables (modo confirmar): pedido nacido "pendiente de peso".
   const weightEstimated = Number((order as any).weight_estimated_total) || 0;
@@ -1506,6 +1514,33 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
                     {getActionButtonLabel(nextStatus, order, isRetail)}
                   </Button>
                 )
+              )}
+              {/* Atajo "Entregar ya" (un toque al estado final). Solo aparece
+                  cuando realmente salta pasos: desde "Listo" en retiro/mesa/
+                  mostrador y desde "Enviado" el botón de arriba ya llega a
+                  Entregado, así que acá no habría nada que saltar. */}
+              {jumpToDoneAvailable(order, isRetail) &&
+                !isBlockedByPayment &&
+                !logisticsOwnsNext &&
+                !apartadoUnpaidAccept &&
+                !jumpBlockedByPack && (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    const skipped = jumpSkippedSteps(order, isRetail);
+                    // Saltar 2+ pasos se confirma (mismo patrón que el apartado
+                    // con saldo pendiente); saltar uno va directo.
+                    if (skipped.length >= 2) {
+                      const steps = skipped.map((s) => statusLabel(s, isRetail)).join(" → ");
+                      if (!window.confirm(`El pedido pasa a Entregado y se salta: ${steps}. ¿Confirmás?`)) return;
+                    }
+                    onAction(order, "completed");
+                    onClose();
+                  }}
+                >
+                  ✓ {orderJumpLabel(order)}
+                </Button>
               )}
               {order.status !== "new" && (orderNeedsKitchen(order) || isRetail) && (
                 <>

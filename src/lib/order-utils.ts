@@ -299,6 +299,70 @@ export function orderCompleteActionLabel(order: Pick<Order, "channel" | "method"
   }
 }
 
+/**
+ * Atajo "Entregar ya" (un toque): lleva el pedido directo a `completed`
+ * salteando los pasos intermedios del flow.
+ *
+ * Regla de oro: **solo aparece cuando realmente salta algo**. Desde `ready`
+ * en pickup/mesa/mostrador y desde `sent`, el siguiente estado del flow YA es
+ * "Entregado": el botón de siempre llega igual, así que el atajo sería un
+ * duplicado y no se muestra.
+ */
+export function jumpToDoneAvailable(
+  order: Pick<Order, "status" | "method" | "channel" | "items"> & { is_gift_only?: boolean | null },
+  isRetail: boolean = false
+): boolean {
+  if (order.status === "completed" || order.status === "cancelled") return false;
+  const next = nextStatusFor(
+    order.status,
+    order.method,
+    isRetail,
+    order.channel,
+    orderNeedsKitchen(order as Pick<Order, "items">),
+    order.is_gift_only === true
+  );
+  return next !== null && next !== "completed";
+}
+
+/** Pasos reales que se salta el atajo (para el mensaje de confirmación). */
+export function jumpSkippedSteps(
+  order: Pick<Order, "status" | "method" | "channel" | "items"> & { is_gift_only?: boolean | null },
+  isRetail: boolean = false
+): OrderStatus[] {
+  const skipped: OrderStatus[] = [];
+  let cur = nextStatusFor(
+    order.status,
+    order.method,
+    isRetail,
+    order.channel,
+    orderNeedsKitchen(order as Pick<Order, "items">),
+    order.is_gift_only === true
+  );
+  // Guarda defensiva: el flow es acíclico, pero un ciclo colgaría el render.
+  for (let i = 0; cur && cur !== "completed" && i < 8; i++) {
+    skipped.push(cur);
+    cur = nextStatusFor(
+      cur,
+      order.method,
+      isRetail,
+      order.channel,
+      orderNeedsKitchen(order as Pick<Order, "items">),
+      order.is_gift_only === true
+    );
+  }
+  return skipped;
+}
+
+/**
+ * Etiqueta del atajo, respetando el flow de cada condición. Reusa la leyenda
+ * de "completar" salvo en delivery, donde "Marcar como enviado" describe
+ * justamente el paso que se salta ("En camino") y sería engañoso.
+ */
+export function orderJumpLabel(order: Pick<Order, "channel" | "method">): string {
+  const base = orderCompleteActionLabel(order);
+  return orderCondition(order) === "delivery" ? "Marcar como entregado" : base;
+}
+
 /** Etiqueta visible del número de pedido diario (ej. "Nro. 12" para comanda, "Retiro Nro. 7" para retiros). */
 export function orderNumberLabel(order: Pick<Order, "channel" | "method"> & { pickup_number?: number | null; table_name?: string | null }): string {
   const n = order.pickup_number;

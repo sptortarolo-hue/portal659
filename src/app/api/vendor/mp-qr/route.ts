@@ -121,6 +121,11 @@ export async function POST(request: Request) {
 
   let storeId: string | null = (hasStoreCol ? vendor.mp_store_id : null) || null;
   let externalPosId: string | null = (hasPosCol ? vendor.mp_external_pos_id : null) || null;
+  // Sanitizar: si el valor persistido tiene caracteres no alfanuméricos
+  // (formato viejo con guiones), forzar regeneración.
+  if (externalPosId && /[^a-zA-Z0-9]/.test(externalPosId)) {
+    externalPosId = null;
+  }
 
   // 2) Si no hay store/pos, crearlos en MP.
   if (!storeId || !externalPosId) {

@@ -300,7 +300,13 @@ export async function PATCH(
   //   los ítems, sin distinción de requires_prep). Pedidos sin cocina no pasan.
   // - Pedido solo-tarjetas: no hay nada que empaquetar — se exime (el salto
   //   new → ready directo lo necesita, si no choca con 409).
-  if (status === "ready" && fullVendor?.kitchen_strict_close !== false) {
+  // Atajo "Entregar ya" (un toque a completed desde un estado operativo):
+  // mismas reglas — no se marca entregado lo que la cocina no terminó de
+  // tildar. Desde ready el cierre normal ya pasaba por este gate.
+  const strictTickGate =
+    status === "ready" ||
+    (status === "completed" && currentOrder.status !== "completed" && currentOrder.status !== "cancelled");
+  if (strictTickGate && fullVendor?.kitchen_strict_close !== false) {
     let giftOnlyOrder = false;
     try {
       let grows = await queryMany<{ id: string }>(
@@ -775,7 +781,11 @@ export async function PATCH(
   // sin el bot conectado el flow sigue igual que siempre. Los pedidos de
   // PRUEBA también envían (el teléfono lo carga el comercio en su demo —
   // muestra la experiencia completa: aceptado/en camino/listo + seguimiento).
-  const isAcceptEvent = status && currentOrder.status === "new" && status !== "cancelled";
+  // Atajo "Entregar ya": si el pedido salta de "new" directo a completado NO
+  // se manda el "aceptado" (ya está entregado: sería un mensaje falso). El
+  // push/campana/mail de reseña sí dicen "entregado".
+  const isAcceptEvent =
+    status && currentOrder.status === "new" && status !== "cancelled" && status !== "completed";
   const isOnRoadEvent = status === "sent" && order.method === "delivery";
   const isReadyEvent = status === "ready" && order.method === "pickup";
   const hasRealPhone = typeof order.customer_phone === "string" && !!order.customer_phone && !(order.customer_phone as string).startsWith("lid:");

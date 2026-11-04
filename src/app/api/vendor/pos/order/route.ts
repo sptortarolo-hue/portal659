@@ -645,7 +645,13 @@ export async function POST(request: Request) {
     }
     const { logApiError } = await import("@/lib/api-error");
     logApiError("pos/order", e);
-    throw e;
+    // Surface the real cause instead of a generic 500: the panel needs to
+    // know why the sale failed (FK, CHECK, missing column, etc.) instead of
+    // showing "No se pudo registrar el pedido" forever.
+    return NextResponse.json(
+      { ok: false, error: e instanceof Error ? e.message : "Error interno al registrar el pedido" },
+      { status: 500 }
+    );
   }
 
   return NextResponse.json({ ok: true, orderId: order?.id, order, volumeDiscount: (order as any)?.volume_discount ?? 0, volumeApplied: resolvedVolumeApplied, manualDiscount: resolvedManualDiscount, giftcardIssued, payments: resolvedSplit, store: { name: gate.vendor.store_name, logo: ((gate.vendor as any)?.logo_url ?? null) as string | null } });

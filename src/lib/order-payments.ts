@@ -175,7 +175,24 @@ export async function insertOrderPayments(tx: Tx, opts: InsertPaymentsOpts): Pro
       ]);
     }
   }
+  // Guarda contra FK/Migración parcial: si el profile del creador no existe
+  // (o es preview), no rompemos la venta por un created_by inválido. Lo mismo
+  // con `tendered`: si no cumple tendered >= amount, se descarta el tender
+  // (la fila sigue válida; solo pierde el "Abona con" impreso).
+  let createdBy: string | null = opts.createdBy ?? null;
+  if (createdBy) {
+    const prof = await tx.queryOne<{ id: string }>(
+      `SELECT id FROM profiles WHERE id = $1 LIMIT 1`,
+      [createdBy]
+    ).catch(() => null);
+    if (!prof) createdBy = null;
+  }
+
   for (const p of opts.payments) {
+    const tendered =
+      p.method === "efectivo" && p.tendered != null && p.tendered >= p.amount
+        ? p.tendered
+        : null;
     await tx.query(
       `INSERT INTO order_payments
          (vendor_id, order_id, table_id, method, amount, tendered, kind, client_key, created_by)
@@ -186,10 +203,10 @@ export async function insertOrderPayments(tx: Tx, opts: InsertPaymentsOpts): Pro
         opts.tableId ?? null,
         p.method,
         p.amount,
-        p.tendered ?? null,
+        tendered,
         kind,
         opts.clientKey ?? null,
-        opts.createdBy ?? null,
+        createdBy,
       ],
     );
   }

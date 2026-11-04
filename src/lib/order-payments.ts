@@ -193,10 +193,14 @@ export async function insertOrderPayments(tx: Tx, opts: InsertPaymentsOpts): Pro
       p.method === "efectivo" && p.tendered != null && p.tendered >= p.amount
         ? p.tendered
         : null;
+    // ON CONFLICT DO NOTHING: si un reintento concurrente (o una colisión de
+    // client_key) ya insertó la fila, no reventamos la venta. La fila existente
+    // queda con los datos del primer intento (que es el mismo pago).
     await tx.query(
       `INSERT INTO order_payments
          (vendor_id, order_id, table_id, method, amount, tendered, kind, client_key, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       ON CONFLICT (vendor_id, client_key) WHERE client_key IS NOT NULL DO NOTHING`,
       [
         opts.vendorId,
         opts.orderId ?? null,

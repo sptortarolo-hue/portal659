@@ -1241,6 +1241,57 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     }
   }
 
+  // ── Pesaje con la barra espaciadora (manos libres) ────────────────────────
+  // Atajo del mostrador: pesás sin buscar el botón "Pesar". Con el foco en el
+  // input de kilos de la línea, la barra pesa ESA línea; sin ningún campo
+  // enfocado y con una sola línea por peso, la barra la pesa también. Nunca
+  // pisa los campos de texto (buscador, notas, cliente, montos) ni los
+  // botones (donde la barra ya tiene su función nativa), y no estorba al
+  // escáner (la barra no es carácter de código: sólo rompe la ráfaga).
+  const scaleShortcutRef = useRef({
+    items: [] as LineItem[],
+    reading: false,
+    read: (key: string) => {},
+  });
+  scaleShortcutRef.current.items = items;
+  scaleShortcutRef.current.reading = scaleReading;
+  scaleShortcutRef.current.read = readScaleInto;
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== " " && e.key !== "Spacebar") return;
+      if (e.repeat || e.isComposing) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      const st = scaleShortcutRef.current;
+      if (st.reading) return; // ya hay una lectura en curso: no apilar
+      const t = e.target as HTMLElement | null;
+      // Caso 1: foco en el input de kilos → pesa esa línea. La barra en un
+      // input numérico no escribe nada, así que no se pierde funcionalidad.
+      if (t instanceof HTMLInputElement && t.hasAttribute("data-kg-line")) {
+        e.preventDefault();
+        st.read(t.dataset.kgLine || "");
+        return;
+      }
+      const tag = t?.tagName;
+      if (
+        tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" ||
+        tag === "BUTTON" || tag === "A" || t?.isContentEditable
+      ) {
+        // En un campo o botón la barra ya tiene su función nativa.
+        return;
+      }
+      // Caso 2: sin campo enfocado, y sólo si no hay overlay abierto (modal,
+      // sheet o picker) y hay una única línea por peso: la pesa sin ambigüedad.
+      if (document.querySelector("div.fixed.inset-0")) return;
+      const kgLines = st.items.filter((i) => i.unit === "kg");
+      if (kgLines.length !== 1) return;
+      const line = kgLines[0];
+      e.preventDefault();
+      st.read(lineKey(line.product_id, line.variant_id, line.modifiers, line._sig));
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   // Wrapper anti-silencio: cualquier excepción inesperada del cobro deja
   // mensaje visible y desbloquea el botón (antes quedaba en "Cobrando..."
   // para siempre y los toques siguientes no hacían nada).
@@ -2269,6 +2320,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
                   inputMode="decimal"
                   min="0"
                   step="0.001"
+                  data-kg-line={lineKey(i.product_id, i.variant_id, i.modifiers, i._sig)}
                   value={i.qty}
                   onChange={(e) => setLineKg(lineKey(i.product_id, i.variant_id, i.modifiers, i._sig), Number(e.target.value))}
                   ref={(el) => {

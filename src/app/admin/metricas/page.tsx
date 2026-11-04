@@ -17,12 +17,16 @@ type Metrics = {
     paidPct: number;
     whatsappPct: number;
     activeVendors30d: number;
+    /** Comercios con al menos un contacto WhatsApp en 30d. */
+    contactedVendors30d: number;
+    /** Comercios contactados en 30d que NO concretaron pedidos en la app. */
+    contactedNoOrder30d: number;
     visits30d: number;
     visitors30d: number;
     orderRate: number;
     funnelRate: number;
   };
-  perVendor: Array<{ store_name: string; vertical: string; neighborhood: string; orders_30d: number; orders_total: number; completed_total: number; completed_30d: number; app_completed_30d: number; revenue_total: number; quotes_total: number; visits_30d: number; visitors_30d: number; conv_rate: number }>;
+  perVendor: Array<{ store_name: string; vertical: string; neighborhood: string; orders_30d: number; orders_total: number; completed_total: number; completed_30d: number; app_completed_30d: number; revenue_total: number; quotes_total: number; wa_30d: number; opens_30d: number; visits_30d: number; visitors_30d: number; conv_rate: number }>;
   perVertical: Array<{ vertical: string; vendors: number; orders_total: number; completed_total: number; revenue_total: number }>;
   byPayment: Array<{ payment_method: string; n: number }>;
   byChannel: Array<{ channel: string; n: number }>;
@@ -103,6 +107,12 @@ export default function MetricasPage() {
     name: v.vertical,
     pedidos: v.orders_total,
   }));
+  // Contactados sin pedidos (30d): la interacción que NO pasa por el
+  // checkout — comercios que reciben contactos por WhatsApp pero no
+  // concretaron pedidos en la app dentro de la ventana.
+  const contactedNoOrder = data.perVendor
+    .filter((r) => r.wa_30d > 0 && r.orders_30d === 0)
+    .sort((a, b) => b.wa_30d - a.wa_30d || b.opens_30d - a.opens_30d);
 
   const fmt = (n: number | string) => Number(n ?? 0).toLocaleString("es-AR");
   const money = (n: number | string) => `$${Math.round(Number(n ?? 0)).toLocaleString("es-AR")}`;
@@ -133,12 +143,58 @@ export default function MetricasPage() {
           { label: "Únicos por comercio (30d)", value: fmt(s.visitors30d) },
           { label: "Piden tras visitar (app)", value: `${s.orderRate}%` },
           { label: "Completan compra (app)", value: `${s.funnelRate}%` },
+          ...(traffic?.ready ? [{ label: "Contactos WhatsApp (30d)", value: fmt(traffic.waTotal) }] : []),
+          { label: "Comercios contactados (30d)", value: fmt(s.contactedVendors30d) },
+          { label: "Contactados sin pedidos", value: fmt(s.contactedNoOrder30d) },
         ].map((c) => (
           <div key={c.label} className="bg-card border border-border rounded-2xl p-4">
             <div className="text-xl font-bold tabular-nums">{c.value}</div>
             <p className="text-xs text-muted-foreground mt-1">{c.label}</p>
           </div>
         ))}
+      </div>
+
+      {/* Contactados sin pedidos: interacción por fuera del checkout */}
+      <div className="bg-card border border-border rounded-2xl p-5">
+        <h2 className="font-display text-lg font-semibold mb-1">Contactados sin pedidos (30d)</h2>
+        <p className="text-xs text-muted-foreground mb-3">
+          Comercios que recibieron contactos por WhatsApp en la ventana y no concretaron pedidos en la app.
+          El contacto puede haber cerrado por WhatsApp mismo (fuera del portal) o no haber llegado a nada —
+          “Pedidos totales” distinguen un comercio que vendió antes de uno que nunca vendió.
+        </p>
+        {contactedNoOrder.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {s.contactedVendors30d > 0
+              ? "Todos los comercios contactados terminaron en pedido 🎉"
+              : "Todavía no hay contactos registrados."}
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-muted-foreground text-xs uppercase">
+                  <th className="py-2">Comercio</th>
+                  <th className="py-2 text-right">Contactos</th>
+                  <th className="py-2 text-right">Aperturas</th>
+                  <th className="py-2 text-right">Pedidos totales</th>
+                </tr>
+              </thead>
+              <tbody>
+                {contactedNoOrder.slice(0, 12).map((v) => (
+                  <tr key={v.store_name} className="border-t border-border">
+                    <td className="py-2 font-medium">{v.store_name}</td>
+                    <td className="py-2 text-right tabular-nums text-amber-600 font-semibold">{fmt(v.wa_30d)}</td>
+                    <td className="py-2 text-right tabular-nums">{fmt(v.opens_30d)}</td>
+                    <td className="py-2 text-right tabular-nums">{fmt(v.orders_total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {contactedNoOrder.length > 12 && (
+              <p className="text-xs text-muted-foreground mt-2">y {contactedNoOrder.length - 12} comercios más.</p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Per vertical chart */}
@@ -305,6 +361,8 @@ export default function MetricasPage() {
                 <th className="py-2">Comercio</th>
                 <th className="py-2">Vertical</th>
                 <th className="py-2 text-right">Únicos (30d)</th>
+                <th className="py-2 text-right">Contactos WA</th>
+                <th className="py-2 text-right">Aperturas</th>
                 <th className="py-2 text-right">Pedidos (30d)</th>
                 <th className="py-2 text-right">Total</th>
                 <th className="py-2 text-right">Entregados</th>
@@ -316,9 +374,18 @@ export default function MetricasPage() {
             <tbody>
               {data.perVendor.map((v) => (
                 <tr key={v.store_name} className="border-t border-border">
-                  <td className="py-2 font-medium">{v.store_name}</td>
+                  <td className="py-2 font-medium">
+                    {v.store_name}
+                    {v.wa_30d > 0 && v.orders_30d === 0 && (
+                      <span className="ml-1.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold px-1.5 py-0.5" title="Contactado por WhatsApp sin pedidos en la app (30d)">
+                        sin pedidos
+                      </span>
+                    )}
+                  </td>
                   <td className="py-2 capitalize">{v.vertical}</td>
                   <td className="py-2 text-right tabular-nums">{fmt(v.visitors_30d)}</td>
+                  <td className={`py-2 text-right tabular-nums ${v.wa_30d > 0 ? "font-semibold" : ""}`}>{fmt(v.wa_30d)}</td>
+                  <td className="py-2 text-right tabular-nums">{fmt(v.opens_30d)}</td>
                   <td className="py-2 text-right tabular-nums">{fmt(v.orders_30d)}</td>
                   <td className="py-2 text-right tabular-nums">{fmt(v.orders_total)}</td>
                   <td className="py-2 text-right tabular-nums">{fmt(v.completed_total)}</td>

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isAdmin } from "@/lib/admin-utils";
 import { queryMany, queryOne } from "@/lib/db";
+import { AR_DAY_SQL } from "@/lib/analytics-day";
 
 const num = (v: unknown) => Number(v ?? 0);
 
@@ -47,6 +48,25 @@ export async function GET(request: Request) {
     const activeW = "w.visibility = 'public'";
     // Visitas: tolerante a migración pendiente (sin tabla → ceros).
     const useVisits = await hasTable("store_visits");
+    // Contactos (WhatsApp) y aperturas de micrositio: misma data que el panel
+    // de tráfico, pero cruzada con los pedidos por comercio — la métrica de
+    // "lo contactan aunque no compre" (tolerante a migración pendiente).
+    const useEvents = await hasTable("portal_events");
+    const eventsJoin = useEvents
+      ? `LEFT JOIN (
+           SELECT vendor_id,
+                  count(*) FILTER (WHERE kind = 'wa_click') AS wa_30d,
+                  count(*) FILTER (WHERE kind = 'store_open') AS opens_30d
+             FROM portal_events
+            WHERE day >= ${AR_DAY_SQL} - 29
+            GROUP BY vendor_id
+         ) e ON e.vendor_id = v.id`
+      : "";
+    const eventsSelect = useEvents
+      ? `COALESCE(e.wa_30d, 0) AS wa_30d,
+         COALESCE(e.opens_30d, 0) AS opens_30d,`
+      : `0 AS wa_30d,
+         0 AS opens_30d,`;
     // Consultas/tupera de servicios: tolerante a migración SIN aplicar (sin
     // tabla → vacías; con tabla → filtrarlas como los pedidos para que las
     // pruebas no cuenten). `quotes.is_preview` llegó en migrate-service-preview.
@@ -81,6 +101,7 @@ export async function GET(request: Request) {
                   COALESCE(o.app_completed_30d, 0) AS app_completed_30d,
                   COALESCE(o.revenue_total, 0) AS revenue_total,
                   COALESCE(q.quotes_total, 0) AS quotes_total,
+                  ${eventsSelect}
                   ${visitsSelect}
            FROM vendors v
            LEFT JOIN (
@@ -100,6 +121,7 @@ export async function GET(request: Request) {
              WHERE ${quotePreviewFilter}
              GROUP BY vendor_id
            ) q ON q.vendor_id = v.id` : ""}
+           ${eventsJoin}
            ${visitsJoin}
            WHERE ${activeV}
            ORDER BY orders_total DESC, revenue_total DESC`
@@ -182,6 +204,11 @@ export async function GET(request: Request) {
         app_completed_30d: appCompleted30,
         revenue_total: num(r.revenue_total),
         quotes_total: num(r.quotes_total),
+        // Contactos por WhatsApp (30d) y aperturas del micrositio: la
+        // interacción que NO pasa por el checkout — se cruza con los pedidos
+        // en el panel para ver a quién contactan aunque no compre.
+        wa_30d: num(r.wa_30d),
+        opens_30d: num(r.opens_30d),
         visits_30d: num(r.visits_30d),
         visitors_30d: visitors,
         // % de visitantes únicos que completaron compra en la app (30d).
@@ -224,6 +251,12 @@ export async function GET(request: Request) {
 
     const totalRevenue = perVendor.reduce((s, r) => s + r.revenue_total, 0);
     const activeVendors30d = perVendor.filter((r) => r.orders_30d > 0).length;
+    // Contactos (30d): cuántos comercios recibieron al menos un contacto y
+    // cuántos fueron contactados SIN pedidos en la ventana — la métrica de
+    // "lo contactan aunque no compre" (eventos sin vendor_id quedan fuera:
+    // mismos números que el panel de tráfico).
+    const contactedVendors30d = perVendor.filter((r) => r.wa_30d > 0).length;
+    const contactedNoOrder30d = perVendor.filter((r) => r.wa_30d > 0 && r.orders_30d === 0).length;
     const visits30d = perVendor.reduce((s, r) => s + r.visits_30d, 0);
     // Únicos por comercio: la misma persona que mira 3 tiendas suma 3 (es la
     // unidad de negocio; los únicos "global" no se pueden derivar sin la
@@ -249,6 +282,8 @@ export async function GET(request: Request) {
         paidPct,
         whatsappPct,
         activeVendors30d,
+        contactedVendors30d,
+        contactedNoOrder30d,
         visits30d,
         visitors30d,
         orderRate,

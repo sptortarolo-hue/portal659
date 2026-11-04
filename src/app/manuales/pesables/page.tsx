@@ -131,7 +131,8 @@ export default function PesablesPage() {
             <span className="font-medium">⚖️ Pendiente de peso</span> en tu panel. Todavía no se cobra:
             el total que ves es el estimado del cliente. Si pidió con Mercado Pago o transferencia, el
             pedido queda <span className="font-medium">pendiente de pago</span>; si pidió efectivo,
-            queda para cobrar al entregar.
+            queda para cobrar al entregar. Mientras no confirmes el peso, el aviso de pago del pedido
+            no ofrece acciones: recién existe un total que cobrar cuando pesás.
           </p>
           <p className="mb-3">
             <strong>2 · Aceptás y preparás.</strong> El pedido pasa a <span className="font-medium">Preparando</span>
@@ -146,9 +147,13 @@ export default function PesablesPage() {
           <p className="mb-3">
             <strong>4 · El cliente se entera solo.</strong> Al confirmar el peso se le manda
             automático un WhatsApp: “tu pedido está preparado y pesado”, el detalle con los
-            kilos reales, el total y cómo pagar. También le llega la notificación con el link de
-            seguimiento. Si el bot de WhatsApp está desconectado, te avisa y podés reenviarlo con
-            el botón <span className="font-medium">📲 Reenviar pedido pesado</span> del pedido.
+            kilos reales, el total y <strong>los datos para pagar según cómo eligió pagar</strong>:
+            transferencia → tu alias/CBU/titular · Mercado Pago → el link para pagar · efectivo →
+            “paga al recibir” · a coordinar → el link de MP si tenés MP conectada, y si no, tu
+            alias/CBU. Si no cargaste ninguno, coordinan el pago por el chat. También le llega la
+            notificación con el link de seguimiento. Si el bot de WhatsApp está desconectado, te
+            avisa y podés reenviarlo con el botón{" "}
+            <span className="font-medium">📲 Reenviar pedido pesado</span> del pedido.
           </p>
           <p className="mb-3">
             <strong>5 · Cobrás.</strong> Según cómo eligió pagar tu cliente:

@@ -281,12 +281,14 @@ export function buildWeighedOrderMessage(params: {
   items: WaItem[];
   total: number;
   paymentMethod: string;
-  /** Datos bancarios (solo transferencia). */
+  /** Datos bancarios del comercio (transferencia). */
   alias?: string | null;
   cbu?: string | null;
   holder?: string | null;
   /** Link público de seguimiento (pago MP y consulta de estado). */
   trackUrl?: string | null;
+  /** El comercio tiene Mercado Pago conectada: pedidos "a coordinar" la usan. */
+  mpEnabled?: boolean;
   /** true = el total real difiere del estimado que declaró el cliente. */
   changedFromEstimate?: boolean;
 }): string {
@@ -300,24 +302,44 @@ export function buildWeighedOrderMessage(params: {
     params.alias ? `Alias: ${params.alias}` : "",
     params.cbu ? `CBU: ${params.cbu}` : "",
   ].filter((l) => l !== "").join("\n");
+  const hasTransferData = credentials !== "" || !!params.holder;
+  // Pago con MP desde el seguimiento (el link lleva al botón "Pagar").
+  const mpBlock = (total: string) =>
+    params.trackUrl
+      ? [`Pagá ${total} con Mercado Pago desde el siguiente link:`, params.trackUrl]
+      : [`Pagá ${total} con Mercado Pago. Te avisamos por acá con el link de pago.`];
+  const transferBlock = (total: string) => [
+    `Transferencia por ${total} (monto exacto):`,
+    credentials,
+    params.holder ? `Titular: ${params.holder}` : "",
+    "Mandanos la foto o el PDF del comprobante por acá y lo verificamos enseguida. 🙏",
+  ];
 
+  // El bloque de pago puede ya incluir el link de seguimiento (MP): en ese
+  // caso no se repite la línea "Seguí tu pedido acá".
+  let mpInBlock = false;
   const paymentBlock = (() => {
     const total = `$${params.total.toLocaleString("es-AR")}`;
     switch (params.paymentMethod) {
       case "efectivo":
         return [`Pagás ${total} al recibir tu pedido. 💵`, "Si abonás con cambio, avisanos por acá."];
       case "transferencia":
-        return [
-          `Transferencia por ${total} (monto exacto):`,
-          credentials,
-          params.holder ? `Titular: ${params.holder}` : "",
-          "Mandanos la foto o el PDF del comprobante por acá y lo verificamos enseguida. 🙏",
-        ];
+        // Sin alias/CBU cargados no se deja un bloque vacío: se coordina.
+        return hasTransferData
+          ? transferBlock(total)
+          : [`Total: ${total}. Coordinamos el pago por este chat. 📱`];
       case "mercadopago":
-        return params.trackUrl
-          ? [`Pagá ${total} con Mercado Pago desde el seguimiento:`, params.trackUrl]
-          : [`Pagá ${total} con Mercado Pago. Te avisamos por acá con el link de pago.`];
+        mpInBlock = !!params.trackUrl;
+        return mpBlock(total);
       default:
+        // "Coordinar": si el comercio cobra online va el link de MP; si no, los
+        // datos de transferencia; recién sin ninguno de los dos se coordina
+        // por el chat (nunca un "coordinamos" cuando hay datos disponibles).
+        if (params.mpEnabled && params.trackUrl) {
+          mpInBlock = true;
+          return mpBlock(total);
+        }
+        if (hasTransferData) return transferBlock(total);
         return [`Total: ${total}. Coordinamos el pago por este chat. 📱`];
     }
   })().filter((l) => l !== null && l !== undefined && l !== "");
@@ -333,7 +355,7 @@ export function buildWeighedOrderMessage(params: {
       : `Total real: *$${params.total.toLocaleString("es-AR")}*`,
     "",
     ...paymentBlock,
-    params.trackUrl && params.paymentMethod !== "mercadopago"
+    params.trackUrl && !mpInBlock
       ? `Seguí tu pedido acá: ${params.trackUrl}`
       : "",
   ].filter((l) => l !== null && l !== undefined && l !== "").join("\n");

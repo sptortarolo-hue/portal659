@@ -1,5 +1,6 @@
 import { queryOne } from "@/lib/db";
 import { getSiteUrl } from "@/lib/site-url";
+import { isMpEnabled } from "@/lib/mp-oauth";
 import { buildWeighedOrderMessage } from "@/lib/whatsapp-message";
 
 /**
@@ -99,10 +100,14 @@ export async function sendWeighedOrder(args: {
     transfer_alias: string | null;
     transfer_cbu: string | null;
     transfer_holder: string | null;
+    mp_user_id: number | null;
   }>(
-    `SELECT store_name, transfer_alias, transfer_cbu, transfer_holder FROM vendors WHERE id = $1 LIMIT 1`,
+    `SELECT store_name, transfer_alias, transfer_cbu, transfer_holder, mp_user_id FROM vendors WHERE id = $1 LIMIT 1`,
     [vendorId]
   ).catch(() => null);
+  // MP conectada (llave global + cuenta OAuth del comercio): los pedidos
+  // "a coordinar" ofrecen el link de pago antes que la transferencia.
+  const mpEnabled = isMpEnabled() && vendorRow?.mp_user_id != null;
 
   const items = Array.isArray(order.items) ? (order.items as any[]) : [];
   const total = Number(order.total) || 0;
@@ -128,6 +133,7 @@ export async function sendWeighedOrder(args: {
     cbu: vendorRow?.transfer_cbu ?? null,
     holder: vendorRow?.transfer_holder ?? null,
     trackUrl,
+    mpEnabled,
     changedFromEstimate: estimated > 0 && Math.abs(total - estimated) > 0.01,
   });
 

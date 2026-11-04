@@ -1412,7 +1412,9 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
                 <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   <p className="font-semibold">🕐 Pago pendiente ({order.payment_status})</p>
                   <p className="text-amber-700">
-                    Transferí los datos al cliente y confirmá el depósito antes de avanzar.
+                    {weightPending
+                      ? "El total se define cuando peses y confirmes el peso real. Recién ahí se habilita el pago y los datos para transferirle al cliente."
+                      : "Transferí los datos al cliente y confirmá el depósito antes de avanzar."}
                   </p>
                   {order.transfer_proof_url && (
                     <div className="space-y-1.5 rounded-md border border-amber-200 bg-white/70 p-2">
@@ -1438,58 +1440,63 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
                       )}
                     </div>
                   )}
-                  {canSendWeighed ? (
-                    <p className="text-center text-[11px] text-amber-700">
-                      Mandale el pedido pesado con el botón{" "}
-                      <span className="font-semibold">📲 Enviar pedido pesado por WhatsApp</span> (arriba): lleva el
-                      alias/CBU y el monto exacto a transferir.
-                    </p>
-                  ) : useBotSend ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full border-primary/40 text-primary hover:bg-primary/10"
-                      disabled={payBusy}
-                      onClick={handleSendPaymentData}
-                    >
-                      {payBusy ? "Enviando..." : "💳 Enviar datos de pago por WhatsApp"}
-                    </Button>
-                  ) : manualPayUrl && !isCounterChannel ? (
+                  {/* Mientras el peso no está confirmado no se sabe cuánto: sin datos de pago ni "marcar como pagado". */}
+                  {!weightPending && (
                     <>
-                      <a href={manualPayUrl} target="_blank" rel="noopener noreferrer" className="block">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="w-full border-primary/40 text-primary hover:bg-primary/10"
-                        >
-                          💳 Enviar datos de pago por WhatsApp
-                        </Button>
-                      </a>
-                      <p className="text-center text-[10px] text-muted-foreground">
-                        {botFailed
-                          ? "El bot no pudo enviarlo — se abre tu WhatsApp con los datos listos."
-                          : "El bot no está conectado — se abre tu WhatsApp con los datos listos."}
+                    {canSendWeighed ? (
+                      <p className="text-center text-[11px] text-amber-700">
+                        Mandale el pedido pesado con el botón{" "}
+                        <span className="font-semibold">📲 Enviar pedido pesado por WhatsApp</span> (arriba): lleva el
+                        alias/CBU y el monto exacto a transferir.
                       </p>
+                    ) : useBotSend ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full border-primary/40 text-primary hover:bg-primary/10"
+                        disabled={payBusy}
+                        onClick={handleSendPaymentData}
+                      >
+                        {payBusy ? "Enviando..." : "💳 Enviar datos de pago por WhatsApp"}
+                      </Button>
+                    ) : manualPayUrl && !isCounterChannel ? (
+                      <>
+                        <a href={manualPayUrl} target="_blank" rel="noopener noreferrer" className="block">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="w-full border-primary/40 text-primary hover:bg-primary/10"
+                          >
+                            💳 Enviar datos de pago por WhatsApp
+                          </Button>
+                        </a>
+                        <p className="text-center text-[10px] text-muted-foreground">
+                          {botFailed
+                            ? "El bot no pudo enviarlo — se abre tu WhatsApp con los datos listos."
+                            : "El bot no está conectado — se abre tu WhatsApp con los datos listos."}
+                        </p>
+                      </>
+                    ) : !customerPhone || isCounterChannel ? (
+                      <p className="text-center text-[10px] text-muted-foreground">
+                        El pedido no tiene teléfono del cliente — coordinale el pago por la vía que uses de siempre.
+                      </p>
+                    ) : (
+                      <p className="text-center text-[10px] text-muted-foreground">
+                        Cargá tu alias o CBU en Configuración → Cobros para mandarle los datos de pago al cliente.
+                      </p>
+                    )}
+                    {payMsg && canSendWeighed ? null : <p className="text-center text-[10px] text-muted-foreground">{payMsg}</p>}
+                    {onMarkPaid && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full border-green-300 bg-green-50 text-green-700 hover:bg-green-100"
+                        onClick={() => onMarkPaid(order.id)}
+                      >
+                        ✓ Marcar como pagado
+                      </Button>
+                    )}
                     </>
-                  ) : !customerPhone || isCounterChannel ? (
-                    <p className="text-center text-[10px] text-muted-foreground">
-                      El pedido no tiene teléfono del cliente — coordinale el pago por la vía que uses de siempre.
-                    </p>
-                  ) : (
-                    <p className="text-center text-[10px] text-muted-foreground">
-                      Cargá tu alias o CBU en Configuración → Cobros para mandarle los datos de pago al cliente.
-                    </p>
-                  )}
-                  {payMsg && canSendWeighed ? null : <p className="text-center text-[10px] text-muted-foreground">{payMsg}</p>}
-                  {onMarkPaid && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full border-green-300 bg-green-50 text-green-700 hover:bg-green-100"
-                      onClick={() => onMarkPaid(order.id)}
-                    >
-                      ✓ Marcar como pagado
-                    </Button>
                   )}
                 </div>
               )}

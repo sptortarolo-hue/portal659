@@ -110,6 +110,33 @@ check(
   "mensaje: efectivo puede avisar aunque el pedido nazca pagado",
   /needsPending && order\.payment_status === "paid"/.test(helper)
 );
+check(
+  "mensaje: datos de pago segun la modalidad elegida",
+  /case "transferencia":/.test(waLib) &&
+    /case "mercadopago":/.test(waLib) &&
+    /if \(params\.mpEnabled && params\.trackUrl\)/.test(waLib) &&
+    /if \(hasTransferData\) return transferBlock\(total\);/.test(waLib)
+);
+check(
+  "mensaje: MP con el texto 'desde el siguiente link'",
+  /con Mercado Pago desde el siguiente link:/.test(waLib)
+);
+check(
+  "mensaje: transferencia sin datos -> coordinar (nunca bloque vacio)",
+  /hasTransferData\s*\r?\n\s*\? transferBlock\(total\)\s*\r?\n\s*: \[`Total: \$\{total\}\. Coordinamos el pago por este chat\./.test(waLib)
+);
+check(
+  "helper: pasa mpEnabled (MP conectada del comercio)",
+  /mp_user_id/.test(helper) && /mpEnabled/.test(helper)
+);
+check(
+  "modal: sin acciones de pago mientras el peso no esta confirmado",
+  /\{!weightPending && \(\s*\r?\n\s*<>\s*\r?\n\s*\{canSendWeighed \? \(/.test(modal)
+);
+check(
+  "modal: aviso de pago pendiente con copy de pesaje",
+  /El total se define cuando peses y confirmes el peso real/.test(modal)
+);
 
 // --- 4. checkout: un solo botón en modo confirmar ----------------------
 check(

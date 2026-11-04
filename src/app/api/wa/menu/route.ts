@@ -26,7 +26,8 @@ export async function GET(request: Request) {
 
   const products = await queryMany<any>(
     `SELECT id, name, description, price, promo_price, category, available,
-            requires_prep, stock_control, stock, has_variants
+            requires_prep, stock_control, stock, has_variants,
+            pack_size, unit, weight_step_kg, weight_min_kg
      FROM products WHERE vendor_id = $1 AND available = true
      ORDER BY featured_today DESC, name ASC`,
     [vendorId]
@@ -107,6 +108,10 @@ export async function GET(request: Request) {
       requires_prep: p.requires_prep !== false,
       stock_control: p.stock_control === true,
       stock: p.stock,
+      pack_size: p.pack_size || null,
+      unit: p.unit || 'unidad',
+      weight_step_kg: p.weight_step_kg || null,
+      weight_min_kg: p.weight_min_kg || null,
       modifiers: modifiersByProduct[p.id] || [],
       variants: variantsByProduct[p.id] || [],
     })),

@@ -6,6 +6,7 @@ import { getMenu, getMenuSync, matchProduct, matchAllProducts, normalizeForMatch
 import { parseWithLlm, parseByRules, normalizeEs, extractFromText, bareName, 
 classifyIntent, llmStats } from "./nlu.mjs";
 import { saveCorrection } from "./learning.mjs";
+import { trackEvent } from "./telemetry.mjs";
 import { getClientByVendor, sendText, sendTyping, sendPaused, sendImage, sendDocument } from "./relay.mjs";
 import { feedPush } from "./metrics.mjs";
 
@@ -252,7 +253,7 @@ if (state.pausedUntil && state.pausedUntil > Date.now()) {
 
 // Contexto para la llamada IA: carrito actual + qué se le preguntó + historial.
 function llmCtx(state, vendor) {
-  return { cart: state.items, pending: missingFields(state, vendor), history: state.history, vendorId: vendor?.id || vendor?.vendorId || null };
+  return { cart: state.items, pending: missingFields(state, vendor), history: state.history, vendorId: vendor?.id || vendor?.vendorId || null, vertical: vendor?.vertical || null };
 }
 
 // ———————————————————————————————————————————————————————————————————————————
@@ -439,6 +440,7 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
 
   // Nada entendido: contar miss; a los 2 → handoff.
   state.handoffCount = (state.handoffCount || 0) + 1;
+  try { trackEvent(vendor.id, "nlu_not_understood", waId, { text: t }); } catch {}
   if (state.handoffCount >= MAX_PARSE_MISSES) {
     return handoffHuman(vendor, waId, text, state);
   }
@@ -555,6 +557,16 @@ async function handleStep({ vendor, text, state, replies, waId }) {
       return;
     }
     if (RE_CONFIRM.test(t)) {
+      // Cinturón y tirantes: nunca crear un pedido con campos obligatorios
+      // faltantes (nombre, método, dirección si delivery). advanceAndAsk ya
+      // filtra, pero esto evita pedidos incompletos si algo se escapa.
+      const stillMissing = missingFields(state, vendor);
+      if (stillMissing.length) {
+        state.step = "flow";
+        state.pendingFields = stillMissing;
+        replies.push("Faltan datos antes de confirmar:\n\n" + pendingQuestions(state));
+        return await persist(state, vendor.id, waId, replies);
+      }
       let order;
       try {
         order = await createOrder(vendor.id, state);
@@ -841,6 +853,16 @@ async function handleStep({ vendor, text, state, replies, waId }) {
     (await parseWithLlm(t, products, llmCtx(state, vendor)).catch(() => null)) || parseByRules(t, products)
   );
 
+  // Ítems desconocidos (el LLM no los encontró en el menú): preguntar al cliente
+  // en vez de ignorarlos en silencio o crear un pedido inventado.
+  if (parsed?.unknownItems?.length) {
+    const unknown = parsed.unknownItems.slice(0, 5).join(", ");
+    replies.push(`No encontré en el menú: ${unknown}. ¿Podés decírmelo de otra forma, o elegí algo de la lista?`);
+    state.handoffCount = (state.handoffCount || 0) + 1;
+    try { trackEvent(vendor.id, "nlu_unknown_items", waId, { text: t, unknownItems: parsed.unknownItems }); } catch {}
+    return await persist(state, vendor.id, waId, replies);
+  }
+
   let got = false;
   // Se actualizan SIEMPRE (no solo si falta): el cliente puede cambiar de idea
   // en medio del flujo ("mejor retiro" tras decir "envío", "mejor efectivo"…).
@@ -866,7 +888,7 @@ async function handleStep({ vendor, text, state, replies, waId }) {
     // (la versión anterior tenía los acentos como bytes rotos: "agregǭ/mǭs"
     //  no matcheaba NADA → "agregá una coca" REEMPLAZABA el carrito entero
     //  en vez de sumarlo — pedidos que se perdían a mitad de flujo)
-    const isAddition = /\b(agrega|agregá|agregar|también|tambien|sumá|suma|sumar|más|mas)(?=[\s.,!¡]|$)/i.test(t);
+    const isAddition = /\b(agrega|agregá|agregame|agregar|también|tambien|sumá|suma|sumar|más|mas)(?=[\s.,!¡]|$)/i.test(t);
     const fullCart =
       state.items.length > 0 &&
       state.items.every((i) => parsed.items.some((p) => (p.offerId || p.id) === i.offerId));
@@ -1722,6 +1744,17 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
         state.payment = last.paymentMethod || "whatsapp";
         state.customerName = last.customerName || state.customerName;
         state.portalVendorList = [];
+        // Validación de slots obligatorios antes de ir a confirmar (cinturón y tirantes).
+        const stillMissing = missingFields(state, vendor);
+        if (stillMissing.length) {
+          state.step = "flow";
+          state.pendingFields = stillMissing;
+          replies.push(`Tu último pedido a *${last.storeName}*:`);
+          replies.push(cartItems.map((i) => `• ${i.name} ×${i.qty}`).join("\n"));
+          replies.push(`Total estimado: $${last.total.toLocaleString("es-AR")}`);
+          replies.push("Faltan datos antes de confirmar:\n\n" + pendingQuestions(state));
+          return await persist(state, vendor.id, waId, replies);
+        }
         state.step = "confirm";
         // Resumen
         const summary = cartItems.map((i) => `• ${i.name} ×${i.qty}`).join("\n");
@@ -2061,7 +2094,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
 
     // En flujo de pedido con un comercio elegido: reusar el flow normal.
     if (state.currentVendorId && state.step !== "idle") {
-      const chosenVendor = { id: state.currentVendorId, store_name: state.currentVendorName || "Comercio", slug: state.currentVendorSlug || null, enabled: true, transfer_alias: state.currentVendorTransfer?.alias || null, transfer_cbu: state.currentVendorTransfer?.cbu || null, transfer_holder: state.currentVendorTransfer?.holder || null, delivery_options: state.currentVendorDelivery || "ambos" };
+      const chosenVendor = { id: state.currentVendorId, store_name: state.currentVendorName || "Comercio", slug: state.currentVendorSlug || null, enabled: true, vertical: state.currentVendorVertical || "desconocida", transfer_alias: state.currentVendorTransfer?.alias || null, transfer_cbu: state.currentVendorTransfer?.cbu || null, transfer_holder: state.currentVendorTransfer?.holder || null, delivery_options: state.currentVendorDelivery || "ambos" };
       await handleStep({ vendor: chosenVendor, text, state, replies, waId });
       // Si el pedido se confirmó y se limpió, ofrecer otro comercio.
       if (state._cleared) {
@@ -2088,7 +2121,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
         state.portalVendorList = [];
         // cae al bloque de portal idle abajo
       } else {
-        const chosenVendor = { id: state.currentVendorId, store_name: state.currentVendorName || "Comercio", slug: state.currentVendorSlug || null, enabled: true, transfer_alias: state.currentVendorTransfer?.alias || null, transfer_cbu: state.currentVendorTransfer?.cbu || null, transfer_holder: state.currentVendorTransfer?.holder || null, delivery_options: state.currentVendorDelivery || "ambos" };
+        const chosenVendor = { id: state.currentVendorId, store_name: state.currentVendorName || "Comercio", slug: state.currentVendorSlug || null, enabled: true, vertical: state.currentVendorVertical || "desconocida", transfer_alias: state.currentVendorTransfer?.alias || null, transfer_cbu: state.currentVendorTransfer?.cbu || null, transfer_holder: state.currentVendorTransfer?.holder || null, delivery_options: state.currentVendorDelivery || "ambos" };
         await handleIdle({ vendor: chosenVendor, text, state, replies, waId });
         return await persist(state, vendor.id, waId, replies);
       }
@@ -2106,6 +2139,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
         const storeInfo = (portalData.vendors || portalData.stores || []).find((s) => s.id === chosen.id) || chosen;
         state.currentVendorId = chosen.id;
         state.currentVendorName = chosen.store_name;
+        state.currentVendorVertical = storeInfo.vertical || "desconocida";
         state.currentVendorSlug = chosen.slug || storeInfo.slug || null;
         state.currentVendorTransfer = { alias: storeInfo.transfer_alias || null, cbu: storeInfo.transfer_cbu || null, holder: storeInfo.transfer_holder || null };
         state.currentVendorDelivery = storeInfo.delivery_options || "ambos";
@@ -2182,6 +2216,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
         const storeInfo2 = (portalData2.vendors || portalData2.stores || []).find((s) => s.id === nameHit.id) || nameHit;
         state.currentVendorId = nameHit.id;
         state.currentVendorName = nameHit.store_name;
+        state.currentVendorVertical = storeInfo2.vertical || "desconocida";
         state.currentVendorSlug = nameHit.slug || storeInfo2.slug || null;
         state.currentVendorTransfer = { alias: storeInfo2.transfer_alias || null, cbu: storeInfo2.transfer_cbu || null, holder: storeInfo2.transfer_holder || null };
         state.currentVendorDelivery = storeInfo2.delivery_options || "ambos";

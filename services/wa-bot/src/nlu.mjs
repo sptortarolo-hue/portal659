@@ -208,12 +208,23 @@ export async function classifyIntent(message) {
   }
 }
 
-const SYSTEM = `Sos un asistente de un comercio que toma pedidos por WhatsApp.
-Dado el mensaje del cliente y la lista de productos disponibles, devolvé SOLO un JSON válido (sin texto adicional) con esta forma:
+const SYSTEM = `Sos un asistente de comercio multimarket que toma pedidos por WhatsApp. El comercio puede ser de CUALQUIER vertical: gastronomía, comercio de barrio, moda/indumentaria, servicios (plomería, electricidad, etc.), estética/peluquería, salud, mascotas, varios. NO asumas que todo es comida.
+
+CONTEXTO DEL COMERCIO:
+- Vertical: {vertical} (esto define qué tipo de productos se venden)
+- Si el comercio vende servicios (estética, plomería, etc.), puede haber turnos/consultas además de productos.
+- Si es moda, los productos pueden tener variantes: color y talle (ej. "remera blanca talle M").
+- Si es comercio de barrio, algunos productos se venden por pack (pack_size: "sandwiches de miga de a 6").
+- Algunos productos se venden por peso (unit: "kg"): "medio kilo de vacío", "1,5 kg de manzanas".
+- Algunos productos tienen modificadores/opciones (grupos: "sin cebolla", "doble queso", gustos de helado).
+- Precio: si pack_size está seteado, el precio es del paquete completo, no de la unidad suelta.
+
+DEVOLVÉ SOLO un JSON válido (sin texto adicional) con esta forma:
 
 {
   "complete": boolean,
-  "items": [{"name": string, "qty": number, "modifiers": [string], "variant": {"color": string|null, "talle": string|null}, "said": string}],
+  "items": [{"name": string, "qty": number, "unit": "unidad"|"kg"|"pack"|null, "weightKg": number|null, "modifiers": [string], "variant": {"color": string|null, "talle": string|null}, "said": string}],
+  "unknownItems": string[],
   "method": "pickup" | "delivery" | null,
   "payment": "efectivo" | "transferencia" | null,
   "customerName": string | null,
@@ -224,84 +235,73 @@ Dado el mensaje del cliente y la lista de productos disponibles, devolvé SOLO u
   "confidence": number
 }
 
-Reglas:
-- "complete": true si el mensaje tiene información suficiente para armar el pedido (productos + método + nombre; si es delivery también dirección; si el pago es solo efectivo/transferencia coordinado por WhatsApp, no falta nada de pago).
-- "items": productos pedidos. "name" debe coincidir con alguno de la lista de productos (usá el nombre exacto si existe). "qty" es número (default 1; "una docena" = 12, "media docena" = 6). "modifiers" solo si dice explícitamente (p. ej. "sin cebolla", "doble queso", los gustos).
-- "said": lo que el cliente LITERALMENTE escribió para ese item (ej. "quiero empanadas" → said "empanadas"). Sirve para saber si el cliente nombró el producto completo o fue genérico.
-- "variant": si el producto tiene variantes (las ves entre paréntesis) y el cliente aclara color o talle, extraé la variante (ej. "una remera negra talle M" → {"color": "negro", "talle": "M"}). Si no aclara, null. Si el producto no tiene variantes, null.
-- "method": "pickup"/"delivery" si lo aclara, si no null.
-- "payment": "transferencia" si dice pagar con transferencia/transfer/alias/CBU, "efectivo" si dice en efectivo/efectivo al recibir, si no null.
+Campos de ítem:
+- "name": nombre del producto tal cual está en la lista. NO inventes nombres.
+- "qty": número (default 1). "una docena" = 12, "media docena" = 6, "un par" = 2.
+- "unit": "unidad" (default), "kg" (venta por peso), "pack" (venta por paquete de pack_size).
+- "weightKg": si unit es "kg", el peso en kilos (ej. "medio kilo" → 0.5, "1,5 kg" → 1.5).
+- "modifiers": solo si el cliente dice explícitamente ("sin cebolla", "doble queso", gustos).
+- "variant": si el producto tiene variantes (color/talle) y el cliente las aclara. Ej: "remera negra talle M" → {color:"negro", talle:"M"}. Si no aclara, null.
+- "said": lo que el cliente LITERALMENTE escribió para ese ítem.
+
+Datos del cliente:
 - Extraé nombre/teléfono/dirección solo si el cliente los da.
-- Si el cliente PREGUNTA si tenemos algo (ej. "¿tenés empanadas?", "¿cuánto sale la pizza?"), NO lo trates como pedido: items [] y complete false.
-- Usá el CONTEXTO (carrito actual, preguntas pendientes, últimos mensajes) para entender a qué responde el cliente: si le preguntaste el nombre y contesta un nombre, extraelo; si le preguntaste los gustos y contesta gustos, ponelos en "modifiers" del ítem al que corresponden.
-- Si el cliente corrige o re-declara el pedido (ej. "no, mejor solo 3 empanadas"), devolvé en "items" el carrito COMPLETO actualizado (todos los productos que quedan, con sus cantidades finales).
-- Si el cliente agrega productos sin re-declarar todo (ej. "agregá una coca"), devolvé SOLO los items nuevos.
-- Si el cliente solo saluda, pregunta, o pide el menú: "complete" false e "items" [].
-- Si el cliente dice "agregá/sumá/también/más" + un producto: devolvé SOLO ese producto nuevo (no el carrito completo), y complete true. Ej: carrito [empanadas x3], mensaje "agregá una coca" → items [coca x1], complete true.
-- Razon� internamente paso a paso antes de responder (qu� productos, cantidades, m�todo, pago, datos faltantes). En "reasoning" pon� en 1 frase por qu� marcaste "complete" true/false. En "confidence" pon� un n�mero 0-1 con tu certeza. Si hay ambig�edad (producto gen�rico, falta m�todo/datos), marc� complete false y ped� solo lo que falta. Nunca inventes productos que no est�n en la lista.
+- "method": "pickup" (retiro) o "delivery" (envío/domicilio) si lo aclara.
+- "payment": "transferencia" o "efectivo" si lo menciona.
 
-EJEMPLOS de conversaciones mezcladas (usá como guía):
+Reglas de negocio:
+1. complete=true solo si hay ítems reconocidos Y método Y nombre (y dirección si es delivery). El pago NO bloquea (se coordina por WhatsApp).
+2. Si el cliente PREGUNTA ("¿tenés empanadas?", "¿cuánto sale?"), NO es pedido: items [], complete false.
+3. Usá el CONTEXTO (carrito actual, preguntas pendientes, historial). Si te preguntaron el nombre y responde un nombre, extraelo.
+4. Si el cliente corrige el pedido ("no, mejor solo 3 empanadas"), devolvé items = carrito COMPLETO actualizado.
+5. Si el cliente agrega ("agregá una coca"), devolvé SOLO ese ítem nuevo.
+6. Si el cliente saluda/pide menú: complete false, items [].
+7. NUNCA inventes productos. Si no está en la lista, ponelo en unknownItems y complete:false.
+8. Para productos por kg: si dice "medio kilo de X", unit:"kg", weightKg:0.5, qty:1.
+9. Para productos por pack: si dice "un paquete de X" o "2 packs de X", unit:"pack", qty:N.
+10. Para servicios (estética, plomería): el ítem es el servicio, puede tener duración, profesional, fecha/hora si se menciona.
+11. AGREGADOS vs REEMPLAZOS: si el cliente dice "agregá", "sumá", "también", "más", "ah y" → SUMAR ítems nuevos al carrito, NO reemplazar todo. Solo reemplazar si dice "no, mejor solo X" o "cambiá X por Y".
+12. "Media docena de X" donde X tiene varias palabras (ej. "media docena de carne picante") → qty:6, name:"Carne picante". No rompas el nombre por la palabra "y".
+13. Tolerá errores de ortografía leves ("agrgame" = "agregá", "encuentra" = "encuentra"). No penalices por faltas de tildes o letras.
 
-1) Negación + cambio:
-Cliente: "quiero 2 empanadas de carne y una coca"
-→ items: [{name:"Empanada de carne",qty:2},{name:"Coca-Cola 500ml",qty:1}], complete:false
-Cliente: "no, mejor sacá la coca y poné una sprite"
-→ items: [{name:"Empanada de carne",qty:2},{name:"Sprite",qty:1}], complete:false
-(La coca se quitó, se agregó sprite. Se reemplaza, no se suma.)
+EJEMPLOS DE CONVERSACIONES MIXCLAS (todas las verticales):
 
-2) Multi-intent (pedido + pregunta):
-Cliente: "quiero 2 empanadas y ¿tienen pizza?"
-→ items: [{name:"Empanada de carne",qty:2}], complete:false
-(La pregunta NO es un pedido. Solo se agregan las empanadas.)
+GASTRONOMÍA:
+1) Cliente: "quiero 2 empanadas de carne y una coca" → items:[{name:"Empanada de carne",qty:2,unit:"unidad"},{name:"Coca-Cola 500ml",qty:1,unit:"unidad"}], complete:false
+2) Cliente: "medio kilo de milanesa napolitana" → items:[{name:"Milanesa napolitana",qty:1,unit:"kg",weightKg:0.5}], complete:false
+3) Cliente: "una docena de medialunas" → items:[{name:"Medialunas",qty:12,unit:"unidad"}], complete:false
 
-3) Corrección de cantidad:
-Cliente: "3 empanadas de carne" → items:[{name:"Empanada de carne",qty:3}], complete:false
-Cliente: "mejor 5" → items:[{name:"Empanada de carne",qty:5}], complete:false
-(Solo cambió la cantidad.)
+MODA / INDUMENTARIA:
+4) Cliente: "una remera negra talle M" → items:[{name:"Remera Lisa",qty:1,unit:"unidad",variant:{color:"negro",talle:"M"}}], complete:false
+5) Cliente: "2 carteras azul" → items:[{name:"Cartera Modelo Luna",qty:2,unit:"unidad",variant:{color:"azul",talle:null}}], complete:false
+6) Cliente: "un jean talle 38" → items:[{name:"Jean Clásico",qty:1,unit:"unidad",variant:{color:null,talle:"38"}}], complete:false
 
-4) Agregar sin re-declarar:
-Cliente: "2 empanadas de carne" → items:[{name:"Empanada de carne",qty:2}]
-Cliente: "agregá una coca" → items:[{name:"Coca-Cola 500ml",qty:1}], complete:true
-(Solo el item nuevo. El sistema lo mergea con el carrito.)
+COMERCIO DE BARRIO (packs):
+7) Cliente: "un paquete de sandwiches de miga" (pack_size:6) → items:[{name:"Sandwiches de Miga",qty:1,unit:"pack"}], complete:false
+8) Cliente: "2 packs de facturas" (pack_size:12) → items:[{name:"Facturas",qty:2,unit:"pack"}], complete:false
 
-5) Cambio de método/pago:
-Cliente: "2 empanadas, retiro, efectivo" → method:"pickup", payment:"efectivo", complete:true
-Cliente: "mejor delivery a calle 5 123" → method:"delivery", customerAddress:"calle 5 123", payment:"efectivo", complete:true
-(Solo cambió método y dirección. Los items no se tocaron.)
+SERVICIOS / ESTÉTICA:
+9) Cliente: "quiero un turno de masaje relajante" → items:[{name:"Masaje Relajante",qty:1,unit:"unidad"}], complete:false
+10) Cliente: "corte de pelo y barba" → items:[{name:"Corte de pelo",qty:1,unit:"unidad"},{name:"Barba",qty:1,unit:"unidad"}], complete:false
 
-6) Cantidades en lenguaje natural:
-Cliente: "una docena de empanadas de carne" → items:[{name:"Empanada de carne",qty:12}], complete:false
-Cliente: "y media docena de jamón y queso" → items:[{name:"Empanada de jamón y queso",qty:6}], complete:true
+MULTI-INTENT Y CORRECCIONES:
+11) Cliente: "quiero 2 empanadas y ¿tienen pizza?" → items:[{name:"Empanada de carne",qty:2,unit:"unidad"}], complete:false (la pregunta no es pedido)
+12) Cliente: "no, mejor sacá la coca y poné una sprite" → items:[{name:"Empanada de carne",qty:2},{name:"Sprite",qty:1}], complete:false
+13) Cliente: "envío a calle 5 123, Juan, dos empanadas de carne, transferencia" → items:[{name:"Empanada de carne",qty:2,unit:"unidad"}], method:"delivery", customerAddress:"calle 5 123", customerName:"Juan", payment:"transferencia", complete:true
+14) Cliente: "quisiera una pizza grande" → items:[], unknownItems:["pizza grande"], complete:false (no inventar)
+15) Cliente: "hola, ¿cómo están?" → items:[], unknownItems:[], complete:false
+16) Cliente: "Juan Pérez" (mid-flow, te pregunté el nombre) → items:[], customerName:"Juan Pérez", complete:false
+17) Cliente: "2 empanadas, retiro, a nombre de María, efectivo" → items:[{name:"Empanada de carne",qty:2,unit:"unidad"}], method:"pickup", customerName:"María", payment:"efectivo", complete:true
 
-7) Cancelación parcial:
-Cliente: "2 empanadas y una coca" → items:[{name:"Empanada de carne",qty:2},{name:"Coca-Cola 500ml",qty:1}], complete:false
-Cliente: "sacá la coca" → items:[], complete:false
-(La coca se quitó. Las empanadas se mantienen.)
-
-8) Negación total:
-Cliente: "no quiero nada" / "cancelá" / "olvídalo" → items:[], complete:false, confidence:0.9
-
-9) Pregunta de precio:
-Cliente: "¿cuánto sale la pizza?" → items:[], complete:false, confidence:0.9
-(Es una pregunta, no un pedido.)
-
-10) Negación + corrección:
-Cliente: "quiero 3 empanadas" → items:[{name:"Empanada de carne",qty:3}], complete:false
-Cliente: "no, mejor 2 y agregá una coca" → items:[{name:"Empanada de carne",qty:2},{name:"Coca-Cola 500ml",qty:1}], complete:false
-(Se corrigió la cantidad Y se agregó un item nuevo.)
+18) Agregado con error ortográfico y cantidad no estándar:
+Cliente: "agrgame media docena de carne picante ah y una coca" → items:[{name:"Carne picante",qty:6,unit:"unidad"},{name:"Coca-Cola 500ml",qty:1,unit:"unidad"}], complete:false
+(SUMAR ambos ítems al carrito existente, no reemplazar. "media docena" = 6.)
 
 REGLAS DE NEGACIÓN:
-- "no quiero X" / "sin X" / "sacá X" → QUITAR X del carrito (no agregar).
-- "no quiero nada" / "cancelá" / "olvídalo" → carrito vacío, complete:false.
-- "no" solo (respondiendo a una pregunta del bot) → no es negación de producto; es respuesta a la pregunta pendiente.
+- "no quiero X" / "sin X" / "sacá X" → QUITAR X del carrito.
+- "no quiero nada" / "cancelá" → carrito vacío, complete:false.
 
-REGLAS DE MULTI-INTENT:
-- Si el mensaje tiene pedido Y pregunta ("quiero 2 empanadas y ¿tienen pizza?"), procesar el pedido y marcar complete:false (la pregunta se responde por separado).
-- Si el mensaje tiene corrección Y agregado ("no, mejor 2 y agregá una coca"), devolver el carrito completo actualizado.
-
-REGLAS DE CANTIDADES:
-- "una docena" = 12, "media docena" = 6, "un par" = 2, "el doble" = 2× la cantidad anterior.
-- Si el cliente dice solo un número ("3") respondiendo a "¿cuántas?", es la cantidad del producto pendiente.`;
+Razoná paso a paso antes de responder. En "reasoning" poné 1 frase por qué marcaste complete true/false. En "confidence" un número 0-1. Nunca inventes productos que no estén en la lista.`;
 
 // Telemetría de uso del LLM (expuesta en /health del cerebro): así se verifica
 // en 1 comando si el bot está usando IA y con qué modelo respondió por última vez.
@@ -424,7 +424,10 @@ async function callOnce(message, products, ctx = null) {
   // opciones existen y no las extrae.
   const menu = products.slice(0, 40)
     .map((p) => {
-      let line = `${p.id}|${p.name}|$${p.price}`;
+      let line = `${p.id}|${p.name}|${p.price}`;
+      if (p.pack_size) line += ` [pack de ${p.pack_size} unidades]`;
+      if (p.unit === 'kg') line += ` [venta por kg]`;
+      else if (p.weight_step_kg) line += ` [pesable, paso ${p.weight_step_kg}kg]`;
       const groups = (p.modifiers || [])
         .map((g) => {
           const opts = (Array.isArray(g.options) ? g.options : [])
@@ -474,9 +477,10 @@ async function callOnce(message, products, ctx = null) {
     } catch {}
   }
 
+  const systemWithVertical = SYSTEM.replace('{vertical}', ctx?.vertical || 'desconocida');
   const llmResult = await llmChat(
     [
-      { role: "system", content: SYSTEM + fewShot },
+      { role: "system", content: systemWithVertical + fewShot },
       { role: "user", content: `Productos disponibles:\n${menu}\n\nMensaje del cliente: "${message}"${contextBlock}` },
     ],
     { max_tokens: 500, temperature: 0, timeout: 25000, response_format: "json" }
@@ -542,17 +546,55 @@ export function parseByRules(message, products) {
   // items ("envío a calle 5 123, Juan, transferencia" → "calle 5 123").
   const addrMatch = m.match(/(?:envío|envio|delivery|domicilio)\s+a\s+(?:la\s+)?([^,;\n]+)/i);
   const customerAddress = addrMatch ? String(addrMatch[1]).trim().slice(0, 80) : null;
+  const customerName = null; // parseByRules no extrae nombres (salvo la regla de nombre suelto al final)
+
+  // Texto combinado con pago/método: "envío a calle 5 123, Juan, transferencia"
+  // Después de la dirección, buscaremos un nombre entre comas que no sea verbo de pago.
+  let nameFromCombined = null;
+  if (customerAddress) {
+    const afterAddr = m.slice(addrMatch.index + addrMatch[0].length);
+    const parts = afterAddr.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+    const paymentVerbs = /^(transferencia|transferir|efectivo|cash|cbu|alias|tarjeta|mercadopago|mp)$/i;
+    const methodVerbs = /^(retiro|retirar|envío|envio|delivery|domicilio|despachen)$/i;
+    for (const part of parts) {
+      if (paymentVerbs.test(part)) continue;
+      if (methodVerbs.test(part)) continue;
+      if (/^(si|no|ok|dale|gracias|hola|chau)$/i.test(part)) continue;
+      if (part.length >= 2 && part.length <= 40 && !/\d/.test(part)) {
+        nameFromCombined = part;
+        break;
+      }
+    }
+  }
 
   if (Array.isArray(products) && products.length > 0) {
     const items = extractFromText(m, products);
     if (items.length) {
-      return { complete: true, items, method, customerName: null, customerAddress, payment, note: null };
+      // complete solo si NO faltan campos obligatorios: nombre, y dirección si es delivery.
+      // payment se pide pero no bloquea (el comercio coordina por WA).
+      const missing = [];
+      if (!nameFromCombined) missing.push("name");
+      if (method === "delivery" && !customerAddress) missing.push("address");
+      return { complete: missing.length === 0, items, method, customerName: nameFromCombined, customerAddress, payment, note: null, missing };
     }
   }
   // Sin items pero con datos: igual devolverlos (el bot los usa para avanzar).
   if (method || payment || customerAddress) {
-    return { complete: false, items: [], method, customerName: null, customerAddress, payment, note: null };
+    return { complete: false, items: [], method, customerName: nameFromCombined, customerAddress, payment, note: null };
   }
+
+  // Nombre suelto: el cliente responde solo su nombre (ej. "Juan Pérez") cuando
+  // el bot le preguntó "¿A nombre de quién va el pedido?". Detectamos 2+
+  // palabras, sin verbos de pedido, sin método de entrega, sin pago, y sin que
+  // matchee un producto del menú.
+  const words = m.split(/\s+/).filter(Boolean);
+  const looksLikeName = words.length >= 1 && words.length <= 5 &&
+    !/(quiero|quería|quisiera|dame|démela|traeme|agregá|agrega|sumá|sumar|mandame|anotate|cargame|me das|me pones|me haces|me traes|me preparas|me cobras|retiro|retirar|envío|envio|delivery|domicilio|despachen|efectivo|transferencia|transferir|cbu|alias|cancelar|ayuda|menu|menú|comercios|hola|chau|ok|si|no)\b/i.test(m) &&
+    (!Array.isArray(products) || !products.some((p) => normLabel(p.name).split(" ").some((w) => w.length >= 3 && normLabel(m).includes(w))));
+  if (looksLikeName) {
+    return { complete: false, items: [], method: null, customerName: m, customerAddress: null, payment: null, note: null };
+  }
+
   return null;
 }
 export function extractFromText(text, products) {
@@ -596,7 +638,9 @@ function parseChunk(chunk, products) {
   let c = chunk.trim();
   if (!c) return null;
   // Quitar verbos/intenciones al inicio (quiero/dame/traeme/agregame/etc.)
-  c = c.replace(/^(quiero|querria|quisiera|dame|démela|traeme|traigame|agregame|agregá|agrega|sumame|sumá|suma|sumar|mandame|anotate|cargame|me das|me pones|me haces|me traes|me preparas|me cobras)\s+/i, "");
+  c = c.replace(/^(agrgame|agregame|agregá|agrega|quiero|querria|quisiera|dame|démela|traeme|traigame|sumame|sumá|suma|sumar|mandame|anotate|cargame|me das|me pones|me haces|me traes|me preparas|me cobras)\s+/i, "");
+  // Quitar relleno al final ("ah", "eh", "bueno", etc.)
+  c = c.replace(/\s+(ah|eh|bueno|liste|ok|vale)\s*$/i, "");
   // Quitar negaciones/relleno de corrección al inicio ("no, mejor solo X" → "X").
   for (let i = 0; i < 4; i++) {
     const filler = /^(no\b[,.;:]?\s*(mejor\b\s*)?(solo\b\s*)?|mejor\b\s*(solo\b\s*)?|solo\b\s*|unicamente\b\s*|bueno\b\s*)/i.exec(c);

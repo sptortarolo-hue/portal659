@@ -56,7 +56,7 @@ globalThis.fetch = async (url, opts) => {
   }
   if (u.includes("/api/wa/handoff")) { handoffNotified = true; return { ok: true, json: async () => ({ ok: true }) }; }
   if (u.includes("/api/wa/order")) return { ok: true, json: async () => ({ ok: true, orderId: "ord-portal-1", total: 2400, trackToken: "tok-portal-1", pickupNumber: 7 }) };
-  if (u.includes("/api/wa/portal-orders")) return { ok: true, json: async () => ({ orders: [{ id: "ord-portal-1", pickupNumber: 7, status: "preparing", storeName: "Che Sancho", storeSlug: "che-sancho", storeId: "store1", total: 2400, method: "pickup", paymentMethod: "whatsapp", items: [{ product_id: "p1", name: "Empanada de carne", price: 1200, qty: 2, modifiers: [] }], trackUrl: "https://www.portal659.com.ar/seguimiento/tok-portal-1", createdAt: new Date().toISOString() }] }) };
+  if (u.includes("/api/wa/portal-orders")) return { ok: true, json: async () => ({ orders: [{ id: "ord-portal-1", pickupNumber: 7, status: "preparing", storeName: "Che Sancho", storeSlug: "che-sancho", storeId: "store1", total: 2400, method: "pickup", paymentMethod: "whatsapp", customerName: "María García", items: [{ product_id: "p1", name: "Empanada de carne", price: 1200, qty: 2, modifiers: [] }], trackUrl: "https://www.portal659.com.ar/seguimiento/tok-portal-1", createdAt: new Date().toISOString() }] }) };
   if (u.includes("/api/wa/favorites")) {
     if (opts?.method === "POST") return { ok: true, json: async () => ({ ok: true }) };
     if (opts?.method === "DELETE") return { ok: true, json: async () => ({ ok: true }) };
@@ -147,7 +147,7 @@ async function main() {
   const rp = (r.replies || []).join(" ");
   if (!rp.includes("Empanada de carne") || !rp.includes("¿Confirmás") || !rp.includes("Che Sancho")) { console.log("!!! re-pedido no armó el carrito"); ok = false; }
   else { console.log(">>> OK: re-pedido → carrito armado + confirmación"); }
-  // Confirmar → crea el pedido
+  // Confirmar → crea el pedido (el mock ya tiene customerName, así que va directo a confirmar)
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "sí" });
   show("confirmar re-pedido (portal)", r);
   const rpc = (r.replies || []).join(" ");

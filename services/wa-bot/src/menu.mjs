@@ -1,7 +1,7 @@
 // @ts-check
 import { config } from "./config.mjs";
 
-/** @typedef {{ id: string; name: string; description?: string | null; price: number; category?: string | null; modifiers?: any[]; variants?: any[]; store_id?: string; store_name?: string; store_slug?: string | null; store_open?: boolean; store_open_text?: string | null; }} Product */
+/** @typedef {{ id: string; name: string; description?: string | null; price: number; category?: string | null; modifiers?: any[]; variants?: any[]; store_id?: string; store_name?: string; store_slug?: string | null; store_open?: boolean; store_open_text?: string | null; vertical?: string; pack_size?: number | null; unit?: string; weight_step_kg?: number | null; weight_min_kg?: number | null; requires_prep?: boolean; stock_control?: boolean; stock?: number | null; has_variants?: boolean; }} Product */
 
 /** @typedef {{ products: Product[]; at: number; stores?: any[] }} MenuCache */
 

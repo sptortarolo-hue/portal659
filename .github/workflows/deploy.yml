@@ -91,6 +91,11 @@ jobs:
             # etiqueta (lo consume layout.tsx). Si el secret no existe, escribe
             # vacío y la app simplemente no renderiza el meta.
             echo 'GOOGLE_SITE_VERIFICATION=${{ secrets.GOOGLE_SITE_VERIFICATION }}' >> /opt/portal659/.env
+            # fb:app_id (app de Facebook, p.ej. 1234567890123456): lo pide el
+            # Sharing Debugger de FB/WhatsApp. Si el secret no existe no se
+            # escribe nada: el meta no sale y el share funciona igual.
+            FB_APP_ID_VAL='${{ secrets.FB_APP_ID }}'
+            if [ -n "$FB_APP_ID_VAL" ]; then echo "FB_APP_ID=$FB_APP_ID_VAL" >> /opt/portal659/.env; fi
             # Alertas del monitor de salud (Telegram). Si los secrets no están
             # se saltea la escritura: el monitor funciona igual y sólo no avisa
             # por el chat (fail-open, mismo criterio que el resto).

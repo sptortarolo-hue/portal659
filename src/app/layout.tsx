@@ -122,6 +122,15 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="Portal659" />
+        {/* fb:app_id: lo pide el Sharing Debugger de FB/WhatsApp. Es el ID
+            numérico de una app de Facebook (se crea gratis en
+            developers.facebook.com/apps) — no se puede inventar. Va en <head>
+            directo porque `metadata.openGraph` de Next no tiene campo appId y
+            `metadata.other` emite name= en vez de property=. Sin la env el
+            meta no sale: el share funciona igual, sólo falta Insights. */}
+        {process.env.FB_APP_ID ? (
+          <meta property="fb:app_id" content={process.env.FB_APP_ID} />
+        ) : null}
         <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
         <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000" />
         <meta name="color-scheme" content="light dark" />

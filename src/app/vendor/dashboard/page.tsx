@@ -1090,7 +1090,7 @@ function VendorDashboardInner() {
   async function confirmOrderWeight(
     orderId: string,
     items: OrderItem[]
-  ): Promise<{ ok: boolean; error?: string }> {
+  ): Promise<{ ok: boolean; error?: string; weighed?: { ok: boolean; error?: string } | null }> {
     try {
       const res = await fetch(`/api/vendor/orders/${orderId}`, {
         method: "PATCH",
@@ -1112,7 +1112,16 @@ function VendorDashboardInner() {
       }
       const updated = data.order as Record<string, unknown> | undefined;
       const newTotal = Number(updated?.total ?? 0);
-      setMsg(`⚖️ Peso confirmado · $${newTotal.toLocaleString("es-AR")}`);
+      // El server ya mandó el WhatsApp al cliente ("preparado y pesado" + total
+      // real + datos de pago); el modal avisa si no pudo (bot desconectado).
+      const weighed = (data.weighed_wa ?? null) as { ok: boolean; error?: string } | null;
+      setMsg(
+        weighed
+          ? weighed.ok
+            ? `⚖️ Peso confirmado · $${newTotal.toLocaleString("es-AR")} · WhatsApp enviado al cliente`
+            : `⚖️ Peso confirmado · $${newTotal.toLocaleString("es-AR")} · no se pudo enviar el WhatsApp`
+          : `⚖️ Peso confirmado · $${newTotal.toLocaleString("es-AR")}`
+      );
       setOrders((prev) =>
         prev.map((o) =>
           o.id === orderId
@@ -1125,7 +1134,7 @@ function VendorDashboardInner() {
           ? ({ ...prev, items: (updated?.items as OrderItem[]) ?? prev.items, total: newTotal, ...(updated ?? {}) } as Order)
           : prev
       );
-      return { ok: true };
+      return { ok: true, weighed };
     } catch (err) {
       const message = err instanceof Error ? err.message : "Error al confirmar el peso";
       setMsg(`Error: ${message}`);
@@ -1555,6 +1564,11 @@ function VendorDashboardInner() {
                         {order.payment_method === "transferencia" && order.channel === "app" && order.payment_status === "pending" && (
                           <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-amber-100 text-amber-700 border-amber-200">
                             <AlertTriangle className="h-2.5 w-2.5" /> Pago pendiente
+                          </span>
+                        )}
+                        {order.weight_estimated_total != null && !order.weight_confirmed_at && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-amber-100 text-amber-700 border-amber-200">
+                            ⚖️ Pendiente de peso
                           </span>
                         )}
                         {order.payment_method === "efectivo" && Number((order as any).cash_amount) > 0 && (

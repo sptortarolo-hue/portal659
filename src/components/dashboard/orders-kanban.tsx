@@ -72,6 +72,24 @@ function OrderCard({
     ? Math.max(0, order.estimated_minutes - elapsed)
     : null;
   const isOverdue = remaining !== null && remaining <= 0 && !["completed", "cancelled"].includes(order.status);
+  // Flujo de pesada (modo "confirmar"): se pesa en Preparación. Sin pesar no hay
+  // Listo y, sin pagar, no se despacha (mismo gate que el server: 403).
+  const weightPendingCard =
+    (order as any).weight_estimated_total != null && !(order as any).weight_confirmed_at &&
+    !["completed", "cancelled"].includes(order.status);
+  const weightUnpaidCard =
+    (order as any).weight_estimated_total != null && (order as any).weight_confirmed_at &&
+    order.payment_status === "pending" &&
+    (order.payment_method === "transferencia" || order.payment_method === "mercadopago") &&
+    !["completed", "cancelled"].includes(order.status);
+  // Desde "Nuevo" siempre se puede avanzar (aceptar = empezar a preparar);
+  // desde "Preparación" se puede marcar Listo sin haber cobrado todavía.
+  const advanceBlockedCard =
+    (weightPendingCard && order.status !== "new") ||
+    (weightUnpaidCard && order.status !== "new" && order.status !== "preparing");
+  const advanceBlockTitle = weightPendingCard
+    ? "Pesá y confirmá el peso real para poder continuar"
+    : "El cliente tiene que pagar antes de despachar";
 
   return (
     <div
@@ -248,7 +266,7 @@ function OrderCard({
           {/* Atajo "Entregar ya": solo cuando salta pasos (desde "Listo" en
               retiro/mesa/mostrador y desde "Enviado" el botón de al lado ya
               llega a Entregado). */}
-          {jumpToDoneAvailable(order, isRetail) && (
+          {jumpToDoneAvailable(order, isRetail) && !advanceBlockedCard && (
             <button
               onClick={(e) => { e.stopPropagation(); onJumpDone(); }}
               className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold text-primary hover:bg-primary/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
@@ -260,7 +278,9 @@ function OrderCard({
           )}
           <button
             onClick={(e) => { e.stopPropagation(); onNextStatus(); }}
-            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-primary hover:text-primary/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            disabled={advanceBlockedCard}
+            title={advanceBlockedCard ? advanceBlockTitle : undefined}
+            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-primary hover:text-primary/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40 disabled:cursor-not-allowed"
             aria-label="Avanzar al siguiente estado"
           >
             <ChevronRight className="h-3.5 w-3.5" />
@@ -461,6 +481,12 @@ export function OrdersKanban({
       const giftOnly = (order as Order).is_gift_only === true;
       const next = nextStatusFor(order.status, order.method, isRetail, order.channel, needsKitchen, giftOnly);
       if (!next) return;
+      // Flujo de pesada: Listo exige peso confirmado; despachar exige el pago.
+      const wPending = (order as any).weight_estimated_total != null && !(order as any).weight_confirmed_at;
+      if (wPending && next !== "preparing") {
+        onError?.("Pesá y confirmá el peso real antes de continuar");
+        return;
+      }
       // Apartado con saldo pendiente: no debería entrar al circuito sin
       // cobrar (el camino correcto es "Marcar saldo cobrado" en el detalle).
       // Se permite igual con confirmación explícita.

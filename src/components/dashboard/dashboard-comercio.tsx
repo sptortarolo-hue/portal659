@@ -141,9 +141,6 @@ export default function DashboardComercio({
   const [weightMode, setWeightMode] = useState(
     (vendor as any)?.weight_confirm_mode === "confirmar" ? "confirmar" : "estimado"
   );
-  const [weightTolerance, setWeightTolerance] = useState(
-    (vendor as any)?.weight_tolerance_pct != null ? String((vendor as any).weight_tolerance_pct) : "20"
-  );
   // Múltiplo de venta (0 = libre) y peso mínimo (kg).
   const [weightStep, setWeightStep] = useState(
     Number((vendor as any)?.weight_step_kg) > 0 ? String(Number((vendor as any).weight_step_kg)) : ""
@@ -183,7 +180,6 @@ export default function DashboardComercio({
       setCoordinar(vendor.delivery_coordinar === true);
       setStorefrontLayout(vendor.storefront_layout === "vidriera" ? "vidriera" : "lista");
     setWeightMode((vendor as any)?.weight_confirm_mode === "confirmar" ? "confirmar" : "estimado");
-    setWeightTolerance((vendor as any)?.weight_tolerance_pct != null ? String((vendor as any).weight_tolerance_pct) : "20");
     setWeightStep(Number((vendor as any)?.weight_step_kg) > 0 ? String(Number((vendor as any).weight_step_kg)) : "");
     setWeightMin(Number((vendor as any)?.weight_min_kg) > 0 ? String(Number((vendor as any).weight_min_kg)) : "");
     setCashDiscount(vendor.cash_discount_pct != null ? String(vendor.cash_discount_pct) : "");
@@ -728,7 +724,7 @@ export default function DashboardComercio({
                   <Label className="text-sm">⚖️ Venta por kilo — cobro</Label>
                   <p className="text-xs text-muted-foreground">
                     {weightMode === "confirmar"
-                      ? "Confirmar peso: el pedido entra pendiente de pago, vos pesás y confirmás el total real; recién ahí el cliente paga (link de Mercado Pago desde el seguimiento, transferencia o efectivo)."
+                      ? "Confirmar peso: el pedido entra al panel y lo pesás al PREPARARLO; al confirmar el peso real le llega automático al cliente por WhatsApp con el total y los datos para pagar (Mercado Pago, transferencia o efectivo)."
                       : "Estimado: el cliente paga los kilos que declaró al pedir (como hasta hoy)."}
                   </p>
                 </div>
@@ -746,28 +742,7 @@ export default function DashboardComercio({
                   <option value="confirmar">Confirmar peso</option>
                 </select>
               </div>
-              {weightMode === "confirmar" && (
-                <div className="flex items-center gap-2">
-                  <Label className="text-xs whitespace-nowrap">Tolerancia sin aprobar:</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={100}
-                    value={weightTolerance}
-                    onChange={(e) => setWeightTolerance(e.target.value)}
-                    onBlur={async () => {
-                      const n = Math.min(100, Math.max(1, Math.floor(Number(weightTolerance) || 20)));
-                      setWeightTolerance(String(n));
-                      await saveVendor({ weight_tolerance_pct: n });
-                    }}
-                    className="h-8 w-20 text-sm"
-                  />
-                  <span className="text-xs text-muted-foreground">
-                    % — si el total real difiere más, el cliente tiene que aceptarlo en el seguimiento antes de pagar.
-                  </span>
-                </div>
-              )}
-              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                 <Label className="text-xs whitespace-nowrap">Múltiplo de venta:</Label>
                 <select
                   value={weightStep === "" ? "libre" : weightStep}

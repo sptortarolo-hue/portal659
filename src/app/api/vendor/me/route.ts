@@ -177,7 +177,6 @@ export async function POST(request: Request) {
     cash_ask_amount,
     expiry_alert_days,
     weight_confirm_mode,
-    weight_tolerance_pct,
     weight_step_kg,
     weight_min_kg,
     fiscal_auto_emit,
@@ -509,13 +508,6 @@ export async function POST(request: Request) {
   if (weight_confirm_mode !== undefined) {
     payload.weight_confirm_mode = weight_confirm_mode === "confirmar" ? "confirmar" : "estimado";
   }
-  if (weight_tolerance_pct !== undefined) {
-    const n = Number(weight_tolerance_pct);
-    if (!Number.isFinite(n) || n < 1 || n > 100) {
-      return NextResponse.json({ error: "La tolerancia debe estar entre 1 y 100" }, { status: 400 });
-    }
-    payload.weight_tolerance_pct = Math.floor(n);
-  }
   // Pesables: múltiplo de venta (0 = libre; 0.25 o 0.5) y peso mínimo (kg).
   if (weight_step_kg !== undefined) {
     if (weight_step_kg === null || weight_step_kg === "" || weight_step_kg === 0) {
@@ -607,7 +599,6 @@ export async function POST(request: Request) {
         "cash_ask_amount",
         "expiry_alert_days",
         "weight_confirm_mode",
-        "weight_tolerance_pct",
         "weight_step_kg",
         "weight_min_kg",
       ].filter((k) => k in payload && msg.includes(k));

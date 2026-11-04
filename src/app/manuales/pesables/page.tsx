@@ -59,15 +59,16 @@ export default function PesablesPage() {
           <h2 className="font-display text-lg font-semibold mb-3">3. La configuración ⚖️ Venta por kilo</h2>
           <p className="mb-3">
             En <span className="font-medium">Configuración</span> de tu comercio encontrás la sección{" "}
-            <span className="font-medium">⚖️ Venta por kilo</span> con cuatro controles. Cuando la
+            <span className="font-medium">⚖️ Venta por kilo</span> con tres controles. Cuando la
             configurás, estás definiendo cómo te venden a vos:
           </p>
           <p className="mb-3">
             <span className="font-medium">Modo de cobro</span> ·{" "}
             <span className="font-medium">Estimado</span> (se cobra lo que el cliente declaró al
             pedir, como cualquier comercio) o <span className="font-medium">Confirmar peso</span> (el
-            pedido entra pendiente de peso, vos pesás y confirmás el total real, y recién ahí se
-            cobra). La sección 6 explica el segundo caso paso a paso.
+            pedido entra al panel, lo pesás al PREPARARLO y confirmás el total real; al
+            confirmar le llega automático a tu cliente por WhatsApp con el total y los datos
+            para pagar. La sección 6 explica el segundo caso paso a paso.
           </p>
           <p className="mb-3">
             <span className="font-medium">Múltiplo de venta</span> ·{" "}
@@ -81,14 +82,6 @@ export default function PesablesPage() {
             <span className="font-medium">Peso mínimo</span> (en gramos) · el corte más chico que
             vendés: 100 g en la fiambrería, 250 g en la verdulería. Si el cliente escribe menos, el
             micrositio se lo avisa y no lo deja seguir.
-          </p>
-          <p className="mb-3">
-            <span className="font-medium">Tolerancia sin aprobar</span> (solo modo{" "}
-            <span className="font-medium">Confirmar</span>) · el porcentaje de diferencia entre el
-            peso estimado y el real que tu cliente puede pagar sin tener que aceptarlo primero. Si
-            pidió 1 kg, lo real es 1,3 kg y tu tolerancia es 20 %, le llega el aviso del total y paga
-            directo; si la diferencia es mayor, primero tiene que tocar{" "}
-            <span className="font-medium">“Aceptar total”</span>.
           </p>
           <Captura base="pesables-config" alt="Configuración de venta por kilo" />
         </div>
@@ -109,8 +102,10 @@ export default function PesablesPage() {
             claro antes de que siga. En el carrito puede corregir el peso con los mismos − / +.
           </p>
           <p className="mb-3">
-            Con modo <span className="font-medium">Confirmar</span>, el checkout le avisa que el total
-            es estimado hasta que vos peses: no se sorprende después.
+            Con modo <span className="font-medium">Confirmar</span>, el checkout tiene un solo botón
+            de confirmar y le avisa que el total es estimado hasta que vos peses: no se sorprende
+            después. Si tu comercio tiene Mercado Pago conectada, él puede elegir pagar con MP (le
+            llega el link para pagar cuando confirmás el peso); si no, transfiere o paga al recibir.
           </p>
           <Captura base="pesables-micrositio" alt="Producto por peso en el micrositio" />
         </div>
@@ -139,21 +134,21 @@ export default function PesablesPage() {
             queda para cobrar al entregar.
           </p>
           <p className="mb-3">
-            <strong>2 · Pesás.</strong> Ponés el producto en la balanza y leés el peso real. Podés
-            pesarlo en el momento que quieras: el pedido espera.
+            <strong>2 · Aceptás y preparás.</strong> El pedido pasa a <span className="font-medium">Preparando</span>
+            como siempre: recién ahí se pesa.
           </p>
           <p className="mb-3">
-            <strong>3 · Confirmás el peso.</strong> Abrís el pedido y tocás{" "}
-            <span className="font-medium">⚖️ Confirmar peso</span>: cargás los kilos reales de cada
-            producto (podés corregirlo todas las veces que haga falta antes de confirmar) y el sistema
-            recalcula el total. Apretar confirmar sella el total real.
+            <strong>3 · Pesás en Preparación.</strong> En el pedido aparece{" "}
+            <span className="font-medium">⚖️ Confirmar peso</span>: cargás los kilos reales de
+            cada producto a mano o con el botón <span className="font-medium">Balanza</span> (si
+            tenés la balanza conectada a la PC) y ves el total real en vivo. Apretar confirmar lo sella.
           </p>
           <p className="mb-3">
-            <strong>4 · Avisás al cliente.</strong> Tu cliente recibe la notificación con el total
-            real. Además, en el pedido aparece el botón{" "}
-            <span className="font-medium">📲 Enviar pedido pesado por WhatsApp</span>: manda el
-            detalle con los kilos reales de cada producto, el total y cómo pagar. Es manual a
-            propósito: vos controlás el monto que sale.
+            <strong>4 · El cliente se entera solo.</strong> Al confirmar el peso se le manda
+            automático un WhatsApp: “tu pedido está preparado y pesado”, el detalle con los
+            kilos reales, el total y cómo pagar. También le llega la notificación con el link de
+            seguimiento. Si el bot de WhatsApp está desconectado, te avisa y podés reenviarlo con
+            el botón <span className="font-medium">📲 Reenviar pedido pesado</span> del pedido.
           </p>
           <p className="mb-3">
             <strong>5 · Cobrás.</strong> Según cómo eligió pagar tu cliente:
@@ -168,8 +163,9 @@ export default function PesablesPage() {
           </p>
           <p className="mb-3">
             <strong>6 · Despachás.</strong> Con el pago confirmado, el pedido avanza a{" "}
-            <span className="font-medium">Empaquetando → Listo → Enviado → Entregado</span> como
-            siempre. Mientras el pago esté pendiente en transferencia o Mercado Pago, el pedido{" "}
+            <span className="font-medium">Listo → Enviado → Entregado</span> como siempre. Sin el
+            peso confirmado no podés marcar Listo (sin el total real no hay nada que cobrar), y
+            mientras el pago esté pendiente en transferencia o Mercado Pago el pedido{" "}
             <strong>no avanza</strong>: el sistema te lo recuerda para que no entregues sin cobrar.
           </p>
           <Captura base="pesables-pedido" alt="Pedido pendiente de peso" />
@@ -183,9 +179,9 @@ export default function PesablesPage() {
             firmado para el cliente; si hay que cambiarlo, escribile por WhatsApp.
           </p>
           <p className="mb-3">
-            <span className="font-medium">¿Y si el cliente no acepta el total real?</span> · Si la
-            diferencia es mayor a tu tolerancia, él ve el total y decide: lo acepta y paga, o no. Si
-            no está de acuerdo, cancelen el pedido por WhatsApp como cualquier otro.
+            <span className="font-medium">¿Y si el cliente no acepta el total real?</span> · Él ve el
+            total real en el WhatsApp y en el seguimiento, y paga si está de acuerdo. Si no lo
+            está, cancelen el pedido por WhatsApp como cualquier otro.
           </p>
           <p className="mb-3">
             <span className="font-medium">¿Sirve para delivery y para retiro?</span> · Sí, es igual

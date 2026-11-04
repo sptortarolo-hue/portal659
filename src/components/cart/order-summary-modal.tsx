@@ -63,6 +63,8 @@ export function OrderSummaryModal({
       ? "Efectivo"
       : paymentMethod === "transferencia"
       ? "Transferencia"
+      : paymentMethod === "mercadopago"
+      ? "Mercado Pago (después de pesar)"
       : "Coordinar";
 
   return (

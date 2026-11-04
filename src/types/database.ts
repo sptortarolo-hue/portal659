@@ -742,6 +742,10 @@ export type Order = {
   transfer_deadline_at?: string | null;
   /** Motivo electivo de la cancelación (migración cancel-reason). */
   cancel_reason?: string | null;
+  /** Pesables modo "confirmar": total estimado al pedir + sellos de peso (migrate-weight-confirm). */
+  weight_estimated_total?: number | null;
+  weight_confirmed_at?: string | null;
+  weight_approved_at?: string | null;
   /** Quién canceló (comercio / Sistema — M4.2). */
   cancelled_by?: string | null;
   /** Todos los ítems son tarjetas de regalo: el flow salta Empaquetando. */

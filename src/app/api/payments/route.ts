@@ -278,8 +278,7 @@ async function debtPreference(body: any, request: Request) {
  * Dos vías:
  *  - Panel: { vendorId, orderId } — requiere sesión del comercio.
  *  - Seguimiento público: { orderId, trackToken } — el cliente toca "Pagar".
- *    Con diferencia > tolerancia exige weight_approved_at (aceptó el total).
- */
+ * */
 async function orderWeightPreference(body: any, request: Request) {
   const vendorId = typeof body?.vendorId === "string" ? body.vendorId : "";
   const orderId = String(body?.orderId || "");
@@ -323,15 +322,12 @@ async function orderWeightPreference(body: any, request: Request) {
     payment_method: string;
     track_token: string | null;
     weight_confirmed_at: string | null;
-    weight_approved_at: string | null;
     weight_estimated_total: number | null;
   }>(
     `SELECT o.id, o.vendor_id, o.total, o.pickup_number, o.status, o.payment_status, o.payment_method, o.track_token,
             v.store_name, v.slug,
             CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'weight_confirmed_at')
               THEN o.weight_confirmed_at ELSE NULL END AS weight_confirmed_at,
-            CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'weight_approved_at')
-              THEN o.weight_approved_at ELSE NULL END AS weight_approved_at,
             CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'weight_estimated_total')
               THEN o.weight_estimated_total ELSE NULL END AS weight_estimated_total
      FROM orders o JOIN vendors v ON v.id = o.vendor_id
@@ -342,19 +338,6 @@ async function orderWeightPreference(body: any, request: Request) {
   if (!order || order.vendor_id !== (vendorId || order.vendor_id)) {
     return NextResponse.json({ error: "Pedido no encontrado" }, { status: 404 });
   }
-
-  // Tolerancia: si el total real difiere del estimado más allá del % pactado,
-  // el cliente tiene que haber tocado "Aceptar total" en el seguimiento.
-  let tolerancePct = 20;
-  try {
-    const vcfg = await queryOne<{ weight_tolerance_pct: number | null }>(
-      `SELECT weight_tolerance_pct FROM vendors WHERE id = $1 LIMIT 1`,
-      [order.vendor_id]
-    );
-    if (Number.isFinite(Number(vcfg?.weight_tolerance_pct)) && Number(vcfg?.weight_tolerance_pct) > 0) {
-      tolerancePct = Math.min(100, Math.floor(Number(vcfg?.weight_tolerance_pct)));
-    }
-  } catch { /* default 20 */ }
 
   if (order.status === "cancelled") {
     return NextResponse.json({ error: "El pedido fue cancelado" }, { status: 400 });
@@ -368,18 +351,6 @@ async function orderWeightPreference(body: any, request: Request) {
   if (!order.weight_confirmed_at) {
     return NextResponse.json({ error: "El comercio todavía no confirmó el peso de tu pedido" }, { status: 409 });
   }
-  if (trackToken && !vendorId) {
-    const est = Number(order.weight_estimated_total) || 0;
-    const real = Number(order.total) || 0;
-    const diffExceeds = est > 0 && Math.abs(real - est) / est > tolerancePct / 100;
-    if (diffExceeds && !order.weight_approved_at) {
-      return NextResponse.json(
-        { error: "Primero aceptá el total actualizado", code: "approval_required" },
-        { status: 409 }
-      );
-    }
-  }
-
   const vendor = await queryOne<
     { store_name: string; slug: string } & VendorMpRow
   >(

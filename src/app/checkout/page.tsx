@@ -32,7 +32,7 @@ export default function CheckoutPage() {
   const [shipZoneId, setShipZoneId] = useState("none");
   const [notes, setNotes] = useState("");
   const [method, setMethod] = useState<"delivery" | "pickup">("delivery");
-  const [paymentMethod, setPaymentMethod] = useState<"whatsapp" | "efectivo" | "transferencia">("whatsapp");
+  const [paymentMethod, setPaymentMethod] = useState<"whatsapp" | "efectivo" | "transferencia" | "mercadopago">("whatsapp");
   // "¿Con cuánto abonás?" (efectivo + delivery): el comercio sabe cuánto
   // vuelto llevar el repartidor. El toggle `cash_ask_amount` lo apaga.
   const [cashAmount, setCashAmount] = useState("");
@@ -560,72 +560,8 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
     }
     if (!name || !phone) return;
 
-    // MP diferido (pesables, modo confirmar): NO se abre Mercado Pago acá.
-    // Se crea el pedido con MP pendiente de peso; el comercio pesa, confirma
-    // el total real y el cliente paga desde el seguimiento.
-    if (mpDeferred) {
-      if (sendingRef.current) return;
-      sendingRef.current = true;
-      setLoading(true);
-      setError("");
-      const e164D = toE164(phone);
-      if (!e164D) {
-        setError(phoneMsg || "Ingresá tu celular con código de área (ej: 11 5555 1234)");
-        setLoading(false);
-        sendingRef.current = false;
-        return;
-      }
-      try {
-        const res = await fetch("/api/orders", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            vendorId: v.id,
-            customerName: name,
-            customerPhone: e164D,
-            customerAddress: method === "delivery" ? fullAddress || null : null,
-            method,
-            paymentMethod: "mercadopago",
-            customerId: userId || null,
-            deliveryZoneId: method === "delivery" && zonesMode && !deliveryOutOfArea && !shipActive ? activeZoneId || null : null,
-            deliveryOutOfArea: method === "delivery" && deliveryOutOfArea && !shipActive,
-            shippingZoneId: method === "delivery" && shipActive ? shipZoneId : null,
-            deliveryWindow: method === "delivery" && showSlots && activeSlotId ? activeSlotId : null,
-            cashAmount: cashAskVisible && cashAmountNum > 0 ? cashAmountNum : null,
-            items: items.map((i) => ({
-              offerId: i.offerId,
-              variantId: i.variantId,
-              name: i.name,
-              price: i.price + (i.modifiers || []).reduce((s, m) => s + m.price_mod, 0),
-              qty: i.qty,
-              modifiers: (i.modifiers || []).map((m) => ({ label: m.label, group: m.group })),
-              unit: (i as any).unit,
-              combo_members: (i as any).comboMembers,
-            })),
-            total: displayTotal,
-            notes: notes.trim() || null,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok || data.error) {
-          setError(data.error || "Error al crear el pedido");
-          setLoading(false);
-          return;
-        }
-        clear();
-        setDoneVendorName(v.storeName || null);
-        setDoneTrackToken(data.trackToken || null);
-        setDoneWeightPending(true);
-        setDone(true);
-        setLoading(false);
-      } catch {
-        setError("Ocurrió un error al enviar el pedido. Probá de nuevo.");
-        setLoading(false);
-      } finally {
-        sendingRef.current = false;
-      }
-      return;
-    }
+    // (MP diferido vivía acá: ya no hay boton de MP directo en modo confirmar
+    // — el cliente confirma por WhatsApp y elige el metodo en el selector)
     const e164 = toE164(phone);
     if (!e164) {
       setError(phoneMsg || "Ingresá tu celular con código de área (ej: 11 5555 1234)");
@@ -899,6 +835,8 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
       setDoneIsPreview(previewSnap);
       setDoneIsGift(giftOnlySnap);
       setDoneTrackToken(data.trackToken || null);
+      // Pesables (modo confirmar): el total se cierra cuando el comercio pesa.
+      setDoneWeightPending(mpDeferred);
       setShowSummary(false);
       setDone(true);
       setLoading(false);
@@ -1333,7 +1271,7 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
               🏦 Transferencia (el envío extendido se paga por adelantado)
             </p>
           ) : (
-          <div className="grid grid-cols-3 gap-2 mt-1">
+          <div className={`grid ${mpDeferred && mpConfigured ? "grid-cols-2" : "grid-cols-3"} gap-2 mt-1`}>
             <button
               type="button"
               onClick={() => setPaymentMethod("whatsapp")}
@@ -1372,6 +1310,20 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
             >
               🏦 Transferencia
             </button>
+            {mpDeferred && mpConfigured && (
+              <button
+                type="button"
+                onClick={() => setPaymentMethod("mercadopago")}
+                className={`rounded-xl border-2 py-3 px-1 text-xs sm:text-sm font-medium transition-all min-w-0 break-words ${
+                  paymentMethod === "mercadopago"
+                    ? "border-primary bg-primary/5 text-primary"
+                    : "border-border text-muted-foreground hover:border-primary/30"
+                }`}
+              >
+                💳 Mercado Pago
+                <span className="block text-[10px] font-normal">pagás cuando pese tu pedido</span>
+              </button>
+            )}
           </div>
           )}
         </div>
@@ -1457,21 +1409,21 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
           {loading ? "Enviando pedido..." : "Confirmar pedido por WhatsApp"}
         </Button>
 
-        {mpConfigured && !isPreview && (
+        {mpConfigured && !isPreview && !mpDeferred && (
           <button
             type="button"
             onClick={handleMercadoPago}
             disabled={loading}
             className="w-full rounded-xl border-2 border-blue-200 bg-blue-50 text-blue-700 py-3 text-sm font-medium hover:bg-blue-100 disabled:opacity-50 transition-all"
           >
-            {mpDeferred ? "💳 Pedir y pagar después (peso exacto)" : "💳 Pagar con Mercado Pago"}
+            💳 Pagar con Mercado Pago
           </button>
         )}
 
         <p className="text-xs text-muted-foreground text-center px-4">
           {mpConfigured
             ? mpDeferred
-              ? "Con productos por kilo, el pago online se hace después de que el comercio pese tu pedido."
+              ? "Con productos por kilo elegís cómo pagar: al recibir, por transferencia o con Mercado Pago. El comercio pesa tu pedido y recién ahí pagás el total exacto."
               : "Elegí WhatsApp para coordinar el pago directo, o pagá online con Mercado Pago."
             : "El pedido se envía al WhatsApp del local. Sin registro, sin pagar online: el local te pasa el total y coordinás el pago directo."}
         </p>

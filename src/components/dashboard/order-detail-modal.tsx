@@ -78,7 +78,10 @@ type Props = {
   onAction: (order: Order, status: OrderStatus, reason?: string) => void;
   onModify?: (orderId: string, items: OrderItem[], modificationNotes: string) => Promise<{ ok: boolean; error?: string }>;
   /** Pesables (modo confirmar): guarda los kg reales y sella la confirmación de peso. */
-  onConfirmWeight?: (orderId: string, items: OrderItem[]) => Promise<{ ok: boolean; error?: string }>;
+  onConfirmWeight?: (
+    orderId: string,
+    items: OrderItem[]
+  ) => Promise<{ ok: boolean; error?: string; weighed?: { ok: boolean; error?: string } | null }>;
   offers?: DBProduct[];
   canPrint?: boolean;
   transfer?: { alias: string | null; cbu: string | null; holder: string | null };
@@ -112,6 +115,8 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
   const [weighedBusy, setWeighedBusy] = useState(false);
   const [weighedMsg, setWeighedMsg] = useState("");
   const [weighedErr, setWeighedErr] = useState("");
+  // Resultado del WhatsApp AUTOMÁTICO que dispara el server al confirmar el peso.
+  const [weighedAuto, setWeighedAuto] = useState<"sent" | "failed" | null>(null);
   const [modNotes, setModNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [productSearch, setProductSearch] = useState("");
@@ -393,6 +398,20 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
   const weightEstimated = Number((order as any).weight_estimated_total) || 0;
   const weightConfirmed = !!(order as any).weight_confirmed_at;
   const weightPending = weightEstimated > 0 && !weightConfirmed && !isTerminal;
+  // El control de pesar vive en PREPARACIÓN: en "Nuevo" solo se avisa (no se
+  // puede pesar antes de preparar el pedido). El server bloquea "Listo" sin
+  // pesar confirmado (403 weight_not_confirmed).
+  const canWeigh = weightPending && order.status === "preparing";
+  // Sin pesa confirmada no hay total real: nada de Listo/Envío/Entrega.
+  const weightBlocksNext =
+    !!nextStatus && weightPending && nextStatus !== "preparing";
+  // Con pesa confirmada y MP/transferencia pendientes, no se despacha hasta
+  // cobrar (server: 403 payment_pending). Efectivo queda libre.
+  const weightUnpaidBlocksNext =
+    weightEstimated > 0 && weightConfirmed &&
+    order.payment_status === "pending" &&
+    (order.payment_method === "transferencia" || order.payment_method === "mercadopago") &&
+    !!nextStatus && (nextStatus === "sent" || nextStatus === "completed");
   const mpWeightPending =
     order.payment_method === "mercadopago" && weightConfirmed &&
     order.payment_status === "pending" && !isTerminal;
@@ -470,6 +489,7 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
     setWeightError(null);
     const result = await onConfirmWeight(order.id, weightItems).catch((err) => ({
       ok: false,
+      weighed: null,
       error: err instanceof Error ? err.message : "Error de red",
     }));
     setWeightSaving(false);
@@ -477,6 +497,10 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
       setWeightError(result.error || "No se pudo confirmar el peso");
     } else {
       setWeightEditing(false);
+      // El server ya mandó el WhatsApp al cliente ("preparado y pesado" +
+      // total real + datos de pago). Si el bot estaba caído queda el aviso y
+      // el reenvío manual de abajo.
+      setWeighedAuto(result.weighed?.ok ? "sent" : "failed");
     }
   };
 
@@ -863,8 +887,19 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
             </div>
           )}
 
+          {/* Aviso sin acciones: el peso se carga al PREPARAR (no en "Nuevo") */}
+          {!editing && weightPending && !canWeigh && !weightEditing && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 space-y-1">
+              <p className="text-xs font-bold text-amber-800">⚖️ Pendiente de peso</p>
+              <p className="text-xs text-amber-700 leading-relaxed">
+                Total estimado ${weightEstimated.toLocaleString("es-AR")}. Este pedido se pesa al
+                PREPARARLO: aceptalo y cargá los kilos reales cuando esté en Preparación.
+              </p>
+            </div>
+          )}
+
           {/* Pesables (modo confirmar): pendiente de peso */}
-          {!editing && (weightPending || weightEditing) && (
+          {!editing && (canWeigh || weightEditing) && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 space-y-2">
               {weightEditing ? (
                 <>
@@ -925,8 +960,7 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
                 <>
                   <p className="text-xs font-bold text-amber-800">⚖️ Pendiente de peso</p>
                   <p className="text-xs text-amber-700 leading-relaxed">
-                    Total estimado ${weightEstimated.toLocaleString("es-AR")}. Pesá, ajustá los kilos y confirmá
-                    el total real para que el cliente pueda pagar.
+                    Total estimado ${weightEstimated.toLocaleString("es-AR")}. Pesá, ajustá los kilos y confirmá el total real: al confirmar se le manda automático al cliente por WhatsApp ("preparado y pesado") con el total y los datos para pagar.
                   </p>
                   <Button size="sm" className="w-full" onClick={startWeightEdit}>
                     ⚖️ Confirmar peso
@@ -978,6 +1012,17 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
               <p className="text-xs font-bold text-green-800">
                 📲 Pedido pesado — total real ${Number(order.total).toLocaleString("es-AR")}
               </p>
+              {weighedAuto === "sent" && (
+                <p className="text-[11px] font-medium text-green-700">
+                  ✅ WhatsApp enviado al cliente: "preparado y pesado" + total real + datos para pagar.
+                </p>
+              )}
+              {weighedAuto === "failed" && (
+                <p className="text-[11px] font-medium text-red-600">
+                  No se pudo mandar el WhatsApp automático (bot desconectado). Reenviarlo con el botón de
+                  abajo o avisale el total por la vía de siempre.
+                </p>
+              )}
               {order.payment_method === "efectivo" && order.payment_status !== "pending" && (
                 <p className="text-xs text-green-700">
                   💵 Efectivo: el cliente paga ${Number(order.total).toLocaleString("es-AR")} al recibir / retirar.
@@ -995,7 +1040,7 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
                 disabled={weighedBusy || !customerPhone || isCounterChannel}
                 onClick={sendWeighedOrder}
               >
-                {weighedBusy ? "Enviando…" : "📲 Enviar pedido pesado por WhatsApp"}
+                {weighedBusy ? "Enviando…" : "📲 Reenviar pedido pesado por WhatsApp"}
               </Button>
               {!customerPhone || isCounterChannel ? (
                 <p className="text-[10px] text-muted-foreground">
@@ -1458,6 +1503,19 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
                   >
                     {apBusy === "remainder" ? "Guardando…" : `✅ Marcar saldo cobrado ($${ap.remainder.toLocaleString("es-AR")})`}
                   </Button>
+                ) : (weightBlocksNext || weightUnpaidBlocksNext) ? (
+                  <div
+                    className="w-full h-10 rounded-xl font-bold text-sm border border-border text-muted-foreground bg-muted/50 flex items-center justify-center gap-2 cursor-not-allowed opacity-70"
+                    title={
+                      weightBlocksNext
+                        ? "Pesá y confirmá el peso real antes de marcar Listo"
+                        : "El cliente tiene que pagar antes de despachar"
+                    }
+                  >
+                    🔒 {weightBlocksNext
+                      ? "Pesá y confirmá el peso"
+                      : `${getActionButtonLabel(nextStatus, order, isRetail)} - esperando pago`}
+                  </div>
                 ) : isBlockedByPayment ? (
                   <div className="w-full">
                     <button
@@ -1521,6 +1579,8 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
                   Entregado, así que acá no habría nada que saltar. */}
               {jumpToDoneAvailable(order, isRetail) &&
                 !isBlockedByPayment &&
+                !weightBlocksNext &&
+                !weightUnpaidBlocksNext &&
                 !logisticsOwnsNext &&
                 !apartadoUnpaidAccept &&
                 !jumpBlockedByPack && (

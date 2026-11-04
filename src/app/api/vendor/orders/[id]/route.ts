@@ -13,6 +13,7 @@ import { fetchVendorDelivery } from "@/lib/delivery-server";
 import { resolveDeliveryFee, type DeliverySelection } from "@/lib/delivery";
 import { phoneVariantsAR } from "@/lib/phone";
 import { decrementCustomerFromOrder } from "@/lib/customers";
+import { sendWeighedOrder } from "@/lib/weighed-order-message";
 import type { OrderItem, OrderStatus } from "@/types/database";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -225,21 +226,47 @@ export async function PATCH(
   }
 
   const ADVANCE_STATUSES = ["preparing", "ready", "sent", "completed"];
-  // Toggle del comercio: no avanzar transferencias app sin marcar pagado.
+  const DISPATCH_STATUSES = ["sent", "completed"];
+  // Flujo de pesada (modo "confirmar"): el pedido nació "pendiente de peso" y el
+  // comercio pesa en PREPARACIÓN, con "Confirmar peso". Reglas del gate:
+  // - Preparar (new → preparing) queda libre: el cliente NO puede pagar antes de
+  //   que exista el total real, así que bloquearlo era un deadlock.
+  // - Listo (ready) exige haber confirmado el peso: sin el total real no hay
+  //   nada que cobrar.
+  // - Enviar/Entregar (sent/completed) exigen el pago (transferencia/MP).
+  //   Efectivo queda fuera a propósito: se cobra al entregar o al retirar.
+  const isWeightFlow = currentOrder.weight_estimated_total != null;
+  // Si este mismo PATCH confirma el peso, el gate no debe rechazar (el sello
+  // se hace en la transacción).
+  const weightConfirmedAfter =
+    currentOrder.weight_confirmed_at != null || weightConfirmFlag;
+  const weightNeedsConfirmGate =
+    !!status &&
+    isWeightFlow &&
+    !weightConfirmedAfter &&
+    ADVANCE_STATUSES.includes(status) &&
+    status !== "preparing";
+  if (weightNeedsConfirmGate) {
+    return NextResponse.json(
+      { error: "Pesá y confirmá el peso real antes de continuar", code: "weight_not_confirmed" },
+      { status: 403 }
+    );
+  }
+  // Toggle del comercio: no avanzar transferencias app sin marcar pagado. En
+  // flujo de pesada manda la regla propia (pesar en Preparación, cobrar antes
+  // de despachar): el toggle no bloquea el aceptado ni el Listo.
   const blockUnpaidGate =
     !!status &&
+    !isWeightFlow &&
     fullVendor?.block_unpaid_orders === true &&
     currentOrder.payment_method === "transferencia" &&
     currentOrder.channel === "app" &&
     currentOrder.payment_status === "pending" &&
     ADVANCE_STATUSES.includes(status);
-  // Flujo de pesada (modo "confirmar"): transferencia/MP se cobran DESPUÉS de
-  // pesar el total real → nunca se despacha sin pago, independiente del toggle.
-  // Efectivo queda fuera a propósito: se cobra al entregar o al retirar.
   const weightUnpaidGate =
     !!status &&
-    ADVANCE_STATUSES.includes(status) &&
-    currentOrder.weight_estimated_total != null &&
+    isWeightFlow &&
+    DISPATCH_STATUSES.includes(status) &&
     currentOrder.payment_status === "pending" &&
     (currentOrder.payment_method === "transferencia" || currentOrder.payment_method === "mercadopago");
   if (blockUnpaidGate || weightUnpaidGate) {
@@ -727,6 +754,19 @@ export async function PATCH(
     }
   }
 
+  // WhatsApp AUTOMÁTICO al confirmar el peso: "preparado y pesado" + total real
+  // + datos para pagar (link MP / alias-CBU / efectivo / coordinar según el
+  // método que eligió el cliente en el checkout). Best-effort: sin el bot
+  // conectado la confirmación queda igual y el panel ofrece el reenvío manual
+  // (wa.me con el texto).
+  let weighedWa: { ok: boolean; sent?: boolean; text?: string; error?: string } | null = null;
+  if (weightConfirmFlag && order.customer_phone && !isCounterPickup && !order.is_preview) {
+    weighedWa = await sendWeighedOrder({ vendorId: vendor.id, orderId: params.id }).catch(() => ({
+      ok: false,
+      error: "No se pudo enviar el WhatsApp",
+    }));
+  }
+
   const pushText = customerNotificationText(
     status,
     isRetailVendor({ vertical: fullVendor?.vertical ?? null }) || fullVendor?.vertical === "estetica",
@@ -824,7 +864,7 @@ export async function PATCH(
     }
   }
 
-  return NextResponse.json({ order });
+  return NextResponse.json({ order, weighed_wa: weighedWa });
 }
 
 export async function DELETE(

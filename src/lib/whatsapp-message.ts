@@ -136,6 +136,7 @@ export function buildComandaWhatsApp(params: {
   const paymentStr =
     params.paymentMethod === "efectivo" ? "Efectivo" :
     params.paymentMethod === "transferencia" ? "Transferencia" :
+    params.paymentMethod === "mercadopago" ? "Mercado Pago (se cobra tras pesar)" :
     "Coordinar";
   // "¿Con cuánto abonás?": el comercio ve de cuánto es el vuelto a preparar.
   const abonaStr =
@@ -268,8 +269,9 @@ export function buildTransferInstructionsMessage(params: {
 
 /**
  * Mensaje del pedido ya PESADO (modo "confirmar"): detalle con el peso real de
- * cada ítem, el total real y la acción de pago según el método elegido.
- * Manual a propósito: el comercio aprieta el botón tras revisar el total.
+ * cada ítem, el total real y la acción de pago según el método elegido. Se
+ * manda AUTOMÁTICO al confirmar el peso en el panel (best-effort, vía bot) y
+ * el comercio puede reenviarlo a mano desde "📲 Enviar pedido pesado".
  */
 export function buildWeighedOrderMessage(params: {
   vendorName: string;
@@ -321,7 +323,7 @@ export function buildWeighedOrderMessage(params: {
   })().filter((l) => l !== null && l !== undefined && l !== "");
 
   return [
-    `⚖️ ¡Tu pedido ${params.orderLabel} de ${params.vendorName} ya está pesado!`,
+    `⚖️ ¡Tu pedido ${params.orderLabel} de ${params.vendorName} ya está preparado y pesado!`,
     "",
     "Detalle (peso real):",
     ...itemLines,

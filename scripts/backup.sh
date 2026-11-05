@@ -21,15 +21,20 @@
 # - Retención: DB por CANTIDAD (los últimos BACKUP_DB_KEEP=10) — los snapshots
 #   db-only por deploy pueden ser 100+/semana y con días-límite se desbordaba,
 #   uploads 7 días local (conservando siempre las 3 copias más nuevas),
-#   30 días en R2. La limpieza local corre SIEMPRE aunque falle el push
+#   7 días en R2 (+ poda por cantidad: últimos BACKUP_R2_UPLOADS_KEEP=10).
+#   La limpieza local corre SIEMPRE aunque falle el push
 #   (disco VPS chico: la acumulación por push fallido ya lo llenó una vez
-#   y volteó Postgres). cron.log se rota a 500 líneas por run.
+#   y volteó Postgres). La limpieza de R2 NO se silencia: si el token no
+#   puede borrar, queda en el log (ver sección 5). cron.log se rota a 500
+#   líneas por run.
 #
 # Env (del /opt/portal659/.env que escribe el deploy desde GitHub secrets):
 #   POSTGRES_USER / POSTGRES_DB (defaults portal659)
 #   R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_ENDPOINT
 #   R2_BUCKET (default portal659-backups)
 #   BACKUP_DB_KEEP (últimos N dumps de DB que quedan en disco, default 10)
+#   BACKUP_R2_UPLOADS_KEEP (últimos N uploads que quedan en R2, default 10;
+#     la retención por días sigue siendo 7)
 #
 # Salida: 0 = OK; 1 = error (queda en cron.log / log del deploy).
 # /opt/portal659-backups está FUERA de /opt/portal659: el deploy no lo borra nunca.
@@ -138,7 +143,7 @@ fi
 # se busca por sufijo para no depender del prefijo.
 UPLOADS_FILE="$BACKUP_ROOT/uploads/uploads-$NOW.tar.gz"
 if [ "$DB_ONLY" = "yes" ]; then
-  echo "[$NOW] modo db-only: skip uploads (los cubre el cron diario con R2 30 días)"
+  echo "[$NOW] modo db-only: skip uploads (los cubre el cron diario con R2 7 días)"
   rm -f "$UPLOADS_FILE" 2>/dev/null
 else
 VOL=$(docker volume ls --format '{{.Name}}' | grep -E '(^|_)uploads_data$' | head -n 1)
@@ -242,17 +247,39 @@ fi
 # --- 5. Retención (corre SIEMPRE) ------------------------------------------------
 # DB: últimos BACKUP_DB_KEEP dumps (por cantidad, no días: los snapshots db-only
 # por deploy llegaron a 100+/semana y con días-límite desbordaba). Uploads:
-# 7 días (cron diario, 3 más nuevas siempre). R2 (30 días) es el resguardo.
+# 7 días (cron diario, 3 más nuevas siempre). R2 (7 días) es el resguardo.
 prune_keep "$BACKUP_ROOT/db" 'portal659-*.sql.gz' "$BACKUP_DB_KEEP"
 # Uploads: limpieza por edad en ambos modos — el snapshot db-only no genera
 # tar pero igual poda los viejos (los excedentes de la época pre-db-only se
 # van borrando a medida que pasan los 7 días).
 prune_local "$BACKUP_ROOT/uploads" 'uploads-*.tar.gz' 7 3
+
+# Poda en R2 por CANTIDAD (uploads): deja los N más nuevos del prefijo y
+# borra el resto. El borrado por edad de abajo queda como red de seguridad,
+# pero ya NO se silencia: si el token no tiene permiso de borrado, queda en
+# el log (antes el error se iba a /dev/null y los uploads crecían sin tope).
+prune_r2() {
+  _path=$1; _pat=$2; _n=$3
+  rclone lsf "R2:$R2_BUCKET/$_path" --files-only 2>/dev/null \
+    | grep -E "^$_pat" \
+    | sort -r \
+    | tail -n +"$((_n + 1))" \
+    | while IFS= read -r _f; do
+        [ -z "$_f" ] && continue
+        if ! rclone deletefile "R2:$R2_BUCKET/$_path/$_f"; then
+          echo "[$NOW] WARNING: no se pudo borrar R2:$_path/$_f (revisá permisos del token)"
+        fi
+      done
+}
+
 if [ "$PUSH_OK" = "yes" ]; then
-  rclone delete "R2:$R2_BUCKET/db" --min-age 30d >/dev/null 2>&1 || true
-  if [ "$DB_ONLY" = "no" ]; then
-    rclone delete "R2:$R2_BUCKET/uploads" --min-age 30d >/dev/null 2>&1 || true
+  if ! rclone delete "R2:$R2_BUCKET/db" --min-age 30d; then
+    echo "[$NOW] WARNING: no se pudo podar R2 db (revisá permisos del token)"
   fi
+  if ! rclone delete "R2:$R2_BUCKET/uploads" --min-age 7d; then
+    echo "[$NOW] WARNING: no se pudo podar R2 uploads (revisá permisos del token)"
+  fi
+  prune_r2 uploads 'uploads-.*\.tar\.gz' "${BACKUP_R2_UPLOADS_KEEP:-10}"
 else
   echo "[$NOW] skip limpieza R2 (sin conexión)"
 fi
@@ -261,7 +288,7 @@ if [ "$PUSH_OK" = "yes" ] && [ "$VERIFY_OK" = "yes" ]; then
   if [ "$DB_ONLY" = "yes" ]; then
     echo "[$NOW] snapshot db-only OK (retención DB: últimos $BACKUP_DB_KEEP)"
   else
-    echo "[$NOW] backup completo (retención: DB últimos $BACKUP_DB_KEEP, uploads 7 días local / 30 días R2)"
+    echo "[$NOW] backup completo (retención: DB últimos $BACKUP_DB_KEEP, uploads 7 días local / 7 días R2)"
   fi
   exit 0
 else

@@ -12,7 +12,11 @@
 3. `/opt/portal659-certs` (cert Origin CA de Cloudflare) → tar + restaurar al migrar
 4. `.env` — **NO hace falta**: lo regenera el deploy desde secrets de GitHub.
 
-Retención: **14 días local + 30 días en R2** (bucket `portal659-backups`, privado).
+Retención: **7 días local + 7 días en R2** (+ últimos 10 uploads por cantidad, `BACKUP_R2_UPLOADS_KEEP`) — bucket `portal659-backups`, privado.
+Además, en el bucket hay una **regla de lifecycle** (Cloudflare → R2 → Settings → Object lifecycle
+rules) con prefijo `uploads/` → *eliminar objetos después de 7 días*: es la red de seguridad
+para que los uploads no se acumulen aunque el `rclone delete` del script falle (los errores de
+delete ya no se silencian en `backup.sh`, quedan en `cron.log`).
 No hace falta migrar tampoco: sesión de WhatsApp del bot (vive en el teléfono
 APK Portal Wa Link) ni cola de impresión (memoria del relay).
 

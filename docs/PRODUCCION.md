@@ -102,9 +102,14 @@ Backup diario **self-managed** (independiente del host — funciona en cualquier
   → push a **Cloudflare R2** (bucket `portal659-backups`, privado; rclone con
   `R2_ACCESS_KEY_ID`/`R2_SECRET_ACCESS_KEY`/`R2_ENDPOINT` del `.env`).
 - Validación del dump (gzip íntegro + marcador de dump completo) antes de subir.
-- Retención: **14 días local, 30 días en R2**. `/opt/portal659-backups` está fuera
+- Retención: **7 días local, 7 días en R2** (+ últimos 10 uploads por cantidad,
+  `BACKUP_R2_UPLOADS_KEEP`). `/opt/portal659-backups` está fuera
   del path del deploy: no se borra nunca.
 - El deploy además hace **snapshot previo db-only** (solo DB → R2; el tar de uploads queda para el cron diario) en cada deploy.
+- Red de seguridad en Cloudflare: **regla de lifecycle** (R2 → bucket → Settings → Object
+  lifecycle rules) con prefijo `uploads/` → *eliminar objetos después de 7 días*, para que no
+  se acumulen aunque falle el borrado del script (los errores del `rclone delete` quedan
+  logueados en `cron.log`, no se silencian).
 - Runbook de migración/restore: `docs/migracion-vexyhost.md`.
 
 Restore:

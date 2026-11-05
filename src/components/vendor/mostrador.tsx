@@ -254,6 +254,7 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
   const [loading, setLoading] = useState(true);
+  const [catalogVersion, setCatalogVersion] = useState(0);
   const [saving, setSaving] = useState(false);
   // Switch "exigir caja abierta": sin turno no se cobra (el servidor lo
   // valida igual: 409). Banner + botones deshabilitados.
@@ -648,7 +649,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     return () => {
       cancelled = true;
     };
-  }, [vendorId]);
+  }, [vendorId, catalogVersion]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -1807,6 +1808,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     }
     const comandaSuffix = () => (comandaError ? ` · ⚠️ ${comandaError}` : "");
     setMsg(baseMsg);
+    setCatalogVersion((v) => v + 1);
     clearSaleForm();
     setFiscalPrintId(null);
 

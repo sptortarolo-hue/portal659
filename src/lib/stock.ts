@@ -28,6 +28,35 @@ export type StockMove = {
   qty: number;
 };
 
+/**
+ * Resuelve los componentes de un combo directamente desde la DB.
+ * Fallback para flujos que no pasan `combo_members` (ej. webhook MP para
+ * combos simples). Tolerante a la tabla inexistente (migración sin aplicar).
+ * Devuelve null si el producto no es combo o la tabla no existe.
+ */
+async function resolveComboMembersFromDb(
+  tx: Tx,
+  productId: string
+): Promise<{ product_id: string; qty: number }[] | null> {
+  try {
+    const t = await tx.query<{ ok: boolean }>(
+      `SELECT to_regclass('public.combo_items') IS NOT NULL AS ok`
+    );
+    if (!t[0]?.ok) return null;
+    const crows = await tx.query<{ member_product_id: string; qty: number }>(
+      `SELECT member_product_id, qty FROM combo_items WHERE combo_product_id = $1`,
+      [productId]
+    );
+    if (crows.length === 0) return null;
+    return crows.map((c) => ({
+      product_id: String(c.member_product_id),
+      qty: Math.max(1, Math.round(Number(c.qty) || 1)),
+    }));
+  } catch {
+    return null;
+  }
+}
+
 export async function adjustStockForItems(
   tx: Tx,
   items: OrderItem[] | null | undefined,
@@ -62,7 +91,7 @@ export async function adjustStockForItems(
     // combo se trata como un producto normal (no-op si no controla stock).
     // Con armado por unidad cada componente lleva variant_id: se toca la
     // VARIANTE (no el producto).
-    const comboMembers = Array.isArray((item as any).combo_members)
+    let comboMembers = Array.isArray((item as any).combo_members)
       ? ((item as any).combo_members as {
           product_id: string;
           qty: number;
@@ -72,6 +101,14 @@ export async function adjustStockForItems(
           name?: string;
         }[])
       : null;
+    // Fallback: si el pedido no trae los componentes (ej. MP para combos
+    // simples), los resolvemos desde la DB para que el stock se descuente.
+    if ((!comboMembers || comboMembers.length === 0) && item.product_id) {
+      const resolved = await resolveComboMembersFromDb(tx, String(item.product_id));
+      if (resolved && resolved.length > 0) {
+        comboMembers = resolved as any;
+      }
+    }
     if (comboMembers && comboMembers.length > 0) {
       for (const m of comboMembers) {
         if (!m || !m.product_id) continue;
@@ -116,6 +153,32 @@ export async function adjustStockForItems(
           } else {
             moved.push({ product_id: m.product_id, qty: mqty });
           }
+        }
+      }
+      // Si el combo tiene control de stock prendido, también se descuenta/
+      // repone el combo en sí (limita cuántos combos se venden, además del
+      // stock de los componentes).
+      if (direction === "increment") {
+        const cRows = await tx.query<{ id: string }>(
+          `UPDATE products SET stock = stock + $1 WHERE id = $2 AND stock_control = true RETURNING id`,
+          [qty, item.product_id]
+        );
+        if (cRows.length > 0) moved.push({ product_id: item.product_id, qty });
+      } else {
+        const cRows = await tx.query<{ id: string }>(
+          `UPDATE products SET stock = stock - $1
+           WHERE id = $2 AND stock_control = true AND COALESCE(stock, 0) >= $1
+           RETURNING id`,
+          [qty, item.product_id]
+        );
+        if (cRows.length === 0) {
+          const p = await tx.queryOne<{ stock_control: boolean }>(
+            `SELECT stock_control FROM products WHERE id = $1 LIMIT 1`,
+            [item.product_id]
+          );
+          if (p?.stock_control) throw new OutOfStockError(item.name);
+        } else {
+          moved.push({ product_id: item.product_id, qty });
         }
       }
       continue;

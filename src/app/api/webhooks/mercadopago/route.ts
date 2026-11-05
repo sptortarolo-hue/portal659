@@ -1074,6 +1074,45 @@ export async function POST(request: Request) {
           try {
             const raw = (metadata as Record<string, unknown>).stock_items;
             const stockItems = typeof raw === "string" ? JSON.parse(raw) : [];
+             if (Array.isArray(stockItems)) {
+               let _changed = false;
+               for (let _idx = 0; _idx < stockItems.length; _idx++) {
+                 const _s = stockItems[_idx];
+                 if (Array.isArray(_s?.combo_members) && _s.combo_members.length > 0) continue;
+                 if (typeof _s?.product_id !== "string") continue;
+                 const _t = await tx.query<{ ok: boolean }>(
+                   `SELECT to_regclass('public.combo_items') IS NOT NULL AS ok`
+                 );
+                 if (!_t[0]?.ok) continue;
+                 const _crows = await tx.query<{ member_product_id: string; qty: number }>(
+                   `SELECT member_product_id, qty FROM combo_items WHERE combo_product_id = $1`,
+                   [_s.product_id]
+                 );
+                 if (_crows.length === 0) continue;
+                 const _mids = [...new Set(_crows.map((c) => c.member_product_id))];
+                 const _mrows = _mids.length
+                   ? await tx.query<{ id: string; name: string }>(
+                       `SELECT id, name FROM products WHERE id = ANY($1)`,
+                       [_mids]
+                     )
+                   : [];
+                 const _mName = new Map(_mrows.map((m) => [m.id, m.name]));
+                 const _members = _crows.map((c) => ({
+                   product_id: String(c.member_product_id),
+                   name: String(_mName.get(c.member_product_id) || "?"),
+                   qty: Math.max(1, Math.round(Number(c.qty) || 1)),
+                 }));
+                 _s.combo_members = _members;
+                 if (orderItems[_idx]) (orderItems as any)[_idx].combo_members = _members;
+                 _changed = true;
+               }
+               if (_changed) {
+                 await tx.queryVoid(`UPDATE orders SET items = $1 WHERE id = $2`, [
+                   JSON.stringify(orderItems),
+                   order?.id,
+                 ]);
+               }
+             }
             // Por peso no descuenta stock (igual que app/mostrador).
             const stockable = Array.isArray(stockItems)
               ? stockItems.filter((s: any) => s?.unit !== "kg")

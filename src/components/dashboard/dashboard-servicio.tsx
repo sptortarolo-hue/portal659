@@ -22,10 +22,14 @@ import { CartaQrSection } from "@/components/dashboard/carta-qr-section";
 import { PlanLock } from "@/components/vendor/plan-lock";
 import { QuoteManualModal } from "@/components/dashboard/quote-manual-modal";
 import { BookingManualModal } from "@/components/dashboard/booking-manual-modal";
+import { WorkOrderModal } from "@/components/dashboard/work-order-modal";
+import { OrderExtendModal } from "@/components/dashboard/order-extend-modal";
 import { EsteticaWaitlistManager, type WaitEntry } from "@/components/dashboard/estetica-managers";
 import { StaffManager } from "@/components/vendor/staff-manager";
 import { arToday } from "@/lib/booking-schedule";
 import { bookingReminderMessage, bookingWhenLabel } from "@/lib/booking-message";
+import { isOrderBooking } from "@/lib/agenda";
+import { isoTodayAR, workOrderExtensionText } from "@/lib/work-order";
 import { loadDraft, saveDraft } from "@/lib/draft";
 import { AgendaView, type AgendaViewMode } from "@/components/dashboard/agenda-view";
 import { EsteticaWeekPlanner } from "@/components/dashboard/estetica-week-planner";
@@ -205,7 +209,7 @@ function ServicioHoy({
             {pendingBookings.slice(0, 3).map((b: any) => (
               <div key={b.id} className="flex items-center gap-2 text-xs rounded-lg bg-muted px-2.5 py-2">
                 <span className="flex-1 min-w-0 truncate">
-                  <strong>{b.customer_name || "Sin nombre"}</strong> · {b.booking_date} {b.booking_time || ""}
+                  <strong>{b.customer_name || "Sin nombre"}</strong>{(b as any).kind === "orden" ? " 🛠️ orden" : ""} · {b.booking_date} {b.booking_time || ""}
                 </span>
                 {waLinkFor(b.customer_phone) && (
                   <a href={waLinkFor(b.customer_phone)!} target="_blank" rel="noopener noreferrer" className="text-green-600 font-medium flex-shrink-0">📲</a>
@@ -222,7 +226,7 @@ function ServicioHoy({
             {upcoming.map((b: any) => (
               <div key={b.id} className="flex items-center gap-2 text-xs rounded-lg border border-border px-2.5 py-2">
                 <span className="flex-1 min-w-0 truncate">
-                  <strong>{b.customer_name || "Sin nombre"}</strong> · {b.booking_date} {b.booking_time || ""}
+                  <strong>{b.customer_name || "Sin nombre"}</strong>{(b as any).kind === "orden" ? " 🛠️ orden" : ""} · {b.booking_date} {b.booking_time || ""}
                 </span>
                 {waLinkFor(b.customer_phone) && (
                   <a href={waLinkFor(b.customer_phone)!} target="_blank" rel="noopener noreferrer" className="text-green-600 font-medium flex-shrink-0">📲</a>
@@ -458,6 +462,11 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
   // Modales manuales.
   const [quoteModalOpen, setQuoteModalOpen] = useState(false);
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
+  // Órdenes de servicio (recepción de taller).
+  const [orderModalOpen, setOrderModalOpen] = useState(false);
+  const [orderCanCreate, setOrderCanCreate] = useState(false);
+  const [printBusyId, setPrintBusyId] = useState<string | null>(null);
+  const [extendOrder, setExtendOrder] = useState<any | null>(null);
   // Rebooking: prefill del turno manual con los datos de un turno anterior.
   const [rebook, setRebook] = useState<{
     customerName: string;
@@ -472,6 +481,19 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
   const [fichaOpenId, setFichaOpenId] = useState<string | null>(null);
   const [canFiscal, setCanFiscal] = useState(false);
   const [fiscalReady, setFiscalReady] = useState(false);
+
+  // ¿La base tiene la rama de órdenes (kind)? Sin migración, el botón no aparece.
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/vendor/bookings?kindProbe=1");
+        const d = res.ok ? await res.json().catch(() => ({})) : {};
+        setOrderCanCreate(d?.ordersEnabled === true);
+      } catch {
+        setOrderCanCreate(false);
+      }
+    })();
+  }, []);
 
   async function handleConvertQuote(id: string) {
     if (!convDate || !convTime) {
@@ -1013,6 +1035,69 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
   const filteredQuotes =
     quoteFilter === "all" ? quotes : quotes.filter((q) => q.status === quoteFilter);
 
+  // Órdenes de servicio: imprime comprobante (80mm) o etiqueta (58mm).
+  async function handlePrintOrder(id: string, kind: "orden" | "orden_tag") {
+    setPrintBusyId(id);
+    try {
+      const res = await fetch("/api/print", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: kind, bookingId: id }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setMsg(data.error);
+        return;
+      }
+      setMsg(kind === "orden" ? "Comprobante de la orden enviado a imprimir" : "Etiqueta del equipo enviada a imprimir");
+    } catch {
+      setMsg("Error de conexión");
+    } finally {
+      setPrintBusyId(null);
+    }
+  }
+
+  // Prorroga la entrega: guarda la nueva fecha y ofrece avisar al cliente.
+  async function handleExtendSave(id: string, newDate: string, notify: boolean) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) {
+      setMsg("Elegí una fecha válida");
+      return;
+    }
+    const prev = String(extendOrder?.delivery_date || "").slice(0, 10);
+    try {
+      const res = await fetch(`/api/vendor/bookings/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          delivery_date: newDate,
+          notes: prev && prev !== newDate ? `Entrega prorrogada: ${prev} → ${newDate}` : undefined,
+        }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setMsg(data.error);
+        return;
+      }
+      setExtendOrder(null);
+      reload();
+      const order = extendOrder;
+      if (notify && order?.customer_phone) {
+        const text = workOrderExtensionText({
+          storeName: vendor?.store_name || "",
+          customerName: order.customer_name,
+          orderNo: order.work_order_no,
+          newDeliveryISO: newDate,
+        });
+        window.open(`https://wa.me/${String(order.customer_phone).replace(/[^0-9]/g, "")}?text=${encodeURIComponent(text)}`, "_blank");
+        setMsg("Entrega prorrogada. Se abrió WhatsApp con el aviso para el cliente.");
+      } else {
+        setMsg("Entrega prorrogada");
+      }
+    } catch {
+      setMsg("Error de conexión");
+    }
+  }
+
   // Props compartidas por la tarjeta de turno (lista y modal de detalle).
   const bookingCardProps: Omit<BookingCardProps, "booking"> = {
     formAlerts,
@@ -1045,6 +1130,10 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
     canFiscal,
     fiscalReady,
     vendor,
+    onPrintOrden: orderCanCreate ? (id: string) => handlePrintOrder(id, "orden") : undefined,
+    onPrintEtiqueta: orderCanCreate ? (id: string) => handlePrintOrder(id, "orden_tag") : undefined,
+    onExtendDelivery: orderCanCreate ? (b: any) => setExtendOrder(b) : undefined,
+    printBusyId,
   };
 
   return (
@@ -1405,6 +1494,16 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
           <Button size="sm" className="w-full h-8 text-xs" onClick={() => setBookingModalOpen(true)}>
             ＋ Nuevo turno
           </Button>
+          {isTaller && orderCanCreate && (
+            <>
+              <Button size="sm" variant="outline" className="w-full h-8 text-xs border-orange-300 text-orange-700" onClick={() => setOrderModalOpen(true)}>
+                🛠️ ＋ Nueva orden de servicio
+              </Button>
+              <p className="text-[11px] text-muted-foreground">
+                Recepción de taller: se ingresa hoy (sin horario) y se estima la fecha de entrega.
+              </p>
+            </>
+          )}
           {isHybrid && (
             <EsteticaWaitlistManager
               onSchedule={(w: WaitEntry) => {
@@ -1862,6 +1961,28 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
       </>
       )}
 
+      {(sec === "all" || sec === "hoy") && isTaller && (
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="rounded-xl border border-orange-200 bg-orange-50/50 p-3">
+            <p className="font-display text-xl font-bold text-orange-700">
+              {bookings.filter((b: any) => isOrderBooking(b) && String(b.booking_date || "").slice(0, 10) === isoTodayAR()).length}
+            </p>
+            <p className="text-[11px] text-muted-foreground">Recibidas hoy</p>
+          </div>
+          <div className="rounded-xl border border-border p-3">
+            <p className="font-display text-xl font-bold">
+              {bookings.filter((b: any) => isOrderBooking(b) && b.status === "ready").length}
+            </p>
+            <p className="text-[11px] text-muted-foreground">Listas p/ retirar</p>
+          </div>
+          <div className="rounded-xl border border-border p-3">
+            <p className="font-display text-xl font-bold">
+              {bookings.filter((b: any) => isOrderBooking(b) && b.status !== "completed" && b.status !== "cancelled" && b.delivery_date && String(b.delivery_date).slice(0, 10) <= isoTodayAR()).length}
+            </p>
+            <p className="text-[11px] text-muted-foreground">Vencen hoy</p>
+          </div>
+        </div>
+      )}
       {(sec === "all" || sec === "hoy") && (
       <>
       <CollapsibleSection icon="📊" title="Resumen del mes">
@@ -1988,15 +2109,41 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
         />
       )}
 
+      {orderModalOpen && (
+        <WorkOrderModal
+          onClose={() => setOrderModalOpen(false)}
+          serviceOptions={isHybrid ? catalogServices : undefined}
+          onCreated={(data: { booking: any; work_order_no: number | null }) => {
+            setOrderModalOpen(false);
+            const no = Number(data.work_order_no) || 0;
+            setMsg(no ? `Orden N° ${no} creada (no cuenta para el tope mensual)` : "Orden creada (no cuenta para el tope mensual)");
+            reload();
+          }}
+        />
+      )}
+
+      {extendOrder && (
+        <OrderExtendModal
+          booking={extendOrder}
+          onClose={() => setExtendOrder(null)}
+          onSave={(newDate: string, notify: boolean) => handleExtendSave(String(extendOrder.id), newDate, notify)}
+        />
+      )}
+
       {selectedBooking && (
         <Modal
           open={!!selectedBooking}
           onClose={() => setSelectedBookingId(null)}
-          title={`Turno · ${selectedBooking.customer_name || "Sin nombre"}`}
+          title={
+            isOrderBooking(selectedBooking)
+              ? `Orden de servicio · ${selectedBooking.customer_name || "Sin nombre"}`
+              : `Turno · ${selectedBooking.customer_name || "Sin nombre"}`
+          }
         >
           <BookingCard booking={selectedBooking} {...bookingCardProps} />
         </Modal>
       )}
+
       {cobroOpenId && (
         <BookingCobroModal
           booking={bookings.find((b: any) => b.id === cobroOpenId)}

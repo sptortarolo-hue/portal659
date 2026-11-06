@@ -29,6 +29,30 @@ export type AgendaBooking = {
 
 export type AgendaStaff = { id: string; name: string };
 
+/** ¿Es una orden de servicio (recepción de taller: sin hora ni duración)? */
+export function isOrderBooking(b: AgendaBooking): boolean {
+  return (b as { kind?: string | null }).kind === "orden";
+}
+
+/**
+ * Ítems "todo el día" de una fecha: las órdenes de servicio no tienen hora,
+ * así que se muestran en una banda arriba de la grilla horaria (nunca dentro).
+ */
+export function allDayBookings(
+  bookings: AgendaBooking[],
+  dateISO: string,
+  staffId?: string | null
+): AgendaBooking[] {
+  const sid = staffId && staffId !== "all" ? staffId : null;
+  return bookings.filter(
+    (b) =>
+      String(b.booking_date || "").slice(0, 10) === dateISO &&
+      isOrderBooking(b) &&
+      bookingStartMinutes(b) == null &&
+      (!sid || (b.staff_id || "") === sid)
+  );
+}
+
 const AR_TZ = "America/Argentina/Buenos_Aires";
 
 export function timeToMinutes(t: unknown): number | null {
@@ -247,18 +271,23 @@ export type MonthCell = {
   byStatus: MonthStatusCounts;
   /** Turnos del día, ordenados por hora (ya filtrados por profesional). */
   items: AgendaBooking[];
+  /** Órdenes de servicio recibidas este día (recepciones de taller). */
+  orders: number;
+  /** Entregas estimadas este día (solo con `showDeliveries`). */
+  deliveries: AgendaBooking[];
 };
 
 /**
  * Grilla de 42 celdas (6 filas × 7) del mes que contiene `anchorISO`,
  * empezando el lunes. Los turnos se agrupan por `booking_date` "YYYY-MM-DD"
  * (los que no tienen fecha válida se ignoran acá) y, si se pasa `staffId`,
- * sólo se cuentan los de ese profesional.
+ * sólo se cuentan los de ese profesional. Con `showDeliveries`, las órdenes
+ * de servicio también se ubican en su fecha de ENTREGA estimada.
  */
 export function buildMonthGrid(
   anchorISO: string,
   bookings: AgendaBooking[],
-  opts: { staffId?: string | null } = {}
+  opts: { staffId?: string | null; showDeliveries?: boolean } = {}
 ): MonthCell[] {
   const firstISO = startOfMonthISO(anchorISO);
   const firstDate = new Date(`${firstISO}T12:00:00`);
@@ -274,13 +303,23 @@ export function buildMonthGrid(
   const staffId = opts.staffId && opts.staffId !== "all" ? opts.staffId : null;
 
   const byDate = new Map<string, AgendaBooking[]>();
+  const byDelivery = new Map<string, AgendaBooking[]>();
   for (const b of bookings) {
     const iso = String(b.booking_date || "").slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) continue;
-    if (staffId && (b.staff_id || "") !== staffId) continue;
-    const arr = byDate.get(iso) || [];
-    arr.push(b);
-    byDate.set(iso, arr);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(iso) && (!staffId || (b.staff_id || "") === staffId)) {
+      const arr = byDate.get(iso) || [];
+      arr.push(b);
+      byDate.set(iso, arr);
+    }
+    // Entregas estimadas de las órdenes (para el toggle del Mes).
+    if (opts.showDeliveries && isOrderBooking(b)) {
+      const d = String((b as { delivery_date?: string | null }).delivery_date || "").slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(d) && (!staffId || (b.staff_id || "") === staffId)) {
+        const arr = byDelivery.get(d) || [];
+        arr.push(b);
+        byDelivery.set(d, arr);
+      }
+    }
   }
 
   const cells: MonthCell[] = [];
@@ -317,6 +356,8 @@ export function buildMonthGrid(
       count: items.length,
       byStatus,
       items,
+      orders: items.filter(isOrderBooking).length,
+      deliveries: byDelivery.get(iso) || [],
     });
     cur.setDate(cur.getDate() + 1);
   }

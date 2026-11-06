@@ -19,6 +19,19 @@ export const PLAN_SLUGS: PlanSlug[] = ["gratuito", "pedidos", "gestion", "oficio
 // moda, servicios, estética y talleres.
 export const PAID_PLAN_SLUGS: PlanSlug[] = ["pedidos", "gestion", "oficios"];
 
+/**
+ * Fila histórica del Gratuito "con carrito" (migrate-plans-gratuito-vidriera.sql):
+ * congela el modelo anterior para los comercios que ya estaban en Gratuito.
+ * No es un plan vendible (no está en PLAN_IDS ni en los allowedSlugs de
+ * pay/activate): solo gobierna features y topes de esos comercios.
+ */
+export const LEGACY_FREE_SLUG = "gratuito_legacy";
+
+/** ¿La fila de plan efectiva es el gratuito histórico (sin carrito recortado)? */
+function isLegacyFreeRow(plan: Plan | null | undefined): boolean {
+  return !!plan && String(plan.slug) === LEGACY_FREE_SLUG;
+}
+
 export const GASTRO_VERTICAL = "gastronomia";
 export const MODA_VERTICAL = "moda";
 export const COMERCIO_VERTICAL = "comercio";
@@ -105,51 +118,43 @@ const GRATUITO_FEATURES: PlanFeatures = {
   screens: true,
 };
 
-// Features del plan Gratuito para gastronomía: carta completa + carrito +
-// pedidos por la app, con tope mensual de pedidos (max_orders_month).
-// También es el fallback de un plan pago vencido (sigue tomando pedidos con tope).
+// Features del plan Gratuito para gastronomía: SOLO vidriera + contacto
+// (migrate-plans-gratuito-vidriera.sql). Sin carrito ni pedidos: vender
+// online arranca en Básico. También es el fallback de un plan pago vencido.
+// (Los comercios anteriores al cambio quedan en la fila `gratuito_legacy`.)
 const FREE_GASTRO_FEATURES: PlanFeatures = {
   ...GRATUITO_FEATURES,
-  cart: true,
-  emits_orders: true,
 };
 
-// Moda (indumentaria) vende con carrito + pedidos desde el micrositio.
-// Gratis: carrito con tope propio de 5 pedidos/mes (MODA_FREE_ORDERS_MONTH,
-// NO la fila "gratuito": esos 20 son de gastro/comercio). Con plan pago
-// vigente (Pedidos/Gestión, mismos precios que gastro) suma lo del plan con
+// Moda (indumentaria): gratuito = vidriera sin carrito (el carrito arranca
+// en Básico). Con plan pago vigente (Básico/Gestión) suma lo del plan con
 // mask de vertical (sin kds/mesas/recipes). Variantes, guía de talles y
 // fotos por color no están gateadas (son el producto mismo).
 const MODA_FEATURES: PlanFeatures = {
   ...GRATUITO_FEATURES,
-  cart: true,
-  emits_orders: true,
 };
 
 /** Tope mensual de pedidos online del plan gratuito de moda (propio, no el de gastro). */
 export const MODA_FREE_ORDERS_MONTH = 5;
 
 // Comercio de barrio (retail: almacén, kiosco, ferretería, librería...):
-// venta online con retiro/delivery + mostrador. Usa los MISMOS planes pagos
-// que gastronomía, pero NUNCA las features de cocina/salón aunque el plan
-// gestión las traiga en su JSONB (kds/mesas/recipes quedan enmascaradas).
+// gratuito = vidriera + contacto; el carrito (retiro/delivery) y el mostrador
+// arrancan con plan pago. Usa los MISMOS planes pagos que gastronomía, pero
+// NUNCA las features de cocina/salón aunque el plan gestión las traiga en su
+// JSONB (kds/mesas/recipes quedan enmascaradas).
 const COMERCIO_FREE_FEATURES: PlanFeatures = {
   ...GRATUITO_FEATURES,
-  cart: true,
-  emits_orders: true,
 };
 
 // Estética (peluquería, barbería, uñas, pestañas, cejas, masajes...): híbrido
-// turnera + productos. 3 planes: Gratuito (5 solicitudes/mes con tope propio,
-// ESTETICA_FREE_QUOTES_MONTH, NO los 5 de servicio — y 5 pedidos con
-// ESTETICA_FREE_ORDERS_MONTH), "Turnera" (fila `pedidos`: turnera + pedidos
-// ilimitados) y "Gestión integral" (todo el POS/Caja/Clientes impresión).
+// turnera + productos. Gratuito = vidriera + contacto (sin turnera online ni
+// carrito); "Turnera" (fila `pedidos`: turnos + pedidos ilimitados) y
+// "Gestión integral" (todo el POS/Caja/Clientes impresión) son pagos.
 // NO se vende Oficios a estética (solo servicios); con plan pago vigente la
 // turnera completa (cotizar con precio + seña MP) es override de código.
+// (Los comercios anteriores al cambio quedan en la fila `gratuito_legacy`.)
 const ESTETICA_FREE_FEATURES: PlanFeatures = {
   ...GRATUITO_FEATURES,
-  cart: true,
-  emits_orders: true,
 };
 
 /** Tope mensual de solicitudes (turnos + presupuestos) gratis de estética. */
@@ -160,14 +165,13 @@ export const ESTETICA_FREE_ORDERS_MONTH = 5;
 
 // Talleres y Reparaciones (bicicleterías, servicio técnico de celulares y
 // electrodomésticos, gomerías, reparación de calzado...): híbrido venta +
-// taller. Misma estructura que estética: Gratuito con tope propio de 5
-// solicitudes/mes y 5 pedidos/mes, plan pago ("Taller", fila `pedidos`) y
-// Gestión integral. NO se vende Oficios a taller (como estética). La
-// turnera/presupuestos y la seña MP son override de código con plan pago.
+// taller. Gratuito = vidriera + contacto; el presupuesto con precio y el
+// carrito de repuestos arrancan en "Taller" (fila `pedidos`) y Gestión
+// integral. NO se vende Oficios a taller (como estética). La seña MP es
+// override de código con plan pago. (Comercios anteriores al cambio: fila
+// `gratuito_legacy`.)
 const TALLER_FREE_FEATURES: PlanFeatures = {
   ...GRATUITO_FEATURES,
-  cart: true,
-  emits_orders: true,
 };
 
 /** Tope mensual de solicitudes (turnos + presupuestos) gratis de taller. */
@@ -335,7 +339,9 @@ export function resolveVendorPlan(
   const trialEndsAt = vendor.trial_ends_at ? new Date(vendor.trial_ends_at).getTime() : null;
   const planExpiresAt = vendor.plan_expires_at ? new Date(vendor.plan_expires_at).getTime() : null;
 
-  const isPaid = plan ? plan.slug !== "gratuito" : false;
+  // `gratuito_legacy` NO es plan pago: es el Gratuito congelado para los
+  // comercios anteriores al recorte del gratuito (migrate-plans-gratuito-vidriera.sql).
+  const isPaid = plan ? plan.slug !== "gratuito" && !isLegacyFreeRow(plan) : false;
 
   const trialActive =
     isPaid &&
@@ -380,10 +386,15 @@ export function resolveVendorPlan(
     isSaludVendor(vendor);
 
   const can = (feature: FeatureKey): boolean => {
+    // Comercio en el Gratuito histórico (fila `gratuito_legacy`): conserva las
+    // features con las que arrancó (carrito incluido). Se evalúa después de
+    // cada máscara de vertical y antes del fallback del gratuito nuevo.
+    const legacy = !paid && isLegacyFreeRow(plan);
     if (isModaVendor(vendor)) {
       // Mask del vertical: gestión trae kds/mesas/recipes en su JSONB, pero
       // un local de ropa nunca los usa (no tiene cocina ni salón).
       if (MODA_FEATURE_MASK[feature] === false) return false;
+      if (legacy) return featureOf(plan, feature);
       if (paid) return featureOf(plan, feature);
       return MODA_FEATURES[feature] === true;
     }
@@ -391,12 +402,14 @@ export function resolveVendorPlan(
       // Mask del vertical: gestión trae kds/mesas/recipes en su JSONB, pero
       // un comercio nunca las usa (no tiene cocina ni salón).
       if (COMERCIO_FEATURE_MASK[feature] === false) return false;
+      if (legacy) return featureOf(plan, feature);
       if (paid) return featureOf(plan, feature);
       return COMERCIO_FREE_FEATURES[feature] === true;
     }
     if (isServicioVendor(vendor)) {
       // Mask del vertical: sin cocina, salón, POS ni carrito (solo contacto).
       if (SERVICIO_FEATURE_MASK[feature] === false) return false;
+      if (legacy) return featureOf(plan, feature);
       if (paid) return featureOf(plan, feature);
       return SERVICIO_FREE_FEATURES[feature] === true;
     }
@@ -404,6 +417,7 @@ export function resolveVendorPlan(
       // Mask del vertical: gestión trae kds/mesas/recipes en su JSONB, pero
       // un centro de estética nunca los usa.
       if (ESTETICA_FEATURE_MASK[feature] === false) return false;
+      if (legacy) return featureOf(plan, feature);
       if (paid) {
         // La turnera completa (cotizar con precio + seña MP) es parte de la
         // propuesta de los planes pagos de estética ("Turnera" usa la fila
@@ -415,6 +429,7 @@ export function resolveVendorPlan(
     }
     if (isSaludVendor(vendor)) {
       if (ESTETICA_FEATURE_MASK[feature] === false) return false;
+      if (legacy) return featureOf(plan, feature);
       if (paid) {
         if (feature === "quotes_respond" || feature === "deposits") return true;
         return featureOf(plan, feature);
@@ -425,6 +440,7 @@ export function resolveVendorPlan(
       // Mask del vertical: gestión trae kds/mesas/recipes en su JSONB, pero
       // un taller nunca los usa.
       if (TALLER_FEATURE_MASK[feature] === false) return false;
+      if (legacy) return featureOf(plan, feature);
       if (paid) {
         // El presupuesto completo (cotizar con precio + seña MP) es parte de
         // la propuesta de los planes pagos de taller ("Taller" usa la fila
@@ -435,6 +451,7 @@ export function resolveVendorPlan(
       return TALLER_FREE_FEATURES[feature] === true;
     }
     if (!eligibleForPaid) return GRATUITO_FEATURES[feature] === true;
+    if (legacy) return featureOf(plan, feature);
     if (paid) return featureOf(plan, feature);
     return FREE_GASTRO_FEATURES[feature] === true;
   };
@@ -444,34 +461,43 @@ export function resolveVendorPlan(
   // "gratuito" para que el admin pueda configurar el tope sin tocar código.
   // Excepciones con tope propio: moda gratis/vencido usa el suyo (5 pedidos,
   // no los 20 de gastro); los híbridos gratis/vencido usan los suyos (5
-  // solicitudes + 5 pedidos).
+  // solicitudes + 5 pedidos). El Gratuito histórico (fila `gratuito_legacy`)
+  // lee sus límites de su propia fila congelada.
   const freePlanRow = plans.find((p) => p.slug === "gratuito") ?? null;
-  const limitRow = paid ? plan : freePlanRow;
-  const maxOrdersMonth =
-    isModaVendor(vendor) && !(paid)
-      ? MODA_FREE_ORDERS_MONTH
-      : isEsteticaVendor(vendor) && !(paid)
-        ? ESTETICA_FREE_ORDERS_MONTH
-        : isTallerVendor(vendor) && !(paid)
-          ? TALLER_FREE_ORDERS_MONTH
-          : isSaludVendor(vendor) && !(paid)
-            ? ESTETICA_FREE_ORDERS_MONTH
-            : (limitRow?.max_orders_month ?? null);
-  const maxQuotesMonth =
-    isEsteticaVendor(vendor) && !(paid)
-      ? ESTETICA_FREE_QUOTES_MONTH
-      : isTallerVendor(vendor) && !(paid)
-        ? TALLER_FREE_QUOTES_MONTH
-        : isSaludVendor(vendor) && !(paid)
-          ? ESTETICA_FREE_QUOTES_MONTH
-          : (limitRow?.max_quotes_month ?? null);
+  const legacyFreeRow = isLegacyFreeRow(plan) ? plan : null;
+  const limitRow = paid ? plan : legacyFreeRow ?? freePlanRow;
+  // Topes mensuales:
+  //  - plan pago vigente: los del plan (NULL = ilimitado).
+  //  - Gratuito NUEVO (vidriera): 0 (sin carrito ni solicitudes: el cupo no
+  //    aplica porque las features están apagadas; el 0 hace que el panel
+  //    muestre la verdad y que el API de turnos rechace).
+  //  - Gratuito histórico (`gratuito_legacy`): como antes — overrides por
+  //    vertical (moda/estética/salud/taller: 5 pedidos o solicitudes) y la
+  //    fila congelada para el resto (gastro/comercio: 20 pedidos).
+  const maxOrdersMonth = ((): number | null => {
+    if (paid) return plan?.max_orders_month ?? null;
+    if (!legacyFreeRow) return 0;
+    if (isModaVendor(vendor)) return MODA_FREE_ORDERS_MONTH;
+    if (isEsteticaVendor(vendor) || isSaludVendor(vendor)) return ESTETICA_FREE_ORDERS_MONTH;
+    if (isTallerVendor(vendor)) return TALLER_FREE_ORDERS_MONTH;
+    return legacyFreeRow.max_orders_month ?? null;
+  })();
+  const maxQuotesMonth = ((): number | null => {
+    if (paid) return plan?.max_quotes_month ?? null;
+    if (!legacyFreeRow) return 0;
+    if (isEsteticaVendor(vendor) || isSaludVendor(vendor)) return ESTETICA_FREE_QUOTES_MONTH;
+    if (isTallerVendor(vendor)) return TALLER_FREE_QUOTES_MONTH;
+    return legacyFreeRow.max_quotes_month ?? null;
+  })();
   // Pantallas TV: el gratuito tiene 1 (growth), la gestión 2. Servicios y los
-  // planes vencidos no tienen (0). El tope viene del plan (max_screens).
+  // planes vencidos no tienen (0). El tope viene del plan (max_screens); el
+  // gratuito histórico usa el de su fila congelada.
   const fallbackScreens = paid
     ? (plan?.slug === "gestion" ? 2 : 1)
     : 1;
+  const screenRow = paid ? plan : legacyFreeRow ?? freePlanRow;
   const maxScreens = can("screens")
-    ? Number((paid ? plan : freePlanRow)?.max_screens ?? fallbackScreens)
+    ? Number(screenRow?.max_screens ?? fallbackScreens)
     : 0;
 
   return {

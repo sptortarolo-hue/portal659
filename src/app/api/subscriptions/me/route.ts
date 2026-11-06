@@ -1,7 +1,7 @@
 import { getUserId } from "@/lib/auth-utils";
 import { queryMany, queryOne } from "@/lib/db";
 import { getVendorByRequest } from "@/lib/vendor-utils";
-import { resolveVendorPlan, daysLeft, planPriceFor } from "@/lib/plans";
+import { resolveVendorPlan, daysLeft, planPriceFor, LEGACY_FREE_SLUG } from "@/lib/plans";
 import { getPortalBank, derivePromoFor } from "@/lib/plan-payments";
 import { NextResponse } from "next/server";
 import type { Plan, Vendor, VendorSubscription } from "@/types/database";
@@ -75,12 +75,15 @@ export async function GET(request: Request) {
       : count > 0 ? 100 : 0,
     ordersThisMonth,
     maxOrdersMonth: effective.maxOrdersMonth,
+    // Cupo 0 = el gratuito nuevo no vende online: no hay tope que alcanzar.
     ordersOverLimit:
-      effective.maxOrdersMonth != null && ordersThisMonth >= effective.maxOrdersMonth,
+      effective.maxOrdersMonth != null && effective.maxOrdersMonth > 0 &&
+      ordersThisMonth >= effective.maxOrdersMonth,
     quotesThisMonth,
     maxQuotesMonth: effective.maxQuotesMonth,
     quotesOverLimit:
-      effective.maxQuotesMonth != null && quotesThisMonth >= effective.maxQuotesMonth,
+      effective.maxQuotesMonth != null && effective.maxQuotesMonth > 0 &&
+      quotesThisMonth >= effective.maxQuotesMonth,
   };
 
   // Circuito de pago por transferencia: reclamo pendiente (si existe) +
@@ -168,8 +171,16 @@ export async function GET(request: Request) {
   // Qué se pierde al bajar a Gratuito (evita el downgrade silencioso).
   const freePlan = plans.find((p) => p.slug === "gratuito") ?? null;
   const wouldLose: { key: string; label: string; current: string; free: string }[] = [];
-  if (effective.slug !== "gratuito" && effective.plan) {
+  // (El gratuito histórico no es un downgrade: no muestra la sección.)
+  // LEGACY_FREE_SLUG no está en el union PlanSlug (no es plan vendible): se
+  // compara como string, igual que isLegacyFreeRow en plans.ts.
+  if (effective.slug !== "gratuito" && String(effective.slug) !== LEGACY_FREE_SLUG && effective.plan) {
     const compare: { key: string; label: string; get: (f: any) => unknown }[] = [
+      // El carrito es lo primero que se pierde: el gratuito nuevo es vidriera.
+      // (Un servicio nunca tuvo carrito: no se lo mencionamos.)
+      ...(vendor.vertical !== "servicio"
+        ? [{ key: "cart", label: "Carrito y pedidos online", get: (f: any) => f.cart }]
+        : []),
       { key: "pos", label: "Mostrador y Caja", get: (f) => f.pos },
       { key: "crm", label: "Clientes (CRM)", get: (f) => f.crm },
       { key: "analytics_days", label: "Estadísticas", get: (f) => f.analytics_days },

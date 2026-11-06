@@ -9,12 +9,12 @@ export const dynamic = "force-dynamic";
 export const metadata = {
   title: "Planes para comercios de barrio — precios y funciones | Portal 659",
   description:
-    "Planes para tu comercio, kiosco, almacén o gastronomía: gratis para empezar, pedidos ilimitados, POS con mostrador y caja, impresión de tickets y cobro online. 0% comisión por venta.",
+    "Planes para tu comercio, kiosco, almacén, gastronomía, peluquería, taller o servicio: gratis para empezar (vidriera + contacto por WhatsApp), pedidos online ilimitados, POS con mostrador y caja, impresión de tickets y cobro online. 0% comisión por venta.",
   alternates: { canonical: "/planes" },
 };
 
 export const FEATURE_LABELS: Record<string, string> = {
-  info: "Ficha de comercio + menú informativo",
+  info: "Ficha de comercio + contacto por WhatsApp",
   cart: "Carrito y pedido online",
   emits_orders: "Pedidos por la app con avisos",
   mp_payments: "Cobros online con Mercado Pago",
@@ -49,12 +49,155 @@ const FEATURE_ORDER = [
   "deposits",
 ];
 
+/**
+ * Detalle por vertical (copy de la web; los precios salen de la tabla plans).
+ * El plan del medio se llama "Oficios" en servicios y "Básico" en el resto.
+ */
+const VERTICAL_DETAIL: {
+  key: string;
+  name: string;
+  gratuito: string[];
+  medio: string[];
+  gestion: string[];
+}[] = [
+  {
+    key: "gastronomia",
+    name: "Gastronomía",
+    gratuito: [
+      "Ficha del local y contacto por WhatsApp",
+      "Carta informativa (hasta 10 platos)",
+      "Sin carrito, sin pedidos online",
+    ],
+    medio: [
+      "Carrito + checkout online",
+      "Pedidos ilimitados por mes",
+      "Analítica 7 días y gestión de reseñas",
+      "Seña por Mercado Pago",
+    ],
+    gestion: [
+      "Mostrador (POS) y Caja con arqueo Z",
+      "Mesas + Comanda (cocina)",
+      "Impresión de tickets y comandas",
+      "Clientes (CRM) y Preparación y Costo",
+      "Analítica completa y 2 pantallas TV",
+    ],
+  },
+  {
+    key: "comercio",
+    name: "Comercio de barrio",
+    gratuito: [
+      "Vidriera de productos (hasta 10)",
+      "Contacto directo por WhatsApp",
+      "Sin carrito, sin pedidos online",
+    ],
+    medio: [
+      "Carrito + checkout online",
+      "Retiro y/o delivery por la app",
+      "Pedidos ilimitados por mes",
+      "Analítica 7 días y gestión de reseñas",
+      "Seña por Mercado Pago",
+    ],
+    gestion: [
+      "Mostrador (POS) y Caja con arqueo Z",
+      "Clientes (CRM) e impresión de tickets",
+      "Analítica completa y 2 pantallas TV",
+      "Sin cocina ni mesas (no aplican al rubro)",
+    ],
+  },
+  {
+    key: "moda",
+    name: "Moda",
+    gratuito: [
+      "Catálogo de productos (hasta 10)",
+      "Variantes color y talle para ver",
+      "Contacto directo por WhatsApp",
+      "Sin carrito, sin pedidos online",
+    ],
+    medio: [
+      "Carrito + checkout online",
+      "Variantes color × talle activas para compra",
+      "Pedidos ilimitados por mes",
+      "Analítica 7 días y gestión de reseñas",
+      "Seña por Mercado Pago",
+    ],
+    gestion: [
+      "Mostrador (POS) y Caja con arqueo Z",
+      "Clientes (CRM) e impresión de tickets",
+      "Analítica completa y 2 pantallas TV",
+    ],
+  },
+  {
+    key: "estetica",
+    name: "Peluquería y Estética",
+    gratuito: [
+      "Ficha de servicios (hasta 10)",
+      "Contacto directo por WhatsApp",
+      "Sin turnos online, sin carrito",
+    ],
+    medio: [
+      "Turnos y consultas ilimitados",
+      "Carrito de productos + checkout",
+      "Cotización con precio y seña por Mercado Pago",
+      "Analítica 7 días y gestión de reseñas",
+    ],
+    gestion: [
+      "Mostrador (POS) y Caja con arqueo Z",
+      "Clientes (historial de turnos y pedidos)",
+      "Impresión de tickets",
+      "Analítica completa y 2 pantallas TV",
+    ],
+  },
+  {
+    key: "taller",
+    name: "Talleres y Reparaciones",
+    gratuito: [
+      "Ficha de servicios (hasta 10)",
+      "Contacto directo por WhatsApp",
+      "Sin presupuestos online, sin carrito",
+    ],
+    medio: [
+      "Presupuestos y turnos ilimitados",
+      "Presupuesto con partidas (material + mano de obra)",
+      "Carrito de repuestos + checkout",
+      "Seña por Mercado Pago y analítica 7 días",
+      "Gestión de reseñas",
+    ],
+    gestion: [
+      "Mostrador (POS) y Caja con arqueo Z",
+      "Clientes (historial por equipo)",
+      "Impresión de tickets y presupuestos A4",
+      "Analítica completa y 2 pantallas TV",
+    ],
+  },
+  {
+    key: "servicio",
+    name: "Servicios (plomero, electricista…)",
+    gratuito: [
+      "Ficha de contacto y WhatsApp",
+      "Sin cotizaciones ni turnos online",
+    ],
+    medio: [
+      "Solicitudes ilimitadas (presupuestos + turnos)",
+      "Cotización con precio visible online",
+      "Seña por Mercado Pago",
+      "Urgencia con recargo %",
+      "Reseñas y analítica 30 días",
+    ],
+    gestion: [
+      "Clientes (CRM) e historial de trabajos",
+      "Analítica completa",
+      "El Mostrador y la Caja no aplican al rubro",
+    ],
+  },
+];
+
 export default async function PlanesPage() {
   const plans = await queryMany<Plan>(
     `SELECT * FROM plans ORDER BY sort ASC`
   );
 
-  const list = plans || [];
+  // La fila histórica del gratuito (grandfathering) no se muestra al público.
+  const list = (plans || []).filter((p) => String(p.slug) !== "gratuito_legacy");
 
   return (
     <main className="min-h-screen bg-background">
@@ -67,11 +210,11 @@ export default async function PlanesPage() {
             Planes para tu comercio
           </h1>
           <p className="text-muted-foreground text-sm sm:text-base max-w-xl mx-auto">
-            Arrancás gratis y crecés cuando quieras. Pagos y cobros a la medida de un
-            comercio de barrio.
+            Empezás con tu vidriera y contacto por WhatsApp, gratis. La venta online
+            (carrito, pedidos, turnos) arranca en el plan Básico.
           </p>
           <p className="text-xs text-muted-foreground mt-2">
-            Los planes pagos están disponibles para <b>gastronomía</b>, <b>comercios de barrio</b>, <b>moda</b>, <b>servicios</b> (plan Oficios), <b>peluquería y estética</b> y <b>talleres y reparaciones</b>. Gastronomía, comercio y moda comparten Pedidos y Gestión (sin cocina ni mesas fuera de gastro); servicios usa Oficios; peluquería y estética usa <b>Turnera</b> (Pedidos) y gestión integral; talleres usa <b>Taller</b> (Pedidos) y gestión integral.
+            Los planes pagos están disponibles para <b>gastronomía</b>, <b>comercios de barrio</b>, <b>moda</b>, <b>peluquería y estética</b>, <b>talleres y reparaciones</b> y <b>servicios</b> (plan <b>Oficios</b>). Peluquería y estética usa <b>Básico</b> (Turnera) y Gestión integral; talleres usa <b>Básico</b> (Taller) y Gestión integral; servicios usa <b>Oficios</b>.
           </p>
         </div>
 
@@ -81,10 +224,14 @@ export default async function PlanesPage() {
             const promo = activePromo(plan);
             const products = plan.max_products == null
               ? "Productos ilimitados"
-              : `${plan.max_products} productos`;
-            const orderLimit = plan.max_orders_month != null
-              ? `Hasta ${plan.max_orders_month} pedidos por mes`
-              : "Pedidos ilimitados por mes";
+              : plan.max_products === 0
+                ? "Sin productos publicados"
+                : `Hasta ${plan.max_products} productos o servicios`;
+            const orderLimit = plan.slug === "gratuito"
+              ? "Sin pedidos ni turnos online (solo contacto)"
+              : plan.max_orders_month != null
+                ? `Hasta ${plan.max_orders_month} pedidos por mes`
+                : "Pedidos ilimitados por mes";
             // Tope de solicitudes: solo se muestra en Oficios (para servicios el
             // gratuito trae 5, que ya se comunica en su panel).
             const quoteLimit = plan.slug === "oficios"
@@ -191,16 +338,78 @@ export default async function PlanesPage() {
           })}
         </div>
 
+        {/* Detalle por vertical */}
+        <section className="mt-14">
+          <h2 className="font-display text-xl sm:text-2xl font-semibold mb-2 text-center">
+            Qué incluye cada plan en tu rubro
+          </h2>
+          <p className="text-sm text-muted-foreground text-center mb-8 max-w-2xl mx-auto">
+            El plan del medio es <b>Básico</b> en todos los rubros que venden, y{" "}
+            <b>Oficios</b> en servicios. Funciones que no aplican a tu vertical
+            (cocina, mesas, mostrador) nunca se activan.
+          </p>
+          <div className="space-y-6">
+            {VERTICAL_DETAIL.map((v) => (
+              <div key={v.key} className="rounded-2xl border border-border bg-card p-5">
+                <h3 className="font-display font-semibold mb-4">{v.name}</h3>
+                <div className="grid sm:grid-cols-3 gap-4 text-sm">
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground mb-2">
+                      Gratuito
+                    </p>
+                    <ul className="space-y-1.5">
+                      {v.gratuito.map((i) => (
+                        <li key={i} className="flex items-start gap-2">
+                          <span className="mt-0.5 flex-shrink-0 text-primary">✓</span>
+                          <span>{i}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground mb-2">
+                      {v.key === "servicio" ? "Oficios" : "Básico"}
+                    </p>
+                    <ul className="space-y-1.5">
+                      {v.medio.map((i) => (
+                        <li key={i} className="flex items-start gap-2">
+                          <span className="mt-0.5 flex-shrink-0 text-primary">✓</span>
+                          <span>{i}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground mb-2">
+                      Gestión integral
+                    </p>
+                    <ul className="space-y-1.5">
+                      {v.gestion.map((i) => (
+                        <li key={i} className="flex items-start gap-2">
+                          <span className="mt-0.5 flex-shrink-0 text-primary">✓</span>
+                          <span>{i}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
         <div className="mt-10 rounded-2xl border border-border bg-card p-6 text-center">
           <h3 className="font-display text-lg font-semibold mb-1">
             Topes del plan gratuito
           </h3>
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
-            Gastronomía y comercios: 20 pedidos online por mes. Moda: 5 pedidos
-            por mes. Servicios: 5 solicitudes (presupuestos + turnos) por mes.
-            Peluquería y estética: 5 solicitudes (consultas + turnos) y 5 pedidos online por mes.
-            Talleres y reparaciones: 5 solicitudes (presupuestos + turnos) y 5 pedidos online por mes.
+            El plan gratuito es tu vidriera: hasta 10 productos o servicios y contacto
+            directo por WhatsApp, sin carrito, sin pedidos online y sin turnos online.
             Farmacias, dietéticas y perfumerías usan los planes de comercio.
+          </p>
+          <p className="text-xs text-muted-foreground max-w-md mx-auto mt-2">
+            Si ya tenías un comercio gratuito con carrito y pedidos funcionando, se
+            conserva como estaba: no se te cambia el plan.
           </p>
         </div>
       </div>

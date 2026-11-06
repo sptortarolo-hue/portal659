@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { apiJson, getJson } from "@/components/dashboard/shared";
+import { Modal } from "@/components/ui/modal";
 import { ProductImage } from "@/components/product-image";
 import type { Ingredient, Supplier } from "@/types/database";
 import {
@@ -24,6 +25,285 @@ import {
 // ---------------------------------------------------------------------------
 type BuyLine = { key: number; kind: "ing" | "prod" | "var"; ingredient_id: string; product_id: string; variant_id: string; qty: string; unit: string; unit_cost: string; total_paid: string; expires_at: string };
 
+/** Mezcla lo creado en el momento con la lista del padre, sin duplicar IDs. */
+function mergeById<T extends { id: string }>(base: T[], extra: T[]): T[] {
+  if (extra.length === 0) return base;
+  const ids = new Set(base.map((x) => x.id));
+  return [...base, ...extra.filter((x) => !ids.has(x.id))];
+}
+
+/** Ítem recién creado desde la compra (para seleccionarlo automáticamente). */
+type CreatedItem =
+  | { kind: "ing"; item: Ingredient }
+  | { kind: "prod"; item: { id: string; name: string; cost_last?: number | null; stock?: number | null } }
+  | { kind: "var"; item: { id: string; product_id: string; color: string; talle: string; price: number; stock: number; cost_last?: number | null } };
+
+// ---------------------------------------------------------------------------
+// Crear insumo / producto / variante SIN salir de la compra (estilo proveedor).
+// Un sheet con los campos mínimos: al guardar, el ítem queda seleccionado
+// en la línea y se sigue con cantidad y costo.
+// ---------------------------------------------------------------------------
+function QuickCreateSheet({
+  kind,
+  products,
+  onClose,
+  onCreated,
+}: {
+  kind: BuyLine["kind"];
+  products: { id: string; name: string }[];
+  onClose: () => void;
+  onCreated: (created: CreatedItem) => void;
+}) {
+  // Insumo.
+  const [name, setName] = useState("");
+  const [baseUnit, setBaseUnit] = useState("g");
+  const [cost, setCost] = useState("");
+  const [waste, setWaste] = useState("0");
+  const [buyPrice, setBuyPrice] = useState("");
+  const [buyQty, setBuyQty] = useState("");
+  // Producto.
+  const [price, setPrice] = useState("");
+  const [unit, setUnit] = useState("unidad");
+  // Variante.
+  const [productId, setProductId] = useState("");
+  const [color, setColor] = useState("");
+  const [talle, setTalle] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const title = kind === "ing" ? "Nuevo insumo" : kind === "prod" ? "Nuevo producto" : "Nueva variante";
+
+  function applyBuyHelper() {
+    const p = Number(buyPrice);
+    const q = Number(buyQty);
+    if (p > 0 && q > 0) setCost(String(Math.round((p / q) * 10000) / 10000));
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    if (kind === "ing") {
+      if (!name.trim()) return setError("Indicá el nombre del insumo");
+      if (!(Number(cost) >= 0)) return setError("Indicá el costo por unidad base");
+      setSaving(true);
+      const res = await fetch("/api/vendor/ingredients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          base_unit: baseUnit,
+          cost_per_unit: Number(cost),
+          waste_pct: Number(waste) || 0,
+          active: true,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      setSaving(false);
+      if (!res.ok) return setError(data?.error || "No se pudo crear el insumo");
+      onCreated({ kind: "ing", item: data.ingredient as Ingredient });
+      return;
+    }
+    if (kind === "prod") {
+      if (!name.trim()) return setError("Indicá el nombre del producto");
+      if (!(Number(price) > 0)) return setError("Indicá el precio de venta");
+      setSaving(true);
+      const res = await fetch("/api/vendor/offers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim(), price: Number(price), unit, stock: 0, stock_control: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      setSaving(false);
+      if (!res.ok) return setError(data?.error || "No se pudo crear el producto");
+      const o = data.offer;
+      onCreated({
+        kind: "prod",
+        item: {
+          id: String(o.id),
+          name: String(o.name || name),
+          cost_last: o.cost_last != null ? Number(o.cost_last) : null,
+          stock: o.stock != null ? Number(o.stock) : 0,
+        },
+      });
+      return;
+    }
+    // Variante: no hay alta unitaria; se relee la lista del producto y se
+    // reemplaza completa (mismo contrato PUT del editor de variantes).
+    if (!productId) return setError("Elegí el producto al que pertenece");
+    if (!color.trim() && !talle.trim()) return setError("Indicá el color o el talle");
+    if (!(Number(price) >= 0)) return setError("Indicá el precio");
+    setSaving(true);
+    const url = `/api/vendor/variants?product_id=${encodeURIComponent(productId)}`;
+    const curr = await getJson<{ variants: any[] }>(url);
+    if (!curr?.variants) {
+      setSaving(false);
+      return setError("No se pudieron leer las variantes del producto");
+    }
+    const list = curr.variants.map((v) => ({
+      color: String(v.color || ""),
+      talle: String(v.talle || ""),
+      price: Number(v.price) || 0,
+      promo: v.promo ?? null,
+      stock: Number(v.stock) || 0,
+      sku: v.sku ?? null,
+      cost_last: v.cost_last ?? null,
+    }));
+    list.push({ color: color.trim(), talle: talle.trim(), price: Number(price), promo: null, stock: 0, sku: null, cost_last: null });
+    const r = await apiJson("/api/vendor/variants", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ product_id: productId, variants: list }),
+    });
+    if (!r.ok) {
+      setSaving(false);
+      return setError(r.error || "No se pudo crear la variante");
+    }
+    const fresh = await getJson<{ variants: any[] }>(url);
+    setSaving(false);
+    const createdV =
+      (fresh?.variants || []).find(
+        (v) => String(v.color || "") === color.trim() && String(v.talle || "") === talle.trim()
+      ) || (fresh?.variants || [])[0];
+    if (!createdV?.id) {
+      // La variante quedó creada: se avisa para elegirla del desplegable.
+      return setError("La variante se creó; elegila del desplegable");
+    }
+    onCreated({
+      kind: "var",
+      item: {
+        id: String(createdV.id),
+        product_id: productId,
+        color: String(createdV.color || ""),
+        talle: String(createdV.talle || ""),
+        price: Number(createdV.price) || 0,
+        stock: Number(createdV.stock) || 0,
+        cost_last: createdV.cost_last != null ? Number(createdV.cost_last) : null,
+      },
+    });
+  }
+
+  return (
+    <Modal open onClose={onClose} title={title}>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        {kind === "ing" && (
+          <>
+            <div>
+              <Label className="text-xs">Nombre</Label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej: Queso mozzarella" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>
+                <Label className="text-xs">Unidad base</Label>
+                <select
+                  value={baseUnit}
+                  onChange={(e) => setBaseUnit(e.target.value)}
+                  className="w-full rounded-lg border border-input bg-background px-2 py-2 text-sm"
+                >
+                  <option value="g">Peso (g)</option>
+                  <option value="ml">Volumen (ml)</option>
+                  <option value="u">Unidad</option>
+                </select>
+              </div>
+              <div>
+                <Label className="text-xs">Costo por {baseUnit} (sin IVA)</Label>
+                <Input type="number" min={0} step="any" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0.00" />
+              </div>
+            </div>
+            <div className="rounded-xl bg-muted/60 p-2.5 space-y-2">
+              <p className="text-xs text-muted-foreground">Ayuda: precio de compra ÷ cantidad del envase</p>
+              <div className="flex gap-1.5">
+                <Input type="number" min={0} step="any" value={buyPrice} onChange={(e) => setBuyPrice(e.target.value)} placeholder="$ compra" />
+                <Input type="number" min={0} step="any" value={buyQty} onChange={(e) => setBuyQty(e.target.value)} placeholder={`Cant. (${baseUnit})`} />
+                <Button type="button" variant="outline" size="sm" onClick={applyBuyHelper} title="Total ÷ cantidad → costo">=</Button>
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs">Merma %</Label>
+              <Input type="number" min={0} max={99.99} step="any" value={waste} onChange={(e) => setWaste(e.target.value)} />
+            </div>
+          </>
+        )}
+        {kind === "prod" && (
+          <>
+            <div>
+              <Label className="text-xs">Nombre</Label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej: Gaseosa 2,25 L" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>
+                <Label className="text-xs">Precio de venta</Label>
+                <Input type="number" min={0} step="any" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0" />
+              </div>
+              <div>
+                <Label className="text-xs">Unidad de venta</Label>
+                <select
+                  value={unit}
+                  onChange={(e) => setUnit(e.target.value)}
+                  className="w-full rounded-lg border border-input bg-background px-2 py-2 text-sm"
+                >
+                  <option value="unidad">Por unidad</option>
+                  <option value="kg">Por kilo</option>
+                </select>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Nace con stock 0: la compra suma las unidades que cargues en la línea. Después podés completar foto, categoría y descripción en el catálogo.
+            </p>
+          </>
+        )}
+        {kind === "var" && (
+          <>
+            <div>
+              <Label className="text-xs">Producto</Label>
+              <select
+                value={productId}
+                onChange={(e) => setProductId(e.target.value)}
+                className="w-full rounded-lg border border-input bg-background px-2 py-2 text-sm"
+              >
+                <option value="">Elegí producto…</option>
+                {products.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+              {products.length === 0 && (
+                <p className="text-xs text-amber-600 mt-1">
+                  Todavía no hay productos: creá uno desde una línea de tipo Producto y volvé acá.
+                </p>
+              )}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>
+                <Label className="text-xs">Color</Label>
+                <Input value={color} onChange={(e) => setColor(e.target.value)} placeholder="Ej: Rojo" />
+              </div>
+              <div>
+                <Label className="text-xs">Talle</Label>
+                <Input value={talle} onChange={(e) => setTalle(e.target.value)} placeholder="Ej: M" />
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs">Precio de venta</Label>
+              <Input type="number" min={0} step="any" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0" />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Con al menos color o talle alcanza. Nace con stock 0: la compra suma las unidades de la línea.
+            </p>
+          </>
+        )}
+        {error && <p className="text-sm text-red-600">{error}</p>}
+        <div className="flex gap-2 pt-1">
+          <Button type="submit" disabled={saving} className="flex-1">
+            {saving ? "Guardando…" : kind === "ing" ? "Crear insumo" : kind === "prod" ? "Crear producto" : "Crear variante"}
+          </Button>
+          <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
+            Cancelar
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 function PurchaseForm({
   suppliers,
   ingredients,
@@ -31,6 +311,7 @@ function PurchaseForm({
   variants = [],
   allowMerchandise = false,
   onSupplierCreated,
+  onItemCreated,
   onDone,
   onCancel,
 }: {
@@ -40,6 +321,8 @@ function PurchaseForm({
   variants?: { id: string; product_id: string; color: string; talle: string; price: number; stock: number; cost_last?: number | null }[];
   allowMerchandise?: boolean;
   onSupplierCreated: () => void;
+  /** Creado un insumo/producto/variante sin salir de la compra. */
+  onItemCreated: (created: CreatedItem) => void;
   onDone: () => void;
   onCancel: () => void;
 }) {
@@ -57,6 +340,8 @@ function PurchaseForm({
   const [error, setError] = useState("");
   const [attachments, setAttachments] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
+  // Línea creando ítem nuevo sin salir de la compra (sheet abierto).
+  const [creating, setCreating] = useState<{ lineKey: number; kind: BuyLine["kind"] } | null>(null);
 
   const ingMap = useMemo(() => new Map(ingredients.map((i) => [i.id, i])), [ingredients]);
 
@@ -345,6 +630,16 @@ function PurchaseForm({
                     type="button"
                     variant="ghost"
                     size="sm"
+                    className="px-2 text-primary font-bold"
+                    onClick={() => setCreating({ lineKey: l.key, kind: l.kind })}
+                    title={`Crear ${l.kind === "ing" ? "insumo" : l.kind === "prod" ? "producto" : "variante"} sin salir de la compra`}
+                  >
+                    +
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
                     className="text-red-600 px-2"
                     onClick={() => setLines((prev) => prev.filter((x) => x.key !== l.key))}
                     title="Quitar línea"
@@ -441,6 +736,25 @@ function PurchaseForm({
         <p className="text-xs text-muted-foreground">
           Al guardar, el costo se actualiza al último precio{allowMerchandise ? " y la mercadería entra a stock" : " y los platos se recalculan solos"}.
         </p>
+
+        {creating && (
+          <QuickCreateSheet
+            kind={creating.kind}
+            products={products.map((p) => ({ id: p.id, name: p.name }))}
+            onClose={() => setCreating(null)}
+            onCreated={(created) => {
+              if (created.kind === "ing") {
+                patchLine(creating.lineKey, { ingredient_id: created.item.id, unit: created.item.base_unit });
+              } else if (created.kind === "prod") {
+                patchLine(creating.lineKey, { product_id: created.item.id, variant_id: "" });
+              } else {
+                patchLine(creating.lineKey, { variant_id: created.item.id, product_id: "" });
+              }
+              onItemCreated(created);
+              setCreating(null);
+            }}
+          />
+        )}
 
         {error && <p className="text-sm text-red-600">{error}</p>}
         <div className="flex gap-2">
@@ -587,6 +901,15 @@ export function PurchasesManager({
     });
   }, [ingredients]);
   const effectiveIngredients = ingredients && ingredients.length > 0 ? ingredients : fetchedIngredients;
+  // Ítems creados sin salir de la compra: se mezclan con las listas de los
+  // desplegables (sin duplicar) para que queden seleccionados en la línea y
+  // sigan disponibles en la próxima compra.
+  const [createdIngredients, setCreatedIngredients] = useState<Ingredient[]>([]);
+  const [createdProducts, setCreatedProducts] = useState<{ id: string; name: string; cost_last?: number | null; stock?: number | null }[]>([]);
+  const [createdVariants, setCreatedVariants] = useState<{ id: string; product_id: string; color: string; talle: string; price: number; stock: number; cost_last?: number | null }[]>([]);
+  const listIngredients = useMemo(() => mergeById(effectiveIngredients, createdIngredients), [effectiveIngredients, createdIngredients]);
+  const listProducts = useMemo(() => mergeById(products, createdProducts), [products, createdProducts]);
+  const listVariants = useMemo(() => mergeById(variants, createdVariants), [variants, createdVariants]);
   const [showForm, setShowForm] = useState(false);
   const [showSuppliers, setShowSuppliers] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | "new" | null>(null);
@@ -680,6 +1003,18 @@ export function PurchasesManager({
     await loadAll();
   }
 
+  // Creado un ítem desde la compra: entra arriba del desplegable para que
+  // quede seleccionado y siga disponible si se abre otra compra.
+  function handleItemCreated(created: CreatedItem) {
+    if (created.kind === "ing") {
+      setCreatedIngredients((prev) => [created.item, ...prev.filter((x) => x.id !== created.item.id)]);
+    } else if (created.kind === "prod") {
+      setCreatedProducts((prev) => [created.item, ...prev.filter((x) => x.id !== created.item.id)]);
+    } else {
+      setCreatedVariants((prev) => [created.item, ...prev.filter((x) => x.id !== created.item.id)]);
+    }
+  }
+
   if (loading) {
     return (
       <div className="space-y-2">
@@ -706,11 +1041,12 @@ export function PurchasesManager({
       {showForm && (
         <PurchaseForm
           suppliers={suppliers}
-          ingredients={effectiveIngredients}
-          products={products}
-          variants={variants}
+          ingredients={listIngredients}
+          products={listProducts}
+          variants={listVariants}
           allowMerchandise={allowMerchandise}
           onSupplierCreated={loadAll}
+          onItemCreated={handleItemCreated}
           onDone={() => {
             setShowForm(false);
             setMsg("Compra guardada y costos actualizados ✅");

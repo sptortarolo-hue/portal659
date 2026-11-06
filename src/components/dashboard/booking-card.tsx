@@ -8,6 +8,16 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { Vendor } from "@/types/database";
 import { bookingReminderMessage, bookingWhenLabel } from "@/lib/booking-message";
+import { isOrderBooking } from "@/lib/agenda";
+import {
+  workOrderDatesLabel,
+  workOrderDeliveryDue,
+  workOrderNextLabel,
+  workOrderQuickActions,
+  workOrderStateLabel,
+  workOrderStateTone,
+  workOrderTitle,
+} from "@/lib/work-order";
 
 export const BOOKING_STATUS_COLORS: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-700",
@@ -66,6 +76,14 @@ export type BookingCardProps = {
   /** Abre el modal de cobro del turno (saldo tras descontar seña). */
   onCobroBooking?: (id: string) => void;
   cobroOpenId?: string | null;
+  /** Orden de servicio: imprime el comprobante del cliente (80mm). */
+  onPrintOrden?: (id: string) => void;
+  /** Orden de servicio: imprime la etiqueta para el equipo (58mm). */
+  onPrintEtiqueta?: (id: string) => void;
+  /** Orden de servicio: prorroga la fecha de entrega (modal interna). */
+  onExtendDelivery?: (booking: any) => void;
+  /** Ids con impresión en curso (deshabilita los botones). */
+  printBusyId?: string | null;
 };
 
 /** Tarjeta de un turno con todas sus acciones (detalle en modal y lista). */
@@ -98,6 +116,10 @@ export function BookingCard({
   handleBookingMpDepositLink,
   onCobroBooking,
   cobroOpenId,
+  onPrintOrden,
+  onPrintEtiqueta,
+  onExtendDelivery,
+  printBusyId,
 }: BookingCardProps) {
   // Defensa contra datos basura ("null"/"undefined" de ediciones viejas).
   const nz = (v: unknown): string => {
@@ -108,6 +130,18 @@ export function BookingCard({
   const productLabel = nz(booking.product_label || booking.product_name);
   const serviceStaffLabel = [nz(booking.service_label), nz(booking.staff_label)].filter(Boolean).join(" · ");
   const notesText = nz(booking.notes);
+  // Orden de servicio (recepción de taller): sin hora, con fecha de entrega.
+  const isOrder = isOrderBooking(booking);
+  const orderNo = (booking as any).work_order_no;
+  const orderDates = isOrder ? workOrderDatesLabel(booking.booking_date, (booking as any).delivery_date) : "";
+  const orderDue = isOrder ? workOrderDeliveryDue((booking as any).delivery_date, booking.status) : null;
+  const orderDeclared = isOrder ? nz((booking as any).declared_issue) : "";
+  const orderDiagnosis = isOrder ? nz((booking as any).diagnosis) : "";
+  const nextLabel = isOrder ? workOrderNextLabel(booking.status) : "";
+  // Estados en los que las acciones comunes (ficha/editar/repetir) aplican.
+  const actionStatuses = isOrder
+    ? ["pending", "diagnosed", "quoted", "approved", "repairing", "ready", "completed"]
+    : ["pending", "confirmed", "completed"];
 
   const servicePrice = Number((booking as any).service_price || 0);
   const depositPaid =
@@ -122,14 +156,41 @@ export function BookingCard({
           <p className="font-medium text-sm truncate">
             {booking.customer_name || "Sin nombre"}
           </p>
-          <p className="text-xs text-muted-foreground">
-            {booking.booking_time || "Sin horario"}
-            {productLabel && ` · ${productLabel}`}
-            {serviceStaffLabel && ` · ${serviceStaffLabel}`}
-            {booking.location_label && ` · 📍 ${booking.location_label}`}
-            {(booking as any).deposit_status === "paid" ? " · seña pagada ✅" : ""}
-            {booking.status === "pending" && (booking as any).deposit_status === "pending" ? " · seña impaga ⏳" : ""}
-          </p>
+          {isOrder ? (
+            <>
+              <p className="text-xs font-semibold text-orange-700">
+                {workOrderTitle(orderNo)} · {orderDates || "sin fecha de entrega"}
+              </p>
+              {orderDeclared && (
+                <p className="text-xs text-foreground/90 mt-0.5">
+                  <span className="text-muted-foreground">Falla: </span>
+                  {orderDeclared}
+                </p>
+              )}
+              {orderDiagnosis && (
+                <p className="text-xs text-foreground/90 mt-0.5">
+                  <span className="text-muted-foreground">Diagnóstico: </span>
+                  {orderDiagnosis}
+                </p>
+              )}
+              {productLabel && <p className="text-xs text-muted-foreground mt-0.5">{productLabel}</p>}
+              {orderDue && <p className={`text-xs mt-0.5 ${orderDue.tone}`}>📦 {orderDue.text}</p>}
+              {(booking as any).deposit_status === "paid" ? (
+                <p className="text-xs text-muted-foreground">seña pagada ✅</p>
+              ) : (booking as any).deposit_status === "pending" ? (
+                <p className="text-xs text-amber-600">seña impaga ⏳</p>
+              ) : null}
+            </>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              {booking.booking_time || "Sin horario"}
+              {productLabel && ` · ${productLabel}`}
+              {serviceStaffLabel && ` · ${serviceStaffLabel}`}
+              {booking.location_label && ` · 📍 ${booking.location_label}`}
+              {(booking as any).deposit_status === "paid" ? " · seña pagada ✅" : ""}
+              {booking.status === "pending" && (booking as any).deposit_status === "pending" ? " · seña impaga ⏳" : ""}
+            </p>
+          )}
           {hasAmount && booking.status !== "completed" && (
             <p className="text-xs text-muted-foreground mb-1">
               Total $${servicePrice.toLocaleString("es-AR")}
@@ -158,8 +219,8 @@ export function BookingCard({
             🧪 PRUEBA
           </span>
         )}
-        <Badge className={`flex-shrink-0 ${BOOKING_STATUS_COLORS[booking.status] || ""}`}>
-          {BOOKING_STATUS_LABELS[booking.status] || booking.status}
+        <Badge className={`flex-shrink-0 ${isOrder ? workOrderStateTone(booking.status) : BOOKING_STATUS_COLORS[booking.status] || ""}`}>
+          {isOrder ? workOrderStateLabel(booking.status) : BOOKING_STATUS_LABELS[booking.status] || booking.status}
         </Badge>
       </div>
       {notesText && (
@@ -247,7 +308,7 @@ export function BookingCard({
             >
               Cancelar
             </Button>
-            {dateOnly <= new Date().toISOString().slice(0, 10) && (
+            {!isOrder && dateOnly <= new Date().toISOString().slice(0, 10) && (
               <Button
                 size="sm"
                 variant="outline"
@@ -288,7 +349,72 @@ export function BookingCard({
             </Button>
           </>
         )}
-        {booking.status === "completed" && (
+        {isOrder && (
+          <>
+            {workOrderQuickActions(booking.status).length > 0 && (
+              <div className="flex flex-wrap gap-1" title={nextLabel ? `Próximo paso: ${nextLabel}` : undefined}>
+                {workOrderQuickActions(booking.status).map((a) => (
+                  <Button
+                    key={a.to}
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    title={`Marcar como ${workOrderStateLabel(a.to)}`}
+                    onClick={() => handleUpdateBookingStatus(booking.id, a.to)}
+                  >
+                    {a.label}
+                  </Button>
+                ))}
+              </div>
+            )}
+            {onPrintOrden && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                disabled={printBusyId === booking.id}
+                title="Imprimir el comprobante para el cliente (80mm)"
+                onClick={() => onPrintOrden(booking.id)}
+              >
+                🖨️ Comprobante
+              </Button>
+            )}
+            {onPrintEtiqueta && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                disabled={printBusyId === booking.id}
+                title="Imprimir la etiqueta para el equipo (58mm)"
+                onClick={() => onPrintEtiqueta(booking.id)}
+              >
+                🏷️ Etiqueta
+              </Button>
+            )}
+            {onExtendDelivery && booking.status !== "cancelled" && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                title="Prorrogar la fecha de entrega y avisar al cliente"
+                onClick={() => onExtendDelivery(booking)}
+              >
+                📅 Prorrogar entrega
+              </Button>
+            )}
+            {onCobroBooking && (servicePrice > 0 || depositPaid > 0) && booking.status !== "cancelled" && (
+              <Button
+                size="sm"
+                className="h-7 text-xs"
+                disabled={cobroOpenId === booking.id}
+                onClick={() => onCobroBooking(booking.id)}
+              >
+                {cobroOpenId === booking.id ? "Cobrando…" : "💰 Cobrar servicio"}
+              </Button>
+            )}
+          </>
+        )}
+        {booking.status === "completed" && !isOrder && (
           <>
             <Button
               size="sm"
@@ -321,7 +447,7 @@ export function BookingCard({
             )}
           </>
         )}
-        {(booking.status === "pending" || booking.status === "confirmed" || booking.status === "completed") && (
+        {actionStatuses.includes(booking.status) && (
           <Button
             size="sm"
             variant="outline"
@@ -332,7 +458,7 @@ export function BookingCard({
             📋 Ficha
           </Button>
         )}
-        {(booking.status === "pending" || booking.status === "confirmed" || booking.status === "completed") && onEditBooking && (
+        {actionStatuses.includes(booking.status) && onEditBooking && (
           <Button
             size="sm"
             variant="outline"
@@ -343,7 +469,7 @@ export function BookingCard({
             ✏️ Editar
           </Button>
         )}
-        {(booking.status === "pending" || booking.status === "confirmed") && (
+        {!isOrder && (booking.status === "pending" || booking.status === "confirmed") && (
           <>
             <Button
               size="sm"

@@ -13,6 +13,19 @@ export async function GET(request: Request) {
   if (!vendor) return NextResponse.json({ bookings: [] });
 
   const { searchParams } = new URL(request.url);
+
+  // Probe de la rama de órdenes (migración migrate-work-orders.sql aplicada):
+  // el panel muestra "Nueva orden" solo si la columna `kind` existe.
+  if (searchParams.get("kindProbe") === "1") {
+    const row = await queryOne<{ ok: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = 'bookings' AND column_name = 'kind'
+       ) AS ok`
+    ).catch(() => ({ ok: false }));
+    return NextResponse.json({ ordersEnabled: row?.ok === true });
+  }
+
   const status = searchParams.get("status");
   const date = searchParams.get("date");
 

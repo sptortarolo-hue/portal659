@@ -66,7 +66,14 @@ export const POST = withRateLimit(async (request: Request) => {
   // En modo prueba no se consume tope.
   if (!isPreview) try {
     const quota = await getServiceQuota(vendorId);
-    if (quota.limit != null && quota.used >= quota.limit) throw new ServiceQuotaError();
+    if (quota.limit != null && quota.used >= quota.limit) {
+      // Cupo 0: el plan Gratuito (nuevo) no incluye turnera online.
+      throw new ServiceQuotaError(
+        quota.limit === 0
+          ? "Los turnos online son parte de los planes pagos. Escribile por WhatsApp."
+          : undefined
+      );
+    }
   } catch (e) {
     if (e instanceof ServiceQuotaError) {
       return NextResponse.json({ error: e.message }, { status: 429 });

@@ -3,22 +3,40 @@
 ## Modelo de planes
 
 El comercio **no paga por el software**, paga por **ordenarse y vender**. La escalera de
-planes acompaña el crecimiento: el gratuito es el gancho (carta + carrito con tope), y
-se paga cuando el negocio pide más.
+planes acompaña el crecimiento: el gratuito es la vidriera (gancho), y la venta online
+(carrito, pedidos, turnos) arranca en el plan pago de entrada.
+
+> **Precios vigentes (fuente de verdad: tabla `plans` en VPS, editable en `/admin/planes`):**
+> Gratuito **$0** · Básico (slug `pedidos`) **$10.000/mes** · Gestión integral **$20.000/mes** ·
+> Oficios (solo servicios) **$5.000/mes**.
 
 | Plan | Precio | Productos | Pedidos/mes (app) | Solicitudes/mes (servicios) | Features clave |
 |---|---|---|---|---|---|
-| **Gratuito** | $0 | Carta completa (ilimitado) | **20** (configurable) | **5** (configurable) | micrositio + QR + carrito + checkout por WhatsApp |
-| **Pedidos** | $4.990 | ilimitado | ilimitado | — | + analytics 7 días + gestión de reseñas |
-| **Gestión integral** | $12.990 | ilimitado | ilimitado | — | + POS (Mostrador) + Mesas + Comanda (KDS) + impresión + cobro online + **Preparación y Costo (escandallo)** |
-| **Oficios** | $2.990 | — | — | ilimitado | cotización con precio + seña MP + urgencia con recargo + reseñas + destacado + analytics 30 días |
-| **Estética gratis** | $0 | vidriera + online | **5 pedidos** | **10 solicitudes** | turnera por servicio + profesional con control de solape + packs de sesiones + ficha con alergias + checkout de productos |
-| **Estética fase 3** | — | — | — | — | comisiones por profesional (reporte) + giftcards + rebooking + cumpleaños + multi-sede light + Stripe Connect (señas con tarjeta a la cuenta del comercio) |
+| **Gratuito (vidriera)** | $0 | **hasta 10** | **0** | **0** | micrositio + QR + contacto por WhatsApp (sin carrito, sin pedidos ni turnos online) |
+| **Básico** (slug `pedidos`) | $10.000 | ilimitado | ilimitado | — | carrito + checkout, analytics 7 días, gestión de reseñas, seña MP; en estética "Turnera", en talleres "Taller" |
+| **Gestión integral** | $20.000 | ilimitado | ilimitado | — | + POS (Mostrador) + Caja + Clientes + impresión + Pantallas TV + analytics ilimitado; gastro suma Mesas, Comanda (KDS) y **Preparación y Costo (escandallo)** |
+| **Oficios** | $5.000 | — | — | ilimitado | solo servicios: cotización con precio + seña MP + urgencia con recargo + reseñas + destacado + analytics 30 días |
 
-Reglas:
+### Gratuito vidriera + grandfathering (nov-2026)
 
-- **Gastronomía y comercio** compran Pedidos/Gestión; **servicios** solo Oficios;
-  **estética** es híbrida: Oficios (turnera) o Pedidos/Gestión (venta de productos,
+Desde `migrate-plans-gratuito-vidriera.sql` el Gratuito **ya no incluye carrito ni
+venta online**: es ficha + vidriera de hasta 10 productos/servicios + WhatsApp. Los
+comercios **ya activos** en Gratuito no pierden nada: se los movió a la fila histórica
+**`gratuito_legacy`** (copia congelada del gratuito anterior, con carrito y topes), y
+`resolveVendorPlan` (`LEGACY_FREE_SLUG` en `src/lib/plans.ts`) resuelve sus features y
+límites desde esa fila. Reglas:
+
+- Altas nuevas: gratuito sin carrito (`max_orders_month = 0`, `max_quotes_month = 0`,
+  `max_products = 10` en la fila). El API de pedidos rechaza por `can("cart") = false`
+  y los turnos/presupuestos online por cupo 0 (el micrositio oculta los formularios).
+- Plan pago vencido: cae al gratuito nuevo (se bloquea lo pago, no se corta la app).
+- `gratuito_legacy` **no es contratable** (no aparece en `/planes`, en
+  `/vendor/suscripcion` ni en `pay`/`activate`/`renew`): solo gobierna a los abuelos.
+
+Reglas (histórico):
+
+- **Gastronomía y comercio** compran Básico/Gestión; **servicios** solo Oficios;
+  **estética** es híbrida: Básico (Turnera) o Gestión integral (venta de productos,
   fase 3)
   (`eligibleForPaid` en `src/lib/plans.ts`; `pay`/`activate` lo enforcean por vertical).
 - No-gastro sin plan (salud/otros) queda en `Gratuito` como ficha de **contacto**.
@@ -35,7 +53,8 @@ Reglas:
 
 - Tabla `plans`: `price_monthly`, `max_products`, **`max_orders_month`**, **`max_quotes_month`**, `features`
   (jsonb), `description`, `badge`, `popular`, `sort`, `promo_*`.
-- `max_orders_month`: **NULL = ilimitado**. El `gratuito` trae `20` por defecto.
+- `max_orders_month`: **NULL = ilimitado**, **0 = sin cupo**. El `gratuito` nuevo trae `0`
+  (vidriera, sin venta online); Básico y Gestión, `NULL`.
 - `max_quotes_month`: tope combinado presupuestos + turnos no cancelados del mes (solo
   rige para servicios). El `gratuito` trae `5`; Oficios trae `NULL`.
 - Fallbacks en `src/lib/plans.ts`: `GRATUITO_FEATURES` (contacto, no-gastro),

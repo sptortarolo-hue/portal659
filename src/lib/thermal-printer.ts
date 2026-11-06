@@ -41,7 +41,9 @@ export type PrintJobType =
   | "cash_snapshot"
   | "presupuesto"
   | "label"
-  | "shipment_label";
+  | "shipment_label"
+  | "orden"
+  | "orden_tag";
 
 /** Oblea de envío extendido (Portal 659 Envíos) para impresión térmica. */
 export type ShipmentLabelData = {
@@ -58,6 +60,28 @@ export type ShipmentLabelData = {
 }
 
 /** Datos del presupuesto de oficio para impresión térmica. */
+/** Comprobante de orden de servicio (recepción de taller) para impresión térmica. */
+export type WorkOrderPrintData = {
+  order_no: number | null;
+  customer_name: string;
+  customer_phone: string | null;
+  /** "🚲 Bicicleta Scott XT · Rodado 29 · N° ABC123" (etiqueta del equipo). */
+  equipment_label: string | null;
+  /** Falla declarada por el cliente. */
+  declared_issue: string | null;
+  /** Diagnóstico del taller (opcional). */
+  diagnosis: string | null;
+  /** Fecha de ingreso (hoy). */
+  intake_date: string;
+  /** Fecha de entrega estimada (sin hora). */
+  delivery_date: string | null;
+  /** Seña cargada (se cobra por MP o al retirar). */
+  deposit_amount: number | null;
+  deposit_paid: boolean;
+  /** Precio acordado (si ya está definido). */
+  price: number | null;
+};
+
 /** Datos del presupuesto de oficio para impresión térmica. */
 export type QuotePrintData = {
   customer_name: string;
@@ -2026,6 +2050,195 @@ export async function printPresupuesto(
   }
 }
 
+/** Fecha larga AR ("06/11/2026") para documentos del taller. */
+function fmtOrdenDate(iso: string | null | undefined): string {
+  if (!iso) return "a convenir";
+  const d = new Date(`${String(iso).slice(0, 10)}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return "a convenir";
+  return d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+/**
+ * Comprobante de la orden de servicio para el CLIENTE (80mm):
+ * encabezado con logo, N° de orden, cliente, equipo, falla declarada,
+ * diagnóstico, fechas (ingreso y entrega, sin hora) y seña/precio si hay.
+ */
+async function composeOrden(
+  printer: any,
+  vendor: PrinterVendor,
+  o: WorkOrderPrintData
+): Promise<void> {
+  const width = vendor.paper_size === "58mm" ? 32 : 48;
+  const separator = separatorFor(width);
+
+  printer.alignCenter();
+  await composeStoreHeader(printer, vendor, width);
+  printer.bold(true);
+  printer.setTextSize(1, 1);
+  printer.println(`ORDEN DE SERVICIO N° ${Number(o.order_no) || "—"}`);
+  printer.setTextSize(0, 0);
+  printer.bold(false);
+  printer.println("(no es comprobante fiscal)");
+  printer.println(separator);
+
+  printer.alignLeft();
+  printer.println(`Ingreso: ${fmtOrdenDate(o.intake_date)}`);
+  printer.bold(true);
+  printer.println(`Entrega estimada: ${fmtOrdenDate(o.delivery_date)}`);
+  printer.bold(false);
+  printer.println(separator);
+
+  printer.println(`Cliente: ${o.customer_name}`);
+  if (o.customer_phone) printer.println(`Tel: ${o.customer_phone}`);
+  if (o.equipment_label) {
+    printer.println("");
+    printer.bold(true);
+    printer.println("EQUIPO");
+    printer.bold(false);
+    printer.println(o.equipment_label);
+  }
+  if (o.declared_issue) {
+    printer.println("");
+    printer.bold(true);
+    printer.println("TRABAJO DECLARADO");
+    printer.bold(false);
+    printer.println(o.declared_issue);
+  }
+  if (o.diagnosis) {
+    printer.println("");
+    printer.bold(true);
+    printer.println("DIAGNOSTICO");
+    printer.bold(false);
+    printer.println(o.diagnosis);
+  }
+
+  printer.println("");
+  printer.println(separator);
+  if (o.price != null && Number(o.price) > 0) {
+    printer.alignRight();
+    printer.bold(true);
+    printer.println(`PRESUPUESTO: $${Number(o.price).toLocaleString("es-AR")}`);
+    printer.bold(false);
+    printer.alignLeft();
+  }
+  if (o.deposit_amount != null && Number(o.deposit_amount) > 0) {
+    printer.println(o.deposit_paid ? "Seña abonada ✅" : "Seña a abonar al retirar");
+    printer.println(`$${Number(o.deposit_amount).toLocaleString("es-AR")}`);
+  }
+  printer.println("");
+  printer.println("Conserve este comprobante para retirar su equipo.");
+  printer.println("Portal 659 · www.portal659.com.ar");
+  printer.println("");
+  printer.cut();
+}
+
+/**
+ * Etiqueta para el ELEMENTO (58mm): N° de orden grande + cliente + equipo +
+ * falla corta + fecha de entrega. Mínima tinta, para atar/pegar en la bici.
+ */
+async function composeOrdenTag(
+  printer: any,
+  vendor: PrinterVendor,
+  o: WorkOrderPrintData
+): Promise<void> {
+  const width = vendor.paper_size === "58mm" ? 32 : 48;
+  const separator = separatorFor(width);
+
+  printer.alignCenter();
+  printer.bold(true);
+  printer.setTextSize(2, 2);
+  printer.println(`N° ${Number(o.order_no) || "—"}`);
+  printer.setTextSize(0, 0);
+  printer.bold(false);
+  printer.println(separator);
+
+  printer.alignLeft();
+  const name = o.customer_name.length > width ? `${o.customer_name.slice(0, width - 1)}…` : o.customer_name;
+  printer.println(name);
+  if (o.equipment_label) {
+    const eq = o.equipment_label.length > width * 2 ? `${o.equipment_label.slice(0, width * 2)}…` : o.equipment_label;
+    printer.println(eq);
+  }
+  if (o.declared_issue) {
+    printer.bold(true);
+    printer.println("Falla:");
+    printer.bold(false);
+    printer.println(o.declared_issue);
+  }
+  printer.println(separator);
+  printer.bold(true);
+  printer.println(`Entrega: ${fmtOrdenDate(o.delivery_date)}`);
+  printer.bold(false);
+  if (vendor.store_name) printer.println(String(vendor.store_name));
+  printer.println("");
+  printer.alignCenter();
+  printer.println("Portal 659");
+  printer.println("");
+  printer.cut();
+}
+
+export async function printOrden(
+  vendor: PrinterVendor,
+  o: WorkOrderPrintData
+): Promise<{ success: boolean; error?: string }> {
+  const res = await createPrinter(vendor);
+  if (!res.ok) return { success: false, error: res.error };
+  if (!vendor.printer_ip) return { success: false, error: "IP de impresora no configurada" };
+  try {
+    await composeOrden(res.printer, vendor, o);
+    await res.printer.execute();
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: errorMsg(e) };
+  }
+}
+
+export async function printOrdenTag(
+  vendor: PrinterVendor,
+  o: WorkOrderPrintData
+): Promise<{ success: boolean; error?: string }> {
+  const res = await createPrinter(vendor);
+  if (!res.ok) return { success: false, error: res.error };
+  if (!vendor.printer_ip) return { success: false, error: "IP de impresora no configurada" };
+  try {
+    await composeOrdenTag(res.printer, vendor, o);
+    await res.printer.execute();
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: errorMsg(e) };
+  }
+}
+
+export async function buildOrdenBuffer(
+  vendor: PrinterVendor,
+  o: WorkOrderPrintData
+): Promise<BufferResult> {
+  const res = await createPrinter(vendor);
+  if (!res.ok) return { success: false, error: res.error };
+  try {
+    await composeOrden(res.printer, vendor, o);
+    const buffer = (await res.printer.getBuffer()) as Buffer;
+    return { success: true, buffer };
+  } catch (e) {
+    return { success: false, error: errorMsg(e) };
+  }
+}
+
+export async function buildOrdenTagBuffer(
+  vendor: PrinterVendor,
+  o: WorkOrderPrintData
+): Promise<BufferResult> {
+  const res = await createPrinter(vendor);
+  if (!res.ok) return { success: false, error: res.error };
+  try {
+    await composeOrdenTag(res.printer, vendor, o);
+    const buffer = (await res.printer.getBuffer()) as Buffer;
+    return { success: true, buffer };
+  } catch (e) {
+    return { success: false, error: errorMsg(e) };
+  }
+}
+
 export async function buildPresupuestoBuffer(
   vendor: PrinterVendor,
   quote: QuotePrintData
@@ -2290,6 +2503,8 @@ export async function dispatchPrint(params: {
     label?: LabelPrintData;
     /** Oblea de envío extendido (Portal 659 Envíos): código + QR + destino. */
     shipmentLabel?: ShipmentLabelData;
+    /** Orden de servicio (taller): comprobante del cliente / etiqueta del equipo. */
+    workOrder?: WorkOrderPrintData;
     /** Factura electrónica ARCA (bloque fiscal con CAE + QR en ticket). */
     fiscal?: FiscalPrintInfo | null;
   };
@@ -2390,6 +2605,22 @@ export async function dispatchPrint(params: {
     }
     if (!vendor.printer_ip) return { ok: true, mode, skipped: true };
     const r = await printShipmentLabel(vendor, label);
+    return { ok: r.success, mode, error: r.error };
+  }
+
+  // Órdenes de servicio (taller): comprobante del cliente y etiqueta del
+  // equipo. No son pedidos: igual que el presupuesto, imprime datos propios.
+  if (params.type === "orden" || params.type === "orden_tag") {
+    const o = params.extra?.workOrder;
+    if (!o) return { ok: false, mode, error: "Orden requerida" };
+    if (mode === "app" || mode === "usb") {
+      const built = params.type === "orden" ? await buildOrdenBuffer(vendor, o) : await buildOrdenTagBuffer(vendor, o);
+      if (!built.success) return { ok: false, mode, error: built.error };
+      const pushed = await pushToBridge(vendor.print_token, bridgeJob(params.type, built.buffer, vendor));
+      return { ok: pushed.ok, mode, offline: pushed.offline, error: pushed.error, printerIpUsed: pushed.printerIpUsed ?? null, autoFixed: pushed.autoFixed === true };
+    }
+    if (!vendor.printer_ip) return { ok: true, mode, skipped: true };
+    const r = params.type === "orden" ? await printOrden(vendor, o) : await printOrdenTag(vendor, o);
     return { ok: r.success, mode, error: r.error };
   }
 

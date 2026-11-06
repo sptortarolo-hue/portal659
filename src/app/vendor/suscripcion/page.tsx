@@ -110,13 +110,21 @@ type MeResponse = {
 };
 
 const PLAN_COPY: Record<string, { title: string; desc: string }> = {
+  gratuito: {
+    title: "Gratuito",
+    desc: "Vidriera de tu barrio: hasta 10 productos o servicios + contacto directo por WhatsApp. Sin carrito, sin pedidos online y sin turnos online.",
+  },
+  gratuito_legacy: {
+    title: "Gratuito",
+    desc: "Plan gratuito anterior al cambio de modelo: conserva el carrito y los topes con los que arrancaste.",
+  },
   pedidos: {
-    title: "Pedidos",
-    desc: "Pedidos por la app sin límite mensual, analytics y gestión de reseñas.",
+    title: "Básico",
+    desc: "Vendé online: carrito y pedidos ilimitados, analítica 7 días, seña por Mercado Pago y gestión de reseñas.",
   },
   gestion: {
     title: "Gestión integral",
-    desc: "Todo lo de Pedidos, más cobro online, mostrador, caja, clientes e impresión (gastro suma comanda y mesas).",
+    desc: "Todo lo de Básico, más cobro online, mostrador, caja, clientes e impresión (gastro suma comanda y mesas).",
   },
   oficios: {
     title: "Oficios",
@@ -657,7 +665,8 @@ export default function VendorSuscripcionPage() {
               {eff.eligibleForPaid && (
                 <div className="grid sm:grid-cols-2 gap-3">
                   {me.plans
-                    .filter((p) => p.slug !== "gratuito")
+                    // La fila histórica del gratuito (grandfathering) no es contratable.
+                    .filter((p) => p.slug !== "gratuito" && String(p.slug) !== "gratuito_legacy")
                     // Oficios ya no se ofrece a estética; solo ve su card quien ya lo tiene.
                     .filter((p) => process.env.NODE_ENV === "development" ? true : (me.vertical === "servicio" ? p.slug === "oficios" : p.slug !== "oficios" || eff.slug === "oficios"))
                     .map((plan) => {

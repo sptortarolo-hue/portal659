@@ -29,7 +29,14 @@ export const POST = withRateLimit(async (request: Request) => {
   // Tope mensual del plan gratuito (5 solicitudes combinadas). 429 si se alcanza.
   if (!isPreview) try {
     const quota = await getServiceQuota(vendorId);
-    if (quota.limit != null && quota.used >= quota.limit) throw new ServiceQuotaError();
+    if (quota.limit != null && quota.used >= quota.limit) {
+      // Cupo 0: el plan Gratuito (nuevo) no incluye presupuestos online.
+      throw new ServiceQuotaError(
+        quota.limit === 0
+          ? "Las consultas y presupuestos online son parte de los planes pagos. Escribile por WhatsApp."
+          : undefined
+      );
+    }
   } catch (e) {
     if (e instanceof ServiceQuotaError) {
       return NextResponse.json({ error: e.message }, { status: 429 });

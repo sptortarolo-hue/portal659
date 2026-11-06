@@ -147,6 +147,81 @@ export async function POST(request: Request) {
   });
   }
 
+  // Órdenes de servicio (taller): comprobante del cliente (80mm) o etiqueta
+  // del equipo (58mm). Gate de impresión normal (Gestión) —ver arriba—, igual
+  // que el resto de los documentos del comercio.
+  if (type === "orden" || type === "orden_tag") {
+    const bookingId = body.bookingId;
+    if (!bookingId) {
+      return NextResponse.json({ ok: false, error: "bookingId requerido" }, { status: 400 });
+    }
+    const order = await queryOne<{
+      id: string;
+      kind: string | null;
+      work_order_no: number | null;
+      customer_name: string | null;
+      customer_phone: string | null;
+      booking_date: string;
+      delivery_date: string | null;
+      declared_issue: string | null;
+      diagnosis: string | null;
+      deposit_amount: number | null;
+      deposit_status: string | null;
+      service_price: number | null;
+      equipment_brand: string | null;
+      equipment_model: string | null;
+      equipment_identifier: string | null;
+      equipment_rodado: string | null;
+      equipment_color: string | null;
+    }>(
+      `SELECT b.id, b.kind, b.work_order_no, b.customer_name, b.customer_phone,
+              b.booking_date::text AS booking_date, b.delivery_date::text AS delivery_date,
+              b.declared_issue, b.diagnosis, b.deposit_amount, b.deposit_status, b.service_price,
+              e.brand AS equipment_brand, e.model AS equipment_model, e.identifier AS equipment_identifier,
+              e.rodado AS equipment_rodado, e.color AS equipment_color
+         FROM bookings b
+         LEFT JOIN equipment e ON e.id = b.equipment_id
+        WHERE b.id = $1 AND b.vendor_id = $2 LIMIT 1`,
+      [bookingId, vendor.id]
+    ).catch(() => undefined);
+    if (!order) {
+      return NextResponse.json({ ok: false, error: "Orden no encontrada" }, { status: 404 });
+    }
+    if (order.kind !== "orden") {
+      return NextResponse.json({ ok: false, error: "Esa reserva no es una orden de servicio" }, { status: 400 });
+    }
+    const eqParts = [
+      [order.equipment_brand, order.equipment_model].filter(Boolean).join(" ") || null,
+      order.equipment_rodado ? `Rodado ${order.equipment_rodado}` : null,
+      order.equipment_identifier ? `N° ${order.equipment_identifier}` : null,
+      order.equipment_color,
+    ].filter(Boolean) as string[];
+    const result = await dispatchPrint({
+      vendor,
+      type,
+      extra: {
+        workOrder: {
+          order_no: order.work_order_no != null ? Number(order.work_order_no) : null,
+          customer_name: String(order.customer_name || ""),
+          customer_phone: (order.customer_phone as string) || null,
+          equipment_label: eqParts.length > 0 ? eqParts.join(" · ") : null,
+          declared_issue: (order.declared_issue as string) || null,
+          diagnosis: (order.diagnosis as string) || null,
+          intake_date: String(order.booking_date || ""),
+          delivery_date: order.delivery_date != null ? String(order.delivery_date) : null,
+          deposit_amount: order.deposit_amount != null ? Number(order.deposit_amount) : null,
+          deposit_paid: order.deposit_status === "paid",
+          price: order.service_price != null ? Number(order.service_price) : null,
+        },
+      },
+    });
+    await recordLastPrint(vendor.id, result);
+    return printResponse({
+      ...result,
+      ipFixed: await applyIpFix(vendor.id, vendor.printer_ip, result),
+    });
+  }
+
   // Presupuesto de oficio (servicios): imprime el cotizado guardado. Gatea por
   // quotes_respond (Oficios), no por impresora: el plomero imprime su
   // presupuesto aunque no tenga cocina ni POS.

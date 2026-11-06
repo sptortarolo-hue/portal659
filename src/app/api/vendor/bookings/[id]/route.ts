@@ -8,7 +8,20 @@ import { resolveEquipmentForWorkTx, hasEquipmentColumnTx } from "@/lib/equipment
 import { computeBookingWarnings, computeStartsEnds, isISODate, resolveBookingRefs, toMinutes } from "@/lib/vendor-booking";
 import { NextResponse } from "next/server";
 
-const VALID_STATUS = ["pending", "confirmed", "cancelled", "noshow"];
+const VALID_STATUS = [
+  "pending",
+  // Estados de la orden de servicio (taller): todos salteables desde el panel.
+  "diagnosed",
+  "quoted",
+  "approved",
+  "repairing",
+  "ready",
+  // Turnos / comunes.
+  "confirmed",
+  "completed",
+  "noshow",
+  "cancelled",
+];
 
 /** Campos que el panel puede editar de un turno existente. */
 const EDIT_FIELDS = [
@@ -108,10 +121,35 @@ export async function PATCH(
       : null;
   // Equipo (ficha del turno): enlaza equipment_id (del picker) o crea inline.
   const wantEquip = body?.equipment_id !== undefined || body?.equipment !== undefined;
+  // Orden de servicio (taller): la fila es kind='orden' (tolerante a migración
+  // sin aplicar: sin columna kind, todo sigue siendo turno).
+  const orderRow = await queryOne<{
+    kind: string | null;
+    delivery_date: string | null;
+    work_order_no: number | null;
+  }>(
+    `SELECT kind, delivery_date::text AS delivery_date, work_order_no
+     FROM bookings WHERE id = $1 LIMIT 1`,
+    [id]
+  ).catch(() => null);
+  const isOrder = orderRow?.kind === "orden";
+  // Campos propios de la orden: entrega, falla declarada y diagnóstico.
+  const wantOrderFields =
+    isOrder &&
+    (body?.delivery_date !== undefined || body?.declared_issue !== undefined || body?.diagnosis !== undefined);
+  const deliveryDateInput =
+    body?.delivery_date === "" || body?.delivery_date == null
+      ? null
+      : /^\d{4}-\d{2}-\d{2}$/.test(String(body?.delivery_date || ""))
+        ? String(body.delivery_date)
+        : "__invalid__";
+  if (isOrder && deliveryDateInput === "__invalid__") {
+    return NextResponse.json({ error: "Fecha de entrega inválida" }, { status: 400 });
+  }
   // Edición de campos del turno (reprogramar / cambiar servicio, profesional,
   // sede, cliente o notas). Puede combinarse con el cambio de estado.
   const wantsEdit = EDIT_FIELDS.some((k) => (body as Record<string, unknown>)[k] !== undefined);
-  if (!hasStatus && !wantProducts && !wantsEdit && !wantEquip) {
+  if (!hasStatus && !wantProducts && !wantsEdit && !wantEquip && !wantOrderFields) {
     return NextResponse.json({ error: "Nada para actualizar" }, { status: 400 });
   }
 
@@ -127,7 +165,7 @@ export async function PATCH(
     name: string;
     phone: string;
     date: string;
-    time: string;
+    time: string | null;
     durationMin: number;
     bufferMin: number;
     notes: string | null;
@@ -147,8 +185,18 @@ export async function PATCH(
     const date = body.booking_date !== undefined ? String(body.booking_date ?? "").trim() : toISODate(cur.booking_date);
     const time = (body.booking_time !== undefined ? String(body.booking_time ?? "").trim() : String(cur.booking_time || "")).slice(0, 5);
     const notes = body.notes !== undefined ? String(body.notes ?? "").trim().slice(0, 2000) || null : (cur.notes ?? null);
-    if (!name || !phone || !isISODate(date) || toMinutes(time) == null) {
-      return NextResponse.json({ error: "Faltan cliente, teléfono o fecha/hora válida" }, { status: 400 });
+    // Cliente y teléfono siempre obligatorios (el chequeo directo también
+    // angosta el tipo de toE164 para el objeto de edición).
+    if (!name || !phone) {
+      return NextResponse.json({ error: "Faltan cliente o teléfono" }, { status: 400 });
+    }
+    // La orden no tiene hora: sólo exige cliente, teléfono y fecha de ingreso.
+    const baseOk = isOrder ? isISODate(date) : isISODate(date) && toMinutes(time) != null;
+    if (!baseOk) {
+      return NextResponse.json(
+        { error: isOrder ? "Faltan cliente, teléfono o fecha de ingreso válida" : "Faltan cliente, teléfono o fecha/hora válida" },
+        { status: 400 }
+      );
     }
     const refs = await resolveBookingRefs(vendor.id, {
       serviceId: body.service_id !== undefined ? body.service_id : (cur.service_id ?? null),
@@ -162,12 +210,13 @@ export async function PATCH(
         : body.service_id !== undefined
           ? refs.serviceName
           : (cur.product_name ?? null);
-    const { startsAt, endsAt } = computeStartsEnds(date, time, refs.durationMin, refs.bufferMin);
+    const { startsAt, endsAt } = isOrder ? { startsAt: null, endsAt: null } : computeStartsEnds(date, time, refs.durationMin, refs.bufferMin);
     edit = {
       name,
       phone,
       date,
-      time,
+      // La orden no tiene hora: NULL explícito (un "" rompería el type time).
+      time: isOrder ? null : time,
       durationMin: refs.durationMin,
       bufferMin: refs.bufferMin,
       notes,
@@ -179,7 +228,8 @@ export async function PATCH(
       snapshotCommission: refs.snapshotCommission,
       startsAt,
       endsAt,
-      changedWhen: date !== toISODate(cur.booking_date) || time !== String(cur.booking_time || "").slice(0, 5),
+      changedWhen:
+        date !== toISODate(cur.booking_date) || (!!time && time !== String(cur.booking_time || "").slice(0, 5)),
     };
   }
   // Ausente solo si la fecha ya pasó (regla Fresha).
@@ -202,10 +252,13 @@ export async function PATCH(
   // o marcar ausente un turno contado lo resta. Futuros no cuentan todavía.
   // Los turnos de prueba nunca tocan el libro.
   const isPreviewBooking = await isPreviewRow("bookings", id);
+  // El libro de clientes: un turno contado al confirmarse (fecha pasada); una
+  // orden de servicio sólo cuenta cuando se ENTREGA (no al recibirla).
+  const countState = isOrder ? "completed" : "confirmed";
   const wasCounted =
-    !isPreviewBooking && existing.status === "confirmed" && existing.booking_date <= todayAR();
+    !isPreviewBooking && existing.status === countState && (isOrder || existing.booking_date <= todayAR());
   const willCount =
-    !isPreviewBooking && status === "confirmed" && existing.booking_date <= todayAR();
+    !isPreviewBooking && status === countState && (isOrder || existing.booking_date <= todayAR());
   // Seña a retener: solo si la política es forfeit y la seña está pagada.
   const forfeitDeposit =
     status === "noshow" && noshowPolicy === "forfeit" && existing.deposit_status === "paid";
@@ -224,6 +277,31 @@ export async function PATCH(
           // Sin 'forfeited' en el CHECK (migración pendiente): la seña queda
           // pagada igual (el comercio ya la tiene), solo se informa.
           consequence = "Seña pagada: queda en tu cuenta (falta migración para marcarla retenida)";
+        }
+      }
+      if (wantOrderFields) {
+        // Tolerante: hasColumn primero (nunca lanza) — un catch dentro de la tx
+        // la envenenaría (25P02) y fallarían las queries siguientes.
+        const colRows = await tx.query<{ column_name: string }>(
+          `SELECT column_name FROM information_schema.columns
+           WHERE table_schema = 'public' AND table_name = 'bookings'`,
+          []
+        );
+        const has = new Set((colRows || []).map((r) => String(r.column_name)));
+        if (body?.delivery_date !== undefined && has.has("delivery_date")) {
+          await tx.queryVoid(`UPDATE bookings SET delivery_date = $1 WHERE id = $2`, [deliveryDateInput, id]);
+        }
+        if (body?.declared_issue !== undefined && has.has("declared_issue")) {
+          await tx.queryVoid(
+            `UPDATE bookings SET declared_issue = $1 WHERE id = $2`,
+            [String(body.declared_issue || "").trim().slice(0, 1000) || null, id]
+          );
+        }
+        if (body?.diagnosis !== undefined && has.has("diagnosis")) {
+          await tx.queryVoid(
+            `UPDATE bookings SET diagnosis = $1 WHERE id = $2`,
+            [String(body.diagnosis || "").trim().slice(0, 1000) || null, id]
+          );
         }
       }
       if (wantEquip) {
@@ -288,6 +366,13 @@ export async function PATCH(
     });
   } catch (e) {
     const emsg = (e as Error)?.message || "";
+    // Estados de orden sin el CHECK nuevo (migración pendiente).
+    if (["diagnosed", "quoted", "approved", "repairing", "ready"].includes(status) && /check|constraint|violates/i.test(emsg)) {
+      return NextResponse.json(
+        { error: "Falta aplicar la migración migrate-work-orders.sql en la base" },
+        { status: 503 }
+      );
+    }
     // Columna status sin 'noshow' (migración pendiente).
     if (status === "noshow" && /check|constraint|noshow|status/i.test(emsg)) {
       return NextResponse.json(
@@ -321,32 +406,37 @@ export async function PATCH(
 
   // Aviso al cliente (push si tiene cuenta con ese teléfono; si no, el vendor
   // usa el link de WhatsApp de la agenda). Best-effort, no bloquea.
-  if (status === "confirmed" || status === "cancelled") {
+  if (status === "confirmed" || status === "cancelled" || (isOrder && status === "ready")) {
     const phone = booking?.customer_phone as string | undefined;
     const when = `${booking?.booking_date || ""} ${booking?.booking_time || ""}`.trim();
+    const orderNo = booking?.work_order_no;
     await notifyServiceClient(phone, {
-      title: status === "confirmed" ? "Turno confirmado ✅" : "Turno cancelado",
+      title: isOrder && status === "ready" ? "¡Tu equipo está listo! 🛠️" : status === "confirmed" ? "Turno confirmado ✅" : "Turno cancelado",
       body:
-        status === "confirmed"
-          ? `Tu turno${when ? ` del ${when}` : ""} fue confirmado.`
-          : `Tu turno${when ? ` del ${when}` : ""} fue cancelado. Escribinos por WhatsApp para reprogramar.`,
+        isOrder && status === "ready"
+          ? `La orden N° ${Number(orderNo) || "—"} ya está lista para retirar.`
+          : status === "confirmed"
+            ? `Tu turno${when ? ` del ${when}` : ""} fue confirmado.`
+            : `Tu turno${when ? ` del ${when}` : ""} fue cancelado. Escribinos por WhatsApp para reprogramar.`,
     });
   }
 
   // Reprogramación: avisa al cliente (best-effort) si cambió fecha u hora.
   if (edit?.changedWhen && status !== "cancelled") {
     await notifyServiceClient(edit.phone, {
-      title: "Turno reprogramado 🗓️",
-      body: `Tu turno ahora es el ${edit.date} a las ${edit.time}. Si no te queda bien, escribinos por WhatsApp.`,
+      title: isOrder ? "Orden actualizada 🛠️" : "Turno reprogramado 🗓️",
+      body: isOrder
+        ? `Tu orden se ingresó el ${edit.date}. Si tenés dudas, escribinos por WhatsApp.`
+        : `Tu turno ahora es el ${edit.date} a las ${edit.time}. Si no te queda bien, escribinos por WhatsApp.`,
     });
   }
 
   // Avisos de solape / día bloqueado / fuera de agenda (no bloquean, igual que
   // al crear). Excluye el propio turno al buscar solape.
-  const warnings = edit
+  const warnings = edit && !isOrder
     ? await computeBookingWarnings(vendor.id, {
         dateISO: edit.date,
-        time: edit.time,
+        time: edit.time || "",
         durationMin: edit.durationMin,
         bufferMin: edit.bufferMin,
         staffId: edit.staffId,

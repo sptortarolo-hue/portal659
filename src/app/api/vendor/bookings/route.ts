@@ -87,7 +87,7 @@ export async function POST(request: Request) {
   if (!gate.ok) {
     return NextResponse.json({ error: gate.error }, { status: gate.status });
   }
-  if (gate.vendor.vertical !== "servicio" && (gate.vendor.vertical !== "estetica" && gate.vendor.vertical !== "taller")) {
+  if (gate.vendor.vertical !== "servicio" && (gate.vendor.vertical !== "estetica" && gate.vendor.vertical !== "salud" && gate.vendor.vertical !== "taller")) {
     return NextResponse.json({ error: "Solo disponible para servicios, estética y talleres" }, { status: 403 });
   }
 

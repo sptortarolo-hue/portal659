@@ -25,7 +25,7 @@ export async function getServiceQuota(vendorId: string): Promise<{
   // verticales no usan quotes/bookings como canal de venta). El límite sale del
   // plan efectivo: servicio lee max_quotes_month de la fila; el híbrido gratis
   // usa su tope propio (ESTETICA_FREE_QUOTES_MONTH / TALLER_FREE_QUOTES_MONTH).
-  if ((vendorRow?.vertical as string) !== "servicio" && (vendorRow?.vertical as string) !== "estetica" && (vendorRow?.vertical as string) !== "taller") {
+  if ((vendorRow?.vertical as string) !== "servicio" && (vendorRow?.vertical as string) !== "estetica" && (vendorRow?.vertical as string) !== "salud" && (vendorRow?.vertical as string) !== "taller") {
     return { used: 0, limit: null, planSlug: plan.slug };
   }
   const limit = plan.maxQuotesMonth;

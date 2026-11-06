@@ -52,6 +52,7 @@ const VERTICAL_OPTIONS = [
 
 const CATEGORY_SUGGESTIONS: Record<string, string[]> = {
   estetica: ["peluquería", "barbería", "uñas", "pestañas", "cejas", "masajes", "depilación", "maquillaje", "facial", "corporal", "otros"],
+  salud: ["reiki", "tarot", "videncia", "mesa cuántica", "coaching", "terapia holística", "meditación", "masajes", "yoga", "astrología", "otros"],
   taller: ["bicicletería", "bicicletas", "servicio técnico", "servicio técnico celulares", "servicio técnico electrodomésticos", "electrodomésticos", "gomería", "reparación de calzado", "reparación", "taller mecánico", "cerrajería", "otros"],
   otro: ["otros"],
 };

@@ -122,8 +122,6 @@ export async function PATCH(
   if ("visibility" in clean && !["hidden", "private", "public"].includes(clean.visibility as string)) {
     return NextResponse.json({ error: "Visibilidad inválida" }, { status: 400 });
   }
-  // "salud" legacy va a comercio (su modelo real).
-  if (clean.vertical === "salud") clean.vertical = "comercio";
   const cols = Object.keys(clean);
   if (cols.length === 0) return NextResponse.json({ ok: true });
   await query(`UPDATE vendors SET ${buildSetClauses(clean)} WHERE id = $1`, buildValues(id, clean));

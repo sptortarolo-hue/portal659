@@ -130,6 +130,14 @@ const PLAN_COPY: Record<string, { title: string; desc: string }> = {
     title: "Turnera",
     desc: "Turnera libre: consultas y turnos ilimitados + pedidos online ilimitados, reseñas, cotización con precio y seña por Mercado Pago.",
   },
+  pedidos_salud: {
+    title: "Turnera",
+    desc: "Turnera libre: consultas y turnos ilimitados + pedidos online ilimitados, reseñas, cotización con precio y seña por Mercado Pago.",
+  },
+  oficios_salud: {
+    title: "Oficios",
+    desc: "Solicitudes ilimitadas, cotización con precio, seña online y reseñas.",
+  },
   pedidos_taller: {
     title: "Taller",
     desc: "Turnera libre: presupuestos y turnos ilimitados + pedidos online ilimitados, reseñas, cotización con precio (partidas o cerrado) y seña por Mercado Pago.",
@@ -138,7 +146,7 @@ const PLAN_COPY: Record<string, { title: string; desc: string }> = {
 
 /** Copy por vertical: `pedidos` se llama "Turnera" en estética y "Taller" en talleres. */
 function planCopyFor(slug: string, vertical: string | null | undefined): { title: string; desc: string } | undefined {
-  if (vertical === "estetica" || vertical === "taller") {
+  if (vertical === "estetica" || vertical === "salud" || vertical === "taller") {
     const verticalCopy = PLAN_COPY[`${slug}_${vertical}`];
     if (verticalCopy) return verticalCopy;
   }
@@ -480,7 +488,7 @@ export default function VendorSuscripcionPage() {
               Productos: {me.usage.products}
               {me.usage.maxProducts != null ? `/ ${me.usage.maxProducts}` : " · sin tope"}
             </span>
-            {(me.vertical === "servicio" || me.vertical === "estetica" || me.vertical === "taller") && (
+            {(me.vertical === "servicio" || me.vertical === "estetica" || me.vertical === "salud" || me.vertical === "taller") && (
               <span className="rounded-full bg-muted px-3 py-1 text-[11px] text-muted-foreground">
                 Solicitudes: {me.usage.quotesThisMonth}
                 {me.usage.maxQuotesMonth != null ? `/ ${me.usage.maxQuotesMonth}` : " · sin tope"}
@@ -616,9 +624,9 @@ export default function VendorSuscripcionPage() {
             max={me.usage.maxProducts}
             overLabel="Pasaste el límite: algunos productos quedaron ocultos hasta que bajes el nivel o subas de plan."
           />
-          {(me.vertical === "servicio" || me.vertical === "estetica" || me.vertical === "taller") && (
+          {(me.vertical === "servicio" || me.vertical === "estetica" || me.vertical === "salud" || me.vertical === "taller") && (
             <UsageBar
-              label={`Solicitudes este mes (${me.vertical === "estetica" ? "consultas + turnos" : "presupuestos + turnos"})`}
+              label={`Solicitudes este mes (${me.vertical === "estetica" || me.vertical === "salud" ? "consultas + turnos" : "presupuestos + turnos"})`}
               used={me.usage.quotesThisMonth}
               max={me.usage.maxQuotesMonth}
               overLabel="Llegaste al límite de solicitudes: con un plan pago son ilimitadas."

@@ -13,7 +13,7 @@ export async function PATCH(
     return NextResponse.json({ error: gate.error }, { status: gate.status });
   }
   const vendor = gate.vendor;
-  if ((vendor.vertical !== "estetica" && vendor.vertical !== "taller")) {
+  if ((vendor.vertical !== "estetica" && vendor.vertical !== "salud" && vendor.vertical !== "taller")) {
     return NextResponse.json({ error: "Solo disponible para estética y talleres" }, { status: 403 });
   }
   const { id } = await params;
@@ -111,7 +111,7 @@ export async function DELETE(
     return NextResponse.json({ error: gate.error }, { status: gate.status });
   }
   const vendor = gate.vendor;
-  if ((vendor.vertical !== "estetica" && vendor.vertical !== "taller")) {
+  if ((vendor.vertical !== "estetica" && vendor.vertical !== "salud" && vendor.vertical !== "taller")) {
     return NextResponse.json({ error: "Solo disponible para estética y talleres" }, { status: 403 });
   }
   const { id } = await params;

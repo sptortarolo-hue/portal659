@@ -11,7 +11,7 @@ export async function GET(request: Request) {
   const gate = await gateRequest(request);
   if (!gate.ok) return NextResponse.json({ services: [] });
   const vendor = gate.vendor;
-  if ((vendor.vertical !== "estetica" && vendor.vertical !== "taller")) return NextResponse.json({ services: [] });
+  if ((vendor.vertical !== "estetica" && vendor.vertical !== "salud" && vendor.vertical !== "taller")) return NextResponse.json({ services: [] });
   try {
     const services = await queryMany<Record<string, unknown>>(
       `SELECT * FROM services WHERE vendor_id = $1 ORDER BY position ASC, name ASC`,
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: gate.error }, { status: gate.status });
   }
   const vendor = gate.vendor;
-  if ((vendor.vertical !== "estetica" && vendor.vertical !== "taller")) {
+  if ((vendor.vertical !== "estetica" && vendor.vertical !== "salud" && vendor.vertical !== "taller")) {
     return NextResponse.json({ error: "Solo disponible para estética y talleres" }, { status: 403 });
   }
   const body = await request.json().catch(() => ({}));

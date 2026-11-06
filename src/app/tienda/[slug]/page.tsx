@@ -513,8 +513,9 @@ export default async function TiendaPage({
     shipZones = [];
   }
 
-  const isService = v.vertical === "servicio" || v.vertical === "estetica" || v.vertical === "taller";
-  const isEstetica = v.vertical === "estetica";
+  const isService = v.vertical === "servicio" || v.vertical === "estetica" || v.vertical === "salud" || v.vertical === "taller";
+  const isEstetica = v.vertical === "estetica" || v.vertical === "salud";
+  const isSalud = v.vertical === "salud";
   const isTaller = v.vertical === "taller";
   const isHybrid = isEstetica || isTaller;
   // Catálogo de servicios + profesionales (estética): turnera por servicio
@@ -751,7 +752,7 @@ export default async function TiendaPage({
           <>
             <div className="border border-border rounded-2xl p-8 text-center bg-card mb-6">
               <h2 className="font-display text-2xl font-semibold mb-2">
-                {rubroHeading || (isTaller ? "Taller del barrio" : isEstetica ? "Estética del barrio" : "Servicio del barrio")}
+                {rubroHeading || (isTaller ? "Taller del barrio" : isSalud ? "Bienestar del barrio" : isEstetica ? "Estética del barrio" : "Servicio del barrio")}
               </h2>
               {v.services_list && (
                 <p className="text-muted-foreground max-w-md mx-auto mb-2">

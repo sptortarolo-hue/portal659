@@ -60,7 +60,7 @@ export const POST = withRateLimit(async (request: Request) => {
 
   if (!isPreview && vendor?.user_id) {
     const desc = `${description.slice(0, 80)}${description.length > 80 ? "..." : ""}`;
-    const isEstetica = vendor.vertical === "estetica";
+    const isEstetica = vendor.vertical === "estetica" || vendor.vertical === "salud";
     await query(
       `INSERT INTO notifications (user_id, title, body, type, link)
        VALUES ($1, $2, $3, 'quote', '/vendor/dashboard')`,

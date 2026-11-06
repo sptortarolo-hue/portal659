@@ -104,7 +104,7 @@ export async function PATCH(
   if (quote && (update.status === "responded" || update.status === "accepted")) {
     const phone = quote.customer_phone as string | undefined;
     const price = update.quoted_price != null ? Number(update.quoted_price) : Number(quote.quoted_price) || null;
-    const isEstetica = gate.vendor.vertical === "estetica";
+    const isEstetica = gate.vendor.vertical === "estetica" || gate.vendor.vertical === "salud";
     await notifyServiceClient(phone, {
       title: update.status === "accepted"
         ? isEstetica ? "Consulta aceptada ✅" : "Presupuesto aceptado ✅"

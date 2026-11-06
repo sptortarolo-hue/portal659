@@ -50,7 +50,7 @@ export async function GET(request: Request) {
 
   // Solicitudes del mes (servicios, estética y talleres): consultas/presupuestos + turnos no cancelados.
   let quotesThisMonth = 0;
-  if (vendor.vertical === "servicio" || vendor.vertical === "estetica" || vendor.vertical === "taller") {
+  if (vendor.vertical === "servicio" || vendor.vertical === "estetica" || vendor.vertical === "salud" || vendor.vertical === "taller") {
     try {
       const [q, b] = await Promise.all([
         queryOne<{ c: number }>(
@@ -159,7 +159,7 @@ export async function GET(request: Request) {
   const projectedOrders =
     dayOfMonth > 0 ? Math.round((usage.ordersThisMonth / dayOfMonth) * daysInMonth) : usage.ordersThisMonth;
   const projectedQuotes =
-    vendor.vertical === "servicio" || vendor.vertical === "estetica" || vendor.vertical === "taller"
+    vendor.vertical === "servicio" || vendor.vertical === "estetica" || vendor.vertical === "salud" || vendor.vertical === "taller"
       ? dayOfMonth > 0
         ? Math.round((usage.quotesThisMonth / dayOfMonth) * daysInMonth)
         : usage.quotesThisMonth

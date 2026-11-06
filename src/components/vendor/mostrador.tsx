@@ -539,7 +539,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           const snap = await getCatalogSnapshot(vendorId);
           if (snap && !cancelled) {
             setCashPct(snap.cashPct);
-            setIsRetail(snap.vertical === "comercio" || snap.vertical === "moda" || snap.vertical === "estetica" || snap.vertical === "taller");
+            setIsRetail(snap.vertical === "comercio" || snap.vertical === "moda" || snap.vertical === "estetica" || snap.vertical === "salud" || snap.vertical === "taller");
             setModifiersMap((snap.modifiersByProduct || {}) as any);
             if (snap.variantsMap) setVariantsMap(snap.variantsMap as any);
             if (snap.combos) setComboMap(snap.combos as any);
@@ -562,9 +562,9 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         const pct = normalizeCashPct(me?.vendor?.cash_discount_pct);
         const vertical = (me?.vendor?.vertical as string | undefined) ?? null;
         setCashPct(pct);
-        setIsRetail(vertical === "comercio" || vertical === "moda" || vertical === "estetica" || vertical === "taller");
+        setIsRetail(vertical === "comercio" || vertical === "moda" || vertical === "estetica" || vertical === "salud" || vertical === "taller");
         // Retail: la venta directa es el caso común (retiro con pedido queda opcional).
-        if (vertical === "comercio" || vertical === "moda" || vertical === "estetica" || vertical === "taller") {
+        if (vertical === "comercio" || vertical === "moda" || vertical === "estetica" || vertical === "salud" || vertical === "taller") {
           setMethod((m) => (m === "pickup" ? "direct" : m));
         }
         // Config de envío por zona (espejo visual; el servidor resuelve).

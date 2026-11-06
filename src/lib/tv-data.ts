@@ -27,6 +27,7 @@ import {
   isModaVendor,
   isComercioVendor,
   isEsteticaVendor,
+  isSaludVendor,
 } from "./plans";
 import { getPortalSetting } from "./portal-settings";
 import { getSiteUrl } from "./site-url";
@@ -508,7 +509,8 @@ export async function buildTvSnapshot(
       (isGastroVendor(vendor) ||
         isModaVendor(vendor) ||
         isComercioVendor(vendor) ||
-        isEsteticaVendor(vendor));
+        isEsteticaVendor(vendor) ||
+        isSaludVendor(vendor));
     if (config.qr.enabled && sellsOnline && (await getPortalSetting("tv_qr_online"))) {
       const url = `${getSiteUrl()}/tienda/${vendor.slug}?menu=1`;
       const dataUrl = await QRCode.toDataURL(url, {

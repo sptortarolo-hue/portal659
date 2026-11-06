@@ -25,6 +25,7 @@ export const COMERCIO_VERTICAL = "comercio";
 export const SERVICIO_VERTICAL = "servicio";
 export const ESTETICA_VERTICAL = "estetica";
 export const TALLER_VERTICAL = "taller";
+export const SALUD_VERTICAL = "salud";
 
 export function isGastroVendor(vendor: { vertical?: string | null }): boolean {
   return vendor.vertical === GASTRO_VERTICAL;
@@ -50,13 +51,18 @@ export function isTallerVendor(vendor: { vertical?: string | null }): boolean {
   return vendor.vertical === TALLER_VERTICAL;
 }
 
+export function isSaludVendor(vendor: { vertical?: string | null }): boolean {
+  return vendor.vertical === SALUD_VERTICAL;
+}
+
 /**
- * Verticales híbridos (venta + servicio): estética y taller. Comparten la
- * maquinaria (carrito, mostrador, turnera, presupuestos, seña MP/Stripe,
- * packs, mostrador, giftcards); difieren en copy y en la ficha de cliente.
+ * Verticales híbridos (venta + servicio): estética, taller y salud/bienestar.
+ * Comparten la maquinaria (carrito, mostrador, turnera, presupuestos, seña
+ * MP/Stripe, packs, mostrador, giftcards); difieren en copy y en la ficha
+ * de cliente (salud no usa fichas dinámicas).
  */
 export function isHybridVendor(vendor: { vertical?: string | null }): boolean {
-  return vendor.vertical === ESTETICA_VERTICAL || vendor.vertical === TALLER_VERTICAL;
+  return vendor.vertical === ESTETICA_VERTICAL || vendor.vertical === TALLER_VERTICAL || vendor.vertical === SALUD_VERTICAL;
 }
 
 /**
@@ -370,7 +376,8 @@ export function resolveVendorPlan(
     isServicioVendor(vendor) ||
     isModaVendor(vendor) ||
     isEsteticaVendor(vendor) ||
-    isTallerVendor(vendor);
+    isTallerVendor(vendor) ||
+    isSaludVendor(vendor);
 
   const can = (feature: FeatureKey): boolean => {
     if (isModaVendor(vendor)) {
@@ -401,6 +408,14 @@ export function resolveVendorPlan(
         // La turnera completa (cotizar con precio + seña MP) es parte de la
         // propuesta de los planes pagos de estética ("Turnera" usa la fila
         // `pedidos`, cuyo JSONB no las trae: se resuelven por override).
+        if (feature === "quotes_respond" || feature === "deposits") return true;
+        return featureOf(plan, feature);
+      }
+      return ESTETICA_FREE_FEATURES[feature] === true;
+    }
+    if (isSaludVendor(vendor)) {
+      if (ESTETICA_FEATURE_MASK[feature] === false) return false;
+      if (paid) {
         if (feature === "quotes_respond" || feature === "deposits") return true;
         return featureOf(plan, feature);
       }
@@ -439,13 +454,17 @@ export function resolveVendorPlan(
         ? ESTETICA_FREE_ORDERS_MONTH
         : isTallerVendor(vendor) && !(paid)
           ? TALLER_FREE_ORDERS_MONTH
-          : (limitRow?.max_orders_month ?? null);
+          : isSaludVendor(vendor) && !(paid)
+            ? ESTETICA_FREE_ORDERS_MONTH
+            : (limitRow?.max_orders_month ?? null);
   const maxQuotesMonth =
     isEsteticaVendor(vendor) && !(paid)
       ? ESTETICA_FREE_QUOTES_MONTH
       : isTallerVendor(vendor) && !(paid)
         ? TALLER_FREE_QUOTES_MONTH
-        : (limitRow?.max_quotes_month ?? null);
+        : isSaludVendor(vendor) && !(paid)
+          ? ESTETICA_FREE_QUOTES_MONTH
+          : (limitRow?.max_quotes_month ?? null);
   // Pantallas TV: el gratuito tiene 1 (growth), la gestión 2. Servicios y los
   // planes vencidos no tienen (0). El tope viene del plan (max_screens).
   const fallbackScreens = paid

@@ -9,7 +9,7 @@ export async function DELETE(
 ) {
   const gate = await gateRequest(request);
   if (!gate.ok) return gateError(gate);
-  if ((gate.vendor.vertical !== "estetica" && gate.vendor.vertical !== "taller") && gate.vendor.vertical !== "servicio") {
+  if ((gate.vendor.vertical !== "estetica" && gate.vendor.vertical !== "salud" && gate.vendor.vertical !== "taller") && gate.vendor.vertical !== "servicio") {
     return NextResponse.json({ error: "No disponible" }, { status: 403 });
   }
   const { id } = await params;

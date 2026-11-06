@@ -64,7 +64,7 @@ export default async function CartaPage({ params }: { params: Promise<{ slug: st
   const isGastro = v.vertical === "gastronomia";
   const isComercio = v.vertical === "comercio";
   const isCatalog = isModa || isComercio;
-  const isService = v.vertical === "servicio" || v.vertical === "estetica" || v.vertical === "taller";
+  const isService = v.vertical === "servicio" || v.vertical === "estetica" || v.vertical === "salud" || v.vertical === "taller";
 
   const data = await loadCartaData(v.id, isCatalog);
   const { sections, promos, modifiersByProduct, variantsByProduct, imagesByProduct, services } = data;

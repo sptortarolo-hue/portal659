@@ -88,7 +88,7 @@ async function markQuoteDepositPaid(quoteId: string, sessionId: string, paidAmou
   ).catch(() => undefined);
   if (vrow?.user_id) {
     const title = "¡Seña pagada! (Stripe)";
-    const body = `${quote.customer_name} pagó $${paidAmount.toLocaleString("es-AR")} de seña${mismatch ? ` (difiere de $${expected.toLocaleString("es-AR")}, revisar)` : ""}. ${vrow.vertical === "estetica" ? "Consulta aceptada." : "Presupuesto aceptado."}`;
+    const body = `${quote.customer_name} pagó $${paidAmount.toLocaleString("es-AR")} de seña${mismatch ? ` (difiere de $${expected.toLocaleString("es-AR")}, revisar)` : ""}. ${vrow.vertical === "estetica" || vrow.vertical === "salud" ? "Consulta aceptada." : "Presupuesto aceptado."}`;
     await query(
       `INSERT INTO notifications (user_id, title, body, type, link)
        VALUES ($1, $2, $3, 'payment', '/vendor/dashboard')`,

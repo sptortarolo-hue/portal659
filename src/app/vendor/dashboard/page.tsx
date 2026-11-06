@@ -677,7 +677,7 @@ function VendorDashboardInner() {
         });
       }
       // Solicitudes solo para servicios y estética.
-      if (me.vendor?.vertical === "servicio" || me.vendor?.vertical === "estetica" || me.vendor?.vertical === "taller") await loadServiceData();
+      if (me.vendor?.vertical === "servicio" || me.vendor?.vertical === "estetica" || me.vendor?.vertical === "salud" || me.vendor?.vertical === "taller") await loadServiceData();
     } catch (err) {
       console.error("[dashboard] loadData error:", err);
     } finally {
@@ -1207,7 +1207,7 @@ function VendorDashboardInner() {
   // Estética opera sobre el circuito de servicios (turnera + presupuestos):
   // comparte bandeja, agenda y cobros con servicios, pero la Configuración
   // es propia (DashboardEstetica: turnera, profesionales, fichas, packs).
-  const isEstetica = vendor?.vertical === "estetica";
+  const isEstetica = vendor?.vertical === "estetica" || vendor?.vertical === "salud";
   const isTaller = vendor?.vertical === "taller";
   const isHybrid = isEstetica || isTaller;
   // Seña online (estética): sólo se puede cobrar con Mercado Pago o Stripe

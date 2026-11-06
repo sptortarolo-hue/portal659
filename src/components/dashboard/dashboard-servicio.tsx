@@ -333,7 +333,7 @@ export default function DashboardServicio({
   const sec = section ?? "all";
   // Estética opera sobre este mismo panel (turnera + consultas) y suma
   // catálogo de servicios, profesionales y política de cancelación.
-  const isEstetica = vendor?.vertical === "estetica";
+  const isEstetica = vendor?.vertical === "estetica" || vendor?.vertical === "salud";
   const isTaller = vendor?.vertical === "taller";
   const isHybrid = isEstetica || isTaller;
   // Copy: en estética los "presupuestos" son consultas/evaluaciones.
@@ -418,7 +418,7 @@ export default function DashboardServicio({
     agendaViewInit.current = true;
     const d = loadDraft<{ view?: string }>(vendor.id, "agenda");
     if (d?.view === "day" || d?.view === "list" || d?.view === "month" || d?.view === "plan") setAgendaView(d.view);
-    else setAgendaView(vendor.vertical === "estetica" || vendor.vertical === "taller" ? "month" : "list");
+    else setAgendaView(vendor.vertical === "estetica" || vendor.vertical === "salud" || vendor.vertical === "taller" ? "month" : "list");
   }, [vendor?.id, vendor?.vertical]);
   useEffect(() => {
     if (!agendaViewInit.current || !vendor?.id) return;

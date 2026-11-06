@@ -21,7 +21,7 @@ export async function POST(
   if (!gate.ok) {
     return NextResponse.json({ error: gate.error }, { status: gate.status });
   }
-  if (gate.vendor.vertical !== "servicio" && (gate.vendor.vertical !== "estetica" && gate.vendor.vertical !== "taller")) {
+  if (gate.vendor.vertical !== "servicio" && (gate.vendor.vertical !== "estetica" && gate.vendor.vertical !== "salud" && gate.vendor.vertical !== "taller")) {
     return NextResponse.json({ error: "Solo disponible para servicios, estética y talleres" }, { status: 403 });
   }
 
@@ -69,7 +69,7 @@ export async function POST(
   }
   if (quote.status === "cancelled") {
     return NextResponse.json(
-      { error: gate.vendor.vertical === "estetica" ? "La consulta está descartada" : "El presupuesto está descartado" },
+      { error: gate.vendor.vertical === "estetica" || gate.vendor.vertical === "salud" ? "La consulta está descartada" : "El presupuesto está descartado" },
       { status: 400 }
     );
   }

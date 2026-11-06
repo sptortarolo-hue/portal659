@@ -9,7 +9,7 @@ import { NextResponse } from "next/server";
 export async function GET(request: Request) {
   const gate = await gateRequest(request);
   if (!gate.ok) return gateError(gate);
-  if ((gate.vendor.vertical !== "estetica" && gate.vendor.vertical !== "taller")) return NextResponse.json({ locations: [] });
+  if ((gate.vendor.vertical !== "estetica" && gate.vendor.vertical !== "salud" && gate.vendor.vertical !== "taller")) return NextResponse.json({ locations: [] });
   try {
     const locations = await queryMany<Record<string, unknown>>(
       `SELECT * FROM estetica_locations WHERE vendor_id = $1 ORDER BY position ASC, name ASC`,
@@ -24,7 +24,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const gate = await gateRequest(request);
   if (!gate.ok) return gateError(gate);
-  if ((gate.vendor.vertical !== "estetica" && gate.vendor.vertical !== "taller")) {
+  if ((gate.vendor.vertical !== "estetica" && gate.vendor.vertical !== "salud" && gate.vendor.vertical !== "taller")) {
     return NextResponse.json({ error: "Solo disponible para estética y talleres" }, { status: 403 });
   }
   const body = await request.json().catch(() => ({}));

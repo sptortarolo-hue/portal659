@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     );
   }
 
-  if (vendor.vertical !== "gastronomia" && vendor.vertical !== "comercio" && vendor.vertical !== "moda" && vendor.vertical !== "servicio" && vendor.vertical !== "estetica" && vendor.vertical !== "taller") {
+  if (vendor.vertical !== "gastronomia" && vendor.vertical !== "comercio" && vendor.vertical !== "moda" && vendor.vertical !== "servicio" && vendor.vertical !== "estetica" && vendor.vertical !== "salud" && vendor.vertical !== "taller") {
     return NextResponse.json(
       { error: "Los planes pagos están disponibles para gastronomía, comercios de barrio, moda, estética, talleres y servicios" },
       { status: 400 }
@@ -54,7 +54,7 @@ export async function POST(request: Request) {
   // compran "Turnera"/"Taller" (fila `pedidos`) o Gestión integral. Oficios
   // ya no se vende a estética/taller: solo queda accesible como
   // activación/renovación grandfathering para quien ya lo tiene como plan actual.
-  const isHybrid = vendor.vertical === "estetica" || vendor.vertical === "taller";
+  const isHybrid = vendor.vertical === "estetica" || vendor.vertical === "salud" || vendor.vertical === "taller";
   const grandfatheredOficios = isHybrid && vendor.plan_id === PLAN_IDS.oficios;
   const allowedSlugs =
     vendor.vertical === "servicio"

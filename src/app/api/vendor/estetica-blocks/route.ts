@@ -11,7 +11,7 @@ import { NextResponse } from "next/server";
  */
 function checkEstetica(gate: { ok: boolean; vendor?: { vertical?: string } }) {
   if (!gate.ok || !gate.vendor) return null;
-  if ((gate.vendor.vertical !== "estetica" && gate.vendor.vertical !== "taller")) return "only-estetica";
+  if ((gate.vendor.vertical !== "estetica" && gate.vendor.vertical !== "salud" && gate.vendor.vertical !== "taller")) return "only-estetica";
   return "ok";
 }
 

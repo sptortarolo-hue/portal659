@@ -84,7 +84,7 @@ export default function PresupuestoPrintPage() {
             )}
           </div>
           <div className="text-right flex-shrink-0">
-            <p className="text-xl font-bold">{vendor?.vertical === "estetica" ? "CONSULTA" : "PRESUPUESTO"}</p>
+            <p className="text-xl font-bold">{vendor?.vertical === "estetica" || vendor?.vertical === "salud" ? "CONSULTA" : "PRESUPUESTO"}</p>
             <p className="text-sm text-neutral-600">
               {quote.created_at ? new Date(quote.created_at).toLocaleDateString("es-AR") : ""}
             </p>

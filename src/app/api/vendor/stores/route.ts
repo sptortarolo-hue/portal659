@@ -24,7 +24,7 @@ function slugify(text: string): string {
     .slice(0, 50);
 }
 
-const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "estetica", "taller", "otro"];
+const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "estetica", "taller", "salud", "otro"];
 
 /**
  * Alta de un comercio nuevo para un usuario que ya es dueño (multi-tienda).
@@ -47,8 +47,8 @@ export async function POST(request: Request) {
   if (!storeName) {
     return NextResponse.json({ error: "Ingresá el nombre del comercio" }, { status: 400 });
   }
-  const normalized = String(body?.vertical || "") === "salud" ? "comercio" : String(body?.vertical || "");
-  const vertical = VALID_VERTICALS.includes(normalized) ? normalized : "gastronomia";
+  const requested = String(body?.vertical || "");
+  const vertical = VALID_VERTICALS.includes(requested) ? requested : "gastronomia";
   const neighborhood = String(body?.neighborhood || "sicardi").trim().slice(0, 40) || "sicardi";
 
   const phoneCheck = checkArgPhone(String(body?.whatsapp || ""));

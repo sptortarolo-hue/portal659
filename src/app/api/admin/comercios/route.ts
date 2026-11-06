@@ -86,10 +86,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "store_name es requerido" }, { status: 400 });
   }
 
-  // Whitelist de verticales ("salud" legacy va a comercio, su modelo real).
-  const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "estetica", "taller", "otro"];
-  const safeVertical = vertical === "salud" ? "comercio" : vertical;
-  const resolvedVertical = VALID_VERTICALS.includes(safeVertical) ? safeVertical : "gastronomia";
+  const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "estetica", "taller", "salud", "otro"];
+  const resolvedVertical = VALID_VERTICALS.includes(vertical) ? vertical : "gastronomia";
 
   const vendor = await queryOne<Record<string, unknown>>(
     `INSERT INTO vendors (

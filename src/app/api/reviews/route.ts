@@ -51,7 +51,7 @@ export async function POST(request: Request) {
     );
     // Servicios y híbridos (sin pedidos): vale un turno confirmado o
     // presupuesto aceptado ("trabajo verificado").
-    if (vendorRow?.vertical === "servicio" || vendorRow?.vertical === "estetica" || vendorRow?.vertical === "taller") {
+    if (vendorRow?.vertical === "servicio" || vendorRow?.vertical === "estetica" || vendorRow?.vertical === "salud" || vendorRow?.vertical === "taller") {
       const profile = await queryOne<{ phone: string | null; whatsapp: string | null }>(
         `SELECT phone, whatsapp FROM profiles WHERE id = $1 LIMIT 1`,
         [userId]

@@ -65,7 +65,7 @@ export async function POST(request: Request) {
   const allowed =
     vendor.vertical === "servicio"
       ? ["oficios"]
-      : vendor.vertical === "gastronomia" || vendor.vertical === "comercio" || vendor.vertical === "moda" || vendor.vertical === "estetica" || vendor.vertical === "taller"
+      : vendor.vertical === "gastronomia" || vendor.vertical === "comercio" || vendor.vertical === "moda" || vendor.vertical === "estetica" || vendor.vertical === "salud" || vendor.vertical === "taller"
         ? ["pedidos", "gestion"]
         : [];
   if (allowed.length === 0) {

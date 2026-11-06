@@ -461,7 +461,7 @@ export async function POST(request: Request) {
               );
               if (vrow?.user_id) {
                 const title = "¡Seña pagada!";
-                const body = `${quote.customer_name} pagó $${paidAmount.toLocaleString("es-AR")} de seña${mismatch ? ` (difiere de $${expected.toLocaleString("es-AR")}, revisar)` : ""}. ${vrow.vertical === "estetica" ? "Consulta aceptada." : "Presupuesto aceptado."}`;
+                const body = `${quote.customer_name} pagó $${paidAmount.toLocaleString("es-AR")} de seña${mismatch ? ` (difiere de $${expected.toLocaleString("es-AR")}, revisar)` : ""}. ${vrow.vertical === "estetica" || vrow.vertical === "salud" ? "Consulta aceptada." : "Presupuesto aceptado."}`;
                 await query(
                   `INSERT INTO notifications (user_id, title, body, type, link)
                    VALUES ($1, $2, $3, 'payment', '/vendor/dashboard')`,
@@ -1233,7 +1233,7 @@ export async function POST(request: Request) {
                 // Sin ítems de cocina: retail (comercio/moda/estética) imprime el
                 // comprobante de venta; el resto, el stub de retiro.
                 const isRetailVendor =
-                  printerVendor?.vertical === "moda" || printerVendor?.vertical === "comercio" || printerVendor?.vertical === "estetica" || printerVendor?.vertical === "taller";
+                  printerVendor?.vertical === "moda" || printerVendor?.vertical === "comercio" || printerVendor?.vertical === "estetica" || printerVendor?.vertical === "salud" || printerVendor?.vertical === "taller";
                 const printType = orderNeedsKitchen(order) ? "comanda" : isRetailVendor ? "ticket" : "retiro";
                 const printed = await dispatchPrint({
                   vendor: printerVendor,

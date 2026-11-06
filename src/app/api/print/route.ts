@@ -168,7 +168,7 @@ export async function POST(request: Request) {
       [quoteId, vendor.id]
     );
     if (!quote) {
-      return NextResponse.json({ ok: false, error: vendor.vertical === "estetica" ? "Consulta no encontrada" : "Presupuesto no encontrado" }, { status: 404 });
+      return NextResponse.json({ ok: false, error: vendor.vertical === "estetica" || vendor.vertical === "salud" ? "Consulta no encontrada" : "Presupuesto no encontrado" }, { status: 404 });
     }
     const items = await queryMany<{ kind: string; description: string; qty: number; unit_price: number }>(
       `SELECT kind, description, qty, unit_price FROM quote_items WHERE quote_id = $1 ORDER BY position ASC`,
@@ -182,7 +182,7 @@ export async function POST(request: Request) {
       type: "presupuesto",
       extra: {
         quote: {
-          docTitle: vendor.vertical === "estetica" ? "CONSULTA" : undefined,
+          docTitle: vendor.vertical === "estetica" || vendor.vertical === "salud" ? "CONSULTA" : undefined,
           customer_name: String(quote.customer_name || ""),
           customer_phone: (quote.customer_phone as string) || null,
           service_name: (quote.service_name as string) || null,
@@ -429,7 +429,7 @@ export async function POST(request: Request) {
   const isDirectOrder = (order as any)?.is_direct === true;
   // Retail (moda/comercio/estética): el ticket sale como COMPROBANTE con Nro. diario
   // y datos del cliente; gastronomía mantiene TICKET. La directa no usa retail.
-  const isRetailVendor = !isDirectOrder && (vendor.vertical === "moda" || vendor.vertical === "comercio" || vendor.vertical === "estetica" || vendor.vertical === "taller");
+  const isRetailVendor = !isDirectOrder && (vendor.vertical === "moda" || vendor.vertical === "comercio" || vendor.vertical === "estetica" || vendor.vertical === "salud" || vendor.vertical === "taller");
   // Bloque fiscal: si el pedido tiene comprobante ARCA, el ticket lo imprime
   // con CAE + QR (tolerante a migración fiscal sin aplicar).
   let fiscal: FiscalPrintInfo | null = null;

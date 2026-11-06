@@ -37,7 +37,7 @@ export function GiftcardsTab({
       .catch(() => {});
   }, []);
 
-  if (vertical === "estetica" || vertical === "taller") {
+  if (vertical === "estetica" || vertical === "salud" || vertical === "taller") {
     return (
       <div className="space-y-4">
         <EsteticaGiftcardsManager />

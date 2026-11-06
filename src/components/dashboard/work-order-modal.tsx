@@ -32,6 +32,7 @@ export function WorkOrderModal({
   const [declaredIssue, setDeclaredIssue] = useState("");
   const [deliveryDate, setDeliveryDate] = useState(defaultDeliveryISO());
   const [depositAmount, setDepositAmount] = useState("");
+  const [estimatedPrice, setEstimatedPrice] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -54,6 +55,7 @@ export function WorkOrderModal({
           delivery_date: deliveryDate || null,
           notes: notes.trim() || null,
           deposit_amount: depositAmount.trim() ? Number(depositAmount) : null,
+          service_price: estimatedPrice.trim() ? Number(estimatedPrice) : null,
           equipment_id: equipment?.id || null,
         }),
       });
@@ -151,6 +153,21 @@ export function WorkOrderModal({
               />
               <p className="text-[10px] text-muted-foreground mt-0.5">Después generás el link de cobro.</p>
             </div>
+          </div>
+
+          <div>
+            <Label className="text-xs">Precio estimado (opcional)</Label>
+            <Input
+              type="number"
+              min={0}
+              value={estimatedPrice}
+              onChange={(e) => setEstimatedPrice(e.target.value)}
+              placeholder="$ (si lo sabés al ingreso)"
+              className="mt-1 h-9 text-sm"
+            />
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              Si lo cargás, la orden nace "Aprobada" (sin presupuesto). Si el costo cambia después, cotizá con partidas.
+            </p>
           </div>
 
           <div>

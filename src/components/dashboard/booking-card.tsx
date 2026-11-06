@@ -186,6 +186,11 @@ export function BookingCard({
                 </p>
               )}
               {productLabel && <p className="text-xs text-muted-foreground mt-0.5">{productLabel}</p>}
+              {(booking as any).service_price != null && Number((booking as any).service_price) > 0 && (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  💲 Precio estimado: ${Number((booking as any).service_price).toLocaleString("es-AR")}
+                </p>
+              )}
               {orderDue && <p className={`text-xs mt-0.5 ${orderDue.tone}`}>📦 {orderDue.text}</p>}
               {(booking as any).deposit_status === "paid" ? (
                 <p className="text-xs text-muted-foreground">seña pagada ✅</p>
@@ -403,15 +408,15 @@ export function BookingCard({
                 🏷️ Etiqueta
               </Button>
             )}
-            {onQuoteOrder && !linkedQuote && booking.status !== "cancelled" && (
+            {onQuoteOrder && booking.status !== "cancelled" && booking.status !== "completed" && (
               <Button
                 size="sm"
                 variant="outline"
                 className="h-7 text-xs"
-                title="Cotizar con materiales y mano de obra antes de reparar"
+                title={linkedQuote ? "Re-cotizar (el costo cambió durante la reparación)" : "Cotizar con materiales y mano de obra antes de reparar"}
                 onClick={() => onQuoteOrder(booking)}
               >
-                💰 Cotizar
+                {linkedQuote ? "💰 Re-cotizar" : "💰 Cotizar"}
               </Button>
             )}
             {linkedQuote && (

@@ -63,6 +63,11 @@ export async function POST(request: Request) {
   }
   const depositAmount =
     body.deposit_amount != null && Number(body.deposit_amount) > 0 ? Math.round(Number(body.deposit_amount) * 100) / 100 : null;
+  const servicePrice =
+    body.service_price != null && Number(body.service_price) > 0 ? Math.round(Number(body.service_price) * 100) / 100 : null;
+  // Si hay precio estimado al ingreso, la orden nace "Aprobada" (salta el
+  // presupuesto). Sin precio, nace "Recibida" y se cotiza si es necesario.
+  const initialStatus = servicePrice ? "approved" : "pending";
 
   // Migración presente: sin kind no hay órdenes (tolerante, error claro).
   const baseCols = await bookingColumns(null);
@@ -95,7 +100,7 @@ export async function POST(request: Request) {
         customer_name: customerName,
         customer_phone: customerPhone,
         booking_date: today,
-        status: "pending",
+        status: initialStatus,
         origin: "vendor",
         kind: "orden",
         delivery_date: deliveryDate,
@@ -110,6 +115,7 @@ export async function POST(request: Request) {
       if (cols.has("confirm_token")) values.confirm_token = confirmToken;
       if (cols.has("is_preview")) values.is_preview = isPreview;
       if (cols.has("deposit_amount")) values.deposit_amount = depositAmount;
+      if (cols.has("service_price")) values.service_price = servicePrice;
 
       const insertCols = Object.keys(values).filter((c) => cols.has(c));
       if (!cols.has("work_order_no")) {

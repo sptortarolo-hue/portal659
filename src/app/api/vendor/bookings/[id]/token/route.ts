@@ -14,8 +14,8 @@ export async function POST(
 ) {
   const gate = await gateRequest(request);
   if (!gate.ok) return gateError(gate);
-  if (gate.vendor.vertical !== "servicio" && gate.vendor.vertical !== "estetica") {
-    return NextResponse.json({ error: "Solo disponible para servicios y estética" }, { status: 403 });
+  if (gate.vendor.vertical !== "servicio" && (gate.vendor.vertical !== "estetica" && gate.vendor.vertical !== "taller")) {
+    return NextResponse.json({ error: "Solo disponible para servicios, estética y talleres" }, { status: 403 });
   }
   const { id } = await params;
   try {

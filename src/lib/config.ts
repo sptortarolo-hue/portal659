@@ -89,6 +89,14 @@ export const VERTICALS = [
     color: "vert-estetica",
     hex: "#f472b6",
   },
+  {
+    slug: "taller",
+    name: "Talleres y Reparaciones",
+    description: "Bicicleterías, servicio técnico de celulares y electrodomésticos, gomerías, reparación de calzado y todo lo que se repara en el barrio",
+    emoji: "🛠️",
+    color: "vert-taller",
+    hex: "#f97316",
+  },
 ] as const;
 
 const GENERIC_CATEGORIES = new Set(["otro", "otra", "otros", "otras"]);

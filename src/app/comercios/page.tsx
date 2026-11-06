@@ -76,6 +76,18 @@ const VERTICAL_OFFERS = [
       "Lo cargás en minutos, desde el celu",
     ],
   },
+  {
+    id: "taller",
+    title: "Talleres y Reparaciones",
+    desc: "Bicicleterías, servicio técnico de celulares y electrodomésticos, gomerías y todo lo que se repara.",
+    icon: "🚲",
+    benefits: [
+      "Presupuestos con partidas (materiales + mano de obra)",
+      "Venta de repuestos y accesorios online",
+      "Turnera de recepción y retiro",
+      "Seña por Mercado Pago y packs de mantenimiento",
+    ],
+  },
 ] as const;
 
 const HOW_IT_WORKS = [

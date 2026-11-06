@@ -285,6 +285,7 @@ export default async function HomePage() {
                     storeSlug={it.data.vendors?.slug || ""}
                     imageUrl={it.data.image_url}
                     featured
+                    vertical={it.data.vendors?.vertical || null}
                   />
                 </div>
               )

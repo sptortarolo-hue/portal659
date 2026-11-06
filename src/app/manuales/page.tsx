@@ -66,7 +66,7 @@ export default function ManualesPage() {
           href="/manuales/basico"
           emoji="📘"
           title="Uso básico (todos los rubros)"
-          desc="Cuenta, panel, configuración, micrositio y QR, recibir pedidos y cobrar. Lo común a gastronomía, comercio, servicios, moda y estética."
+          desc="Cuenta, panel, configuración, micrositio y QR, recibir pedidos y cobrar. Lo común a gastronomía, comercio, servicios, moda, estética y talleres."
         />
         <Card
           href="/manuales/catalogo"
@@ -139,6 +139,13 @@ export default function ManualesPage() {
           emoji="💇"
           title="Peluquería y estética"
           desc="Turnera por profesional, servicios, packs de sesiones y fichas."
+          disabled
+        />
+        <Card
+          href="/manuales/taller"
+          emoji="🛠️"
+          title="Talleres y reparaciones"
+          desc="Presupuestos con partidas (materiales + mano de obra) o precio cerrado, seña, turnera y venta de repuestos."
           disabled
         />
       </div>

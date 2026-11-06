@@ -94,6 +94,96 @@ type CustomerBooking = {
   created_at: string;
 };
 
+type Equipment = {
+  id: string;
+  kind: string | null;
+  brand: string | null;
+  model: string | null;
+  identifier: string | null;
+  rodado: string | null;
+  color: string | null;
+  customer_name: string | null;
+  jobs: number;
+  last_job_at: string | null;
+};
+
+/**
+ * Ficha de equipos del cliente (bici/moto/electro): historial por equipo
+ * (conteo de trabajos + último) y recordatorio de service por WhatsApp con
+ * el mensaje precargado según meses transcurridos. Sin migración aparece
+ * una sola vez con la nota (auto-ocultable).
+ */
+function CustomerEquipmentSection({ phone, customerName }: { phone: string; customerName: string | null }) {
+  const [equipment, setEquipment] = useState<Equipment[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [migrationMissing, setMigrationMissing] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/vendor/equipment?phone=${encodeURIComponent(phone)}`);
+      if (!res.ok) return;
+      const d = await res.json();
+      setEquipment(d?.equipment || []);
+      setMigrationMissing(!!d?.migrationMissing);
+      setLoaded(true);
+    } catch {
+      /* sin red: no rompe la ficha */
+    }
+  }, [phone]);
+
+  useEffect(() => {
+    if (loaded) return;
+    void load();
+  }, [load, loaded]);
+
+  if (migrationMissing) {
+    return (
+      <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mb-3">
+        Aplicá <code>migrate-equipment.sql</code> en la base para gestionar equipos del taller.
+      </p>
+    );
+  }
+  if (equipment.length === 0) return null;
+
+  const waDigits = phone.replace(/\D/g, "");
+  return (
+    <div className="space-y-1.5 mb-3">
+      <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">🚲 Equipos</p>
+      {equipment.map((eq) => {
+        const label = [eq.brand, eq.model].filter(Boolean).join(" ") || "Equipo";
+        const monthsAgo = eq.last_job_at
+          ? Math.max(0, Math.floor((Date.now() - new Date(eq.last_job_at).getTime()) / (1000 * 60 * 60 * 24 * 30.44)))
+          : null;
+        const reminder = `Hola ${customerName?.split(/\s+/)[0] || ""}! Te recordamos que tu ${label}${eq.rodado ? ` (rodado ${eq.rodado})` : ""}${monthsAgo && monthsAgo >= 6 ? ` tuvo su último service hace ${monthsAgo} meses` : " tuvo su último service hace tiempo"}. ¿Le toca una revisión? Escribinos y te anotamos.`;
+        return (
+          <div key={eq.id} className="flex items-center justify-between gap-2 rounded-xl border border-border bg-card px-2.5 py-2">
+            <div className="min-w-0">
+              <p className="text-sm truncate">
+                🚲 {label}
+                {eq.rodado && <span className="text-muted-foreground"> · rodado {eq.rodado}</span>}
+                {eq.identifier && <span className="text-muted-foreground"> · N° {eq.identifier}</span>}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                {eq.jobs > 0
+                  ? `${eq.jobs} trabajo${eq.jobs === 1 ? "" : "s"}${eq.last_job_at ? ` · último ${new Date(eq.last_job_at).toLocaleDateString("es-AR")}` : ""}`
+                  : "Sin trabajos registrados"}
+              </p>
+            </div>
+            <a
+              href={`https://wa.me/${waDigits}?text=${encodeURIComponent(reminder)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 rounded-md bg-green-500 px-2 py-1 text-[11px] font-medium text-white hover:bg-green-600"
+            >
+              🔔 Service
+            </a>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function money(n: number | null | undefined): string {
   return `$${Number(n || 0).toLocaleString("es-AR")}`;
 }
@@ -739,6 +829,13 @@ export function CustomersManager({ serviceMode = false, vendorId = null, loyalty
                   </div>
 
                   <FiadoBlock phone={c.phone} />
+
+                  {serviceMode && (
+                    <CustomerEquipmentSection
+                      phone={c.phone}
+                      customerName={c.name}
+                    />
+                  )}
 
                   {serviceMode && (
                     <CustomerFormTimeline vendorId={vendorId} phone={c.phone} />

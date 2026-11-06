@@ -39,6 +39,8 @@ const VERTICAL_COLORS: Record<string, string> = {
   servicio: "#0ea5e9",
   moda: "#8b5cf6",
   salud: "#ec4899",
+  estetica: "#f472b6",
+  taller: "#f97316",
   varios: "#f59e0b",
   mascotas: "#14b8a6",
 };

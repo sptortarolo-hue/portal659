@@ -5,6 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { EquipmentPicker } from "@/components/dashboard/equipment-picker";
+import type { Equipment } from "@/lib/equipment";
+import { equipmentLabel } from "@/lib/equipment";
 
 type CustomerSuggestion = { id: string; name: string | null; phone: string };
 
@@ -84,35 +87,47 @@ export function CustomerPicker({
 
 type ManualItem = { kind: "material" | "labor"; description: string; qty: string; unit_price: string };
 
+type QuoteVariant = "estetica" | "taller" | "oficios";
+
 export function QuoteManualModal({
   onClose,
   onCreated,
-  estetica = false,
+  variant = "oficios",
 }: {
   onClose: () => void;
   onCreated: () => void;
-  /** Copy de estética ("consulta" en vez de "presupuesto"). */
-  estetica?: boolean;
+  /**
+   * estetica: precio directo ("consulta"). taller: partidas (materiales +
+   * mano de obra), como oficios, con campo "Equipo / Bici" y toggle para
+   * precio cerrado. oficios (default): partidas sin "Equipo / Bici".
+   */
+  variant?: QuoteVariant;
 }) {
+  const isEstetica = variant === "estetica";
+  const isTaller = variant === "taller";
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [serviceName, setServiceName] = useState("");
+  // Ficha de equipo (taller): el presupuesto queda ligado a la bici/equipo.
+  const [equipment, setEquipment] = useState<Equipment | null>(null);
   const [description, setDescription] = useState("");
-  // Estética: precio directo de la consulta (sin partidas de materiales/mano de obra).
+  // Precio cerrado (taller en modo "cerrado", estética siempre).
   const [directPrice, setDirectPrice] = useState("");
+  // Taller: modo de cotización — partidas (materiales + mano de obra) o precio cerrado.
+  const [workshopMode, setWorkshopMode] = useState<"partidas" | "cerrado">("partidas");
   const [items, setItems] = useState<ManualItem[]>([{ kind: "material", description: "", qty: "1", unit_price: "" }]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   // Memoria de precios: últimos materiales usados (autocompleta precio).
-  // Solo oficios: en estética no hay partidas.
+  // No aplica en estética (precio directo).
   const [matMemory, setMatMemory] = useState<{ description: string; unit_price: number }[]>([]);
   useEffect(() => {
-    if (estetica) return;
+    if (isEstetica) return;
     fetch("/api/vendor/quote-materials")
       .then((r) => r.json())
       .then((d) => { if (Array.isArray(d?.materials)) setMatMemory(d.materials); })
       .catch(() => {});
-  }, [estetica]);
+  }, [isEstetica]);
 
   const total = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.unit_price) || 0), 0);
 
@@ -135,8 +150,16 @@ export function QuoteManualModal({
       setError("Faltan cliente, teléfono o descripción");
       return;
     }
-    if (estetica && !(Number(directPrice) > 0)) {
+    if (isEstetica && !(Number(directPrice) > 0)) {
       setError("Poné el precio de la consulta");
+      return;
+    }
+    if (isTaller && workshopMode === "cerrado" && !(Number(directPrice) > 0)) {
+      setError("Poné el precio cerrado del trabajo");
+      return;
+    }
+    if (isTaller && workshopMode === "partidas" && !items.some((it) => it.description.trim() !== "") && !(Number(directPrice) > 0)) {
+      setError("Cargá al menos una partida (material o mano de obra)");
       return;
     }
     setSaving(true);
@@ -144,18 +167,19 @@ export function QuoteManualModal({
       const res = await fetch("/api/vendor/quotes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: estetica
+        body: isEstetica || (isTaller && workshopMode === "cerrado")
           ? JSON.stringify({
               customer_name: customerName.trim(),
               customer_phone: customerPhone.trim(),
-              service_name: serviceName.trim() || null,
+              service_name: isTaller ? equipmentLabel(equipment) || null : serviceName.trim() || null,
               description: description.trim(),
               quoted_price: Number(directPrice),
+              equipment_id: isTaller ? equipment?.id || null : null,
             })
           : JSON.stringify({
               customer_name: customerName.trim(),
               customer_phone: customerPhone.trim(),
-              service_name: serviceName.trim() || null,
+              service_name: isTaller ? equipmentLabel(equipment) || null : serviceName.trim() || null,
               description: description.trim(),
               items: items
                 .filter((it) => it.description.trim() !== "")
@@ -165,6 +189,7 @@ export function QuoteManualModal({
                   qty: Number(it.qty) || 0,
                   unit_price: Number(it.unit_price) || 0,
                 })),
+              equipment_id: isTaller ? equipment?.id || null : null,
             }),
       });
       const data = await res.json();
@@ -184,7 +209,7 @@ export function QuoteManualModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-5 pb-3 shrink-0">
-          <h3 className="font-display text-lg font-semibold">{estetica ? "＋ Nueva consulta" : "＋ Nuevo presupuesto"}</h3>
+          <h3 className="font-display text-lg font-semibold">{isEstetica ? "＋ Nueva consulta" : "＋ Nuevo presupuesto"}</h3>
           <p className="text-xs text-muted-foreground">No cuenta para el tope mensual (es trabajo propio).</p>
         </div>
         <div className="overflow-y-auto px-5 pb-3 space-y-3 flex-1 min-h-0">
@@ -199,17 +224,42 @@ export function QuoteManualModal({
               <Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="221 555 0000" className="mt-1 h-9 text-sm" />
             </div>
           </div>
-          <div>
-            <Label className="text-xs">Servicio</Label>
-            <Input value={serviceName} onChange={(e) => setServiceName(e.target.value)} placeholder={estetica ? "Ej: lifting, microblading..." : "Ej: instalación, reparación..."} className="mt-1 h-9 text-sm" />
-          </div>
+          {isTaller ? (
+            <EquipmentPicker
+              phone={customerPhone}
+              customerName={customerName}
+              value={equipment}
+              onChange={setEquipment}
+            />
+          ) : (
+            <div>
+              <Label className="text-xs">Servicio</Label>
+              <Input value={serviceName} onChange={(e) => setServiceName(e.target.value)} placeholder={isEstetica ? "Ej: lifting, microblading..." : "Ej: instalación, reparación..."} className="mt-1 h-9 text-sm" />
+            </div>
+          )}
           <div>
             <Label className="text-xs">Descripción *</Label>
             <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Detalle del trabajo" rows={2} className="mt-1 text-sm" />
           </div>
-          {estetica ? (
+          {isEstetica ? (
             <div>
               <Label className="text-xs">Precio de la consulta *</Label>
+              <Input
+                type="number" min={0} value={directPrice} onChange={(e) => setDirectPrice(e.target.value)}
+                placeholder="$" className="mt-1 h-9 text-sm"
+              />
+            </div>
+          ) : (
+          <>
+          {isTaller && (
+            <div className="flex gap-1 rounded-lg border border-border p-0.5 w-max">
+              <button type="button" onClick={() => setWorkshopMode("partidas")} className={`px-3 h-7 rounded-md text-xs font-medium ${workshopMode === "partidas" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Partidas</button>
+              <button type="button" onClick={() => setWorkshopMode("cerrado")} className={`px-3 h-7 rounded-md text-xs font-medium ${workshopMode === "cerrado" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Precio cerrado</button>
+            </div>
+          )}
+          {isTaller && workshopMode === "cerrado" ? (
+            <div>
+              <Label className="text-xs">Precio cerrado del trabajo *</Label>
               <Input
                 type="number" min={0} value={directPrice} onChange={(e) => setDirectPrice(e.target.value)}
                 placeholder="$" className="mt-1 h-9 text-sm"
@@ -274,12 +324,14 @@ export function QuoteManualModal({
             </p>
           </div>
           )}
+          </>
+          )}
           {error && <p className="text-sm text-red-600">{error}</p>}
         </div>
         <div className="border-t border-border px-5 py-3 shrink-0 bg-card flex gap-2">
           <Button variant="outline" className="flex-1" onClick={onClose}>Cancelar</Button>
           <Button className="flex-1" disabled={saving} onClick={submit}>
-            {saving ? "Guardando..." : estetica ? "Crear consulta" : "Crear presupuesto"}
+            {saving ? "Guardando..." : isEstetica ? "Crear consulta" : "Crear presupuesto"}
           </Button>
         </div>
       </div>

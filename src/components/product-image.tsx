@@ -44,6 +44,8 @@ const VERTICAL_COLORS: Record<string, { bg: string; fg: string }> = {
   servicio: { bg: "bg-[#0ea5e9]/15", fg: "text-[#0ea5e9]" },
   moda: { bg: "bg-[#8b5cf6]/15", fg: "text-[#8b5cf6]" },
   salud: { bg: "bg-[#ec4899]/15", fg: "text-[#ec4899]" },
+  estetica: { bg: "bg-[#f472b6]/15", fg: "text-[#f472b6]" },
+  taller: { bg: "bg-[#f97316]/15", fg: "text-[#f97316]" },
 };
 
 const DEFAULT_VERTICAL_ICON: Record<string, LucideIcon> = {
@@ -52,6 +54,8 @@ const DEFAULT_VERTICAL_ICON: Record<string, LucideIcon> = {
   servicio: Wrench,
   moda: Shirt,
   salud: HeartPulse,
+  estetica: Scissors,
+  taller: Wrench,
 };
 
 type KeywordRule = {
@@ -71,7 +75,7 @@ const CATEGORY_RULES: KeywordRule[] = [
   { keywords: ["bijou", "accesorio", "joya", "collar", "anillo"], icon: Gem },
   { keywords: ["farmacia", "remedio", "medicam", "vitamina"], icon: Pill },
   { keywords: ["peluquer", "corte", "estetica", "estética", "depil", "barber", "manicur"], icon: Scissors },
-  { keywords: ["ferreter", "herramient", "pintura", "electric", "plomer", "carpinter"], icon: Wrench },
+  { keywords: ["ferreter", "herramient", "pintura", "electric", "plomer", "carpinter", "biciclet", "taller", "mecanic"], icon: Wrench },
   { keywords: ["librer", "libro", "cuaderno", "papel"], icon: BookOpen },
 ];
 

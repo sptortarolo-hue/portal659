@@ -9,8 +9,8 @@ export async function PATCH(
 ) {
   const gate = await gateRequest(request);
   if (!gate.ok) return gateError(gate);
-  if (gate.vendor.vertical !== "estetica") {
-    return NextResponse.json({ error: "Solo disponible para estética" }, { status: 403 });
+  if ((gate.vendor.vertical !== "estetica" && gate.vendor.vertical !== "taller")) {
+    return NextResponse.json({ error: "Solo disponible para estética y talleres" }, { status: 403 });
   }
   const { id } = await params;
   const body = await request.json().catch(() => ({}));
@@ -59,8 +59,8 @@ export async function DELETE(
 ) {
   const gate = await gateRequest(request);
   if (!gate.ok) return gateError(gate);
-  if (gate.vendor.vertical !== "estetica") {
-    return NextResponse.json({ error: "Solo disponible para estética" }, { status: 403 });
+  if ((gate.vendor.vertical !== "estetica" && gate.vendor.vertical !== "taller")) {
+    return NextResponse.json({ error: "Solo disponible para estética y talleres" }, { status: 403 });
   }
   const { id } = await params;
   try {

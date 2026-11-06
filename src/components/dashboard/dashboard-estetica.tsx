@@ -46,11 +46,13 @@ const VERTICAL_OPTIONS = [
   { value: "servicio", label: "Servicio u oficio" },
   { value: "moda", label: "Ropa y accesorios" },
   { value: "estetica", label: "Peluquería y estética (peluquería, barbería, uñas, pestañas, cejas, masajes)" },
+  { value: "taller", label: "Talleres y reparaciones (bicicletería, servicio técnico de celulares y electrodomésticos, gomería, reparación de calzado)" },
   { value: "otro", label: "Otro" },
 ] as const;
 
 const CATEGORY_SUGGESTIONS: Record<string, string[]> = {
   estetica: ["peluquería", "barbería", "uñas", "pestañas", "cejas", "masajes", "depilación", "maquillaje", "facial", "corporal", "otros"],
+  taller: ["bicicletería", "bicicletas", "servicio técnico", "servicio técnico celulares", "servicio técnico electrodomésticos", "electrodomésticos", "gomería", "reparación de calzado", "reparación", "taller mecánico", "cerrajería", "otros"],
   otro: ["otros"],
 };
 
@@ -109,6 +111,9 @@ export default function DashboardEstetica({
   onConfigSectionId,
   reload,
 }: Props) {
+  // Taller: la ficha de cliente (alergias/piel) no aplica — la sección
+  // Fichas no se renderiza (los modelos y consents son de estética).
+  const isTaller = vendor?.vertical === "taller";
   // Perfil.
   const [storeName, setStoreName] = useState(vendor?.store_name || "");
   const [storeVertical, setStoreVertical] = useState(vendor?.vertical || "estetica");
@@ -715,6 +720,7 @@ export default function DashboardEstetica({
           </div>
         </ConfigSection>
 
+        {!isTaller && (
         <ConfigSection id="fichas" label="Fichas" icon="📋">
           <div className="space-y-3">
             <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
@@ -740,6 +746,7 @@ export default function DashboardEstetica({
             <FormTemplateManager />
           </div>
         </ConfigSection>
+        )}
 
         <ConfigSection id="packs" label="Packs y regalos" icon="🎁">
           <div className="space-y-3">

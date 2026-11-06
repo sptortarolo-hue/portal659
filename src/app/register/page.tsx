@@ -16,6 +16,7 @@ const TIPO_OPTIONS = [
   { value: "servicio", label: "Servicio u oficio (electricista, plomero, jardinería)" },
   { value: "moda", label: "Ropa y accesorios (indumentaria, calzado, bijouterie)" },
   { value: "estetica", label: "Peluquería y estética (peluquería, barbería, uñas, pestañas, cejas, masajes)" },
+  { value: "taller", label: "Talleres y reparaciones (bicicleterías, servicio técnico de celulares y electrodomésticos, gomerías, reparación de calzado)" },
   { value: "otro", label: "Otro" },
 ] as const;
 

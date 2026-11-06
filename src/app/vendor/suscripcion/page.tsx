@@ -130,13 +130,17 @@ const PLAN_COPY: Record<string, { title: string; desc: string }> = {
     title: "Turnera",
     desc: "Turnera libre: consultas y turnos ilimitados + pedidos online ilimitados, reseñas, cotización con precio y seña por Mercado Pago.",
   },
+  pedidos_taller: {
+    title: "Taller",
+    desc: "Turnera libre: presupuestos y turnos ilimitados + pedidos online ilimitados, reseñas, cotización con precio (partidas o cerrado) y seña por Mercado Pago.",
+  },
 };
 
-/** Copy por vertical: `pedidos` se llama "Turnera" en estética. */
+/** Copy por vertical: `pedidos` se llama "Turnera" en estética y "Taller" en talleres. */
 function planCopyFor(slug: string, vertical: string | null | undefined): { title: string; desc: string } | undefined {
-  if (vertical === "estetica") {
-    const esteticaCopy = PLAN_COPY[`${slug}_estetica`];
-    if (esteticaCopy) return esteticaCopy;
+  if (vertical === "estetica" || vertical === "taller") {
+    const verticalCopy = PLAN_COPY[`${slug}_${vertical}`];
+    if (verticalCopy) return verticalCopy;
   }
   return PLAN_COPY[slug];
 }
@@ -476,7 +480,7 @@ export default function VendorSuscripcionPage() {
               Productos: {me.usage.products}
               {me.usage.maxProducts != null ? `/ ${me.usage.maxProducts}` : " · sin tope"}
             </span>
-            {(me.vertical === "servicio" || me.vertical === "estetica") && (
+            {(me.vertical === "servicio" || me.vertical === "estetica" || me.vertical === "taller") && (
               <span className="rounded-full bg-muted px-3 py-1 text-[11px] text-muted-foreground">
                 Solicitudes: {me.usage.quotesThisMonth}
                 {me.usage.maxQuotesMonth != null ? `/ ${me.usage.maxQuotesMonth}` : " · sin tope"}
@@ -612,7 +616,7 @@ export default function VendorSuscripcionPage() {
             max={me.usage.maxProducts}
             overLabel="Pasaste el límite: algunos productos quedaron ocultos hasta que bajes el nivel o subas de plan."
           />
-          {(me.vertical === "servicio" || me.vertical === "estetica") && (
+          {(me.vertical === "servicio" || me.vertical === "estetica" || me.vertical === "taller") && (
             <UsageBar
               label={`Solicitudes este mes (${me.vertical === "estetica" ? "consultas + turnos" : "presupuestos + turnos"})`}
               used={me.usage.quotesThisMonth}

@@ -6,7 +6,7 @@ import { getSiteUrl } from "@/lib/site-url";
 import { createHash, randomBytes } from "crypto";
 import { checkArgPhone, toE164Plus } from "@/lib/phone";
 
-const TIPOS = ["gastronomia", "comercio", "servicio", "moda", "estetica", "otro"] as const;
+const TIPOS = ["gastronomia", "comercio", "servicio", "moda", "estetica", "taller", "otro"] as const;
 
 export async function POST(request: Request) {
   const { email, password, firstName, lastName, storeName, whatsapp, tipo } = await request.json();

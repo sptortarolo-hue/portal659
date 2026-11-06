@@ -62,6 +62,7 @@ const VERTICAL_COLORS: Record<string, string> = {
   moda: "bg-violet-100 text-violet-700",
   salud: "bg-pink-100 text-pink-700",
   estetica: "bg-pink-100 text-pink-700",
+  taller: "bg-orange-100 text-orange-800",
 };
 
 const SUB_LABELS: Record<string, { label: string; cls: string }> = {

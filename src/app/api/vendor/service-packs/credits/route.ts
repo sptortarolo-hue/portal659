@@ -15,7 +15,7 @@ import { NextResponse } from "next/server";
 export async function GET(request: Request) {
   const gate = await gateRequest(request);
   if (!gate.ok) return gateError(gate);
-  if (gate.vendor.vertical !== "estetica") return NextResponse.json({ credits: [] });
+  if ((gate.vendor.vertical !== "estetica" && gate.vendor.vertical !== "taller")) return NextResponse.json({ credits: [] });
   const { searchParams } = new URL(request.url);
   const phone = toE164(searchParams.get("phone") || "");
   if (!phone) return NextResponse.json({ credits: [] });
@@ -37,8 +37,8 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const gate = await gateRequest(request);
   if (!gate.ok) return gateError(gate);
-  if (gate.vendor.vertical !== "estetica") {
-    return NextResponse.json({ error: "Solo disponible para estética" }, { status: 403 });
+  if ((gate.vendor.vertical !== "estetica" && gate.vendor.vertical !== "taller")) {
+    return NextResponse.json({ error: "Solo disponible para estética y talleres" }, { status: 403 });
   }
   const body = await request.json().catch(() => ({}));
   const action = String(body.action || "");

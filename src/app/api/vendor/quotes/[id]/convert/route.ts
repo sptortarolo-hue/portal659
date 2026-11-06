@@ -1,5 +1,7 @@
 import { gateRequest } from "@/lib/subscription-gate";
-import { queryOne, withTransaction } from "@/lib/db";
+import { queryOne, withTransaction, hasColumn } from "@/lib/db";
+import { isPreviewRow } from "@/lib/preview-flag";
+import { hasEquipmentColumnTx } from "@/lib/equipment-server";
 import { addServiceJob } from "@/lib/customers";
 import { NextResponse } from "next/server";
 import crypto from "crypto";
@@ -19,8 +21,8 @@ export async function POST(
   if (!gate.ok) {
     return NextResponse.json({ error: gate.error }, { status: gate.status });
   }
-  if (gate.vendor.vertical !== "servicio" && gate.vendor.vertical !== "estetica") {
-    return NextResponse.json({ error: "Solo disponible para servicios y estética" }, { status: 403 });
+  if (gate.vendor.vertical !== "servicio" && (gate.vendor.vertical !== "estetica" && gate.vendor.vertical !== "taller")) {
+    return NextResponse.json({ error: "Solo disponible para servicios, estética y talleres" }, { status: 403 });
   }
 
   const { id } = await params;
@@ -124,6 +126,17 @@ export async function POST(
       }
       const bid = b[0]?.id;
       if (!bid) throw new Error("No se pudo crear el turno");
+      // Hereda el equipo del presupuesto al turno (tolerante a migración).
+      // hasColumn nunca lanza: se usa antes del SELECT para no envenenar la tx.
+      if (await hasColumn(tx, "quotes", "equipment_id")) {
+        const eqRow = await tx.queryOne<{ equipment_id: string | null }>(
+          `SELECT equipment_id FROM quotes WHERE id = $1 LIMIT 1`,
+          [id]
+        );
+        if (eqRow?.equipment_id && (await hasEquipmentColumnTx(tx, "bookings"))) {
+          await tx.queryVoid(`UPDATE bookings SET equipment_id = $1 WHERE id = $2`, [eqRow.equipment_id, bid]);
+        }
+      }
       return bid;
     });
 

@@ -91,6 +91,7 @@ export function EsteticaServicesSection({
   cancelPolicy,
   cancelRefundsDeposit,
   cancelHours,
+  equipment,
 }: {
   services: EsteticaServiceCard[];
   vendorId: string;
@@ -101,6 +102,8 @@ export function EsteticaServicesSection({
   /** Seña al cancelar dentro del plazo: false = no se devuelve. */
   cancelRefundsDeposit?: boolean;
   cancelHours?: number;
+  /** Taller: bloque «Tu equipo» en el form de reserva. */
+  equipment?: boolean;
 }) {
   const [picked, setPicked] = useState<EsteticaServiceCard | null>(null);
   if (services.length === 0) return null;
@@ -143,6 +146,7 @@ export function EsteticaServicesSection({
           cancelPolicy={cancelPolicy}
           cancelRefundsDeposit={cancelRefundsDeposit}
           cancelHours={cancelHours}
+          equipment={equipment}
           onClose={() => setPicked(null)}
         />
       )}
@@ -159,6 +163,7 @@ export function ServiceBookingSheet({
   cancelPolicy,
   cancelRefundsDeposit,
   cancelHours,
+  equipment,
   onClose,
 }: {
   service: EsteticaServiceCard;
@@ -171,6 +176,8 @@ export function ServiceBookingSheet({
   /** Seña al cancelar dentro del plazo: false = no se devuelve. */
   cancelRefundsDeposit?: boolean;
   cancelHours?: number;
+  /** Taller: bloque «Tu equipo» en el form de reserva. */
+  equipment?: boolean;
   onClose: () => void;
 }) {
   const [step, setStep] = useState<"detail" | "book">("detail");
@@ -340,6 +347,7 @@ export function ServiceBookingSheet({
                 cancelPolicy={cancelPolicy}
                 cancelRefundsDeposit={cancelRefundsDeposit}
                 cancelHours={cancelHours}
+                equipment={equipment}
               />
             </div>
           )}

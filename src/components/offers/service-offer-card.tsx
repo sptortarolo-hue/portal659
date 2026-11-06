@@ -17,6 +17,8 @@ type ServiceOfferCardProps = {
   imageUrl?: string | null;
   /** Viene destacada como "oferta del día": anillo solar como los productos. */
   featured?: boolean;
+  /** Vertical del comercio (fallback de ícono: 💇 peluquería, 🛠️ taller). */
+  vertical?: string | null;
 };
 
 /**
@@ -35,6 +37,7 @@ export function ServiceOfferCard({
   storeSlug,
   imageUrl,
   featured,
+  vertical,
 }: ServiceOfferCardProps) {
   const priceLabel = servicePriceLabel({ price, price_from: priceFrom, price_to: priceTo });
   return (
@@ -50,14 +53,14 @@ export function ServiceOfferCard({
             <ProductImage
               src={imageUrl}
               name={name}
-              vertical="estetica"
+              vertical={vertical === "taller" ? "taller" : "estetica"}
               alt={name}
               className="w-full h-full object-cover"
             />
           </div>
         ) : (
           <div className="h-40 bg-gradient-to-br from-accent to-muted flex items-center justify-center">
-            <span className="text-4xl">💇</span>
+            <span className="text-4xl">{vertical === "taller" ? "🛠️" : "💇"}</span>
           </div>
         )}
         <CardHeader className="pb-2">

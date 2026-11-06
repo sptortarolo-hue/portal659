@@ -119,6 +119,8 @@ export function sectionsForVertical(vertical: string | null | undefined): string
       return ["perfil", "ubicacion", "contacto", "pagos", "equipo", "impresora", "alertas", "fiscal", "carta"];
     case "estetica":
       return ["perfil", "ubicacion", "contacto", "pagos", "fiscal", "turnera", "fichas", "packs", "equipo", "impresora", "alertas", "carta"];
+    case "taller":
+      return ["perfil", "ubicacion", "contacto", "pagos", "fiscal", "turnera", "packs", "equipo", "impresora", "alertas", "carta"];
     case "servicio":
       return ["perfil", "ubicacion", "contacto", "servicios", "urgencia", "equipo", "carta"];
     default:

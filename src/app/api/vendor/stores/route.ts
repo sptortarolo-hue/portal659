@@ -24,7 +24,7 @@ function slugify(text: string): string {
     .slice(0, 50);
 }
 
-const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "estetica", "otro"];
+const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "estetica", "taller", "otro"];
 
 /**
  * Alta de un comercio nuevo para un usuario que ya es dueño (multi-tienda).

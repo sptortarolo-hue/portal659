@@ -63,11 +63,11 @@ export const POST = withRateLimit(async (request: Request) => {
       if (!ok) {
         return NextResponse.json({ error: "Elegí uno de los montos ofrecidos" }, { status: 400 });
       }
-    } else if (vendor.vertical !== "estetica") {
+    } else if ((vendor.vertical !== "estetica" && vendor.vertical !== "taller")) {
       return NextResponse.json({ error: "Este comercio todavía no definió montos de giftcard" }, { status: 400 });
     }
   } catch {
-    if (vendor.vertical !== "estetica") {
+    if ((vendor.vertical !== "estetica" && vendor.vertical !== "taller")) {
       return NextResponse.json({ error: "Este comercio todavía no definió montos de giftcard" }, { status: 400 });
     }
   }

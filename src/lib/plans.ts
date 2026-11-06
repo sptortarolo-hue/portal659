@@ -16,7 +16,7 @@ export const PLAN_IDS: Record<PlanSlug, string> = {
 export const PLAN_SLUGS: PlanSlug[] = ["gratuito", "pedidos", "gestion", "oficios"];
 
 // Los planes pagos están disponibles para gastronomía, comercio de barrio,
-// moda, servicios y estética.
+// moda, servicios, estética y talleres.
 export const PAID_PLAN_SLUGS: PlanSlug[] = ["pedidos", "gestion", "oficios"];
 
 export const GASTRO_VERTICAL = "gastronomia";
@@ -24,6 +24,7 @@ export const MODA_VERTICAL = "moda";
 export const COMERCIO_VERTICAL = "comercio";
 export const SERVICIO_VERTICAL = "servicio";
 export const ESTETICA_VERTICAL = "estetica";
+export const TALLER_VERTICAL = "taller";
 
 export function isGastroVendor(vendor: { vertical?: string | null }): boolean {
   return vendor.vertical === GASTRO_VERTICAL;
@@ -43,6 +44,19 @@ export function isServicioVendor(vendor: { vertical?: string | null }): boolean 
 
 export function isEsteticaVendor(vendor: { vertical?: string | null }): boolean {
   return vendor.vertical === ESTETICA_VERTICAL;
+}
+
+export function isTallerVendor(vendor: { vertical?: string | null }): boolean {
+  return vendor.vertical === TALLER_VERTICAL;
+}
+
+/**
+ * Verticales híbridos (venta + servicio): estética y taller. Comparten la
+ * maquinaria (carrito, mostrador, turnera, presupuestos, seña MP/Stripe,
+ * packs, mostrador, giftcards); difieren en copy y en la ficha de cliente.
+ */
+export function isHybridVendor(vendor: { vertical?: string | null }): boolean {
+  return vendor.vertical === ESTETICA_VERTICAL || vendor.vertical === TALLER_VERTICAL;
 }
 
 /**
@@ -138,6 +152,24 @@ export const ESTETICA_FREE_QUOTES_MONTH = 5;
 /** Tope mensual de pedidos online gratis de estética (venta de productos). */
 export const ESTETICA_FREE_ORDERS_MONTH = 5;
 
+// Talleres y Reparaciones (bicicleterías, servicio técnico de celulares y
+// electrodomésticos, gomerías, reparación de calzado...): híbrido venta +
+// taller. Misma estructura que estética: Gratuito con tope propio de 5
+// solicitudes/mes y 5 pedidos/mes, plan pago ("Taller", fila `pedidos`) y
+// Gestión integral. NO se vende Oficios a taller (como estética). La
+// turnera/presupuestos y la seña MP son override de código con plan pago.
+const TALLER_FREE_FEATURES: PlanFeatures = {
+  ...GRATUITO_FEATURES,
+  cart: true,
+  emits_orders: true,
+};
+
+/** Tope mensual de solicitudes (turnos + presupuestos) gratis de taller. */
+export const TALLER_FREE_QUOTES_MONTH = 5;
+
+/** Tope mensual de pedidos online gratis de taller (venta de productos). */
+export const TALLER_FREE_ORDERS_MONTH = 5;
+
 // Servicios (plomero, electricista...): vidriera + contacto + solicitudes
 // (presupuestos/turnos) con tope mensual. El plan Oficios suma gestión.
 // Recibir solicitudes no es feature gateada (es el gratuito mismo); el tope
@@ -151,6 +183,15 @@ const SERVICIO_FREE_FEATURES: PlanFeatures = {
 // pago (el centro vende productos con el mismo circuito retail que moda).
 // urgent tampoco: la urgencia 24h es concepto de oficios, no de turnera.
 const ESTETICA_FEATURE_MASK: Partial<Record<FeatureKey, false>> = {
+  kds: false,
+  mesas: false,
+  recipes: false,
+  urgent: false,
+};
+
+// Features del plan que no aplican al vertical taller (mismas que estética:
+// sin cocina, sin salón ni urgencia 24h).
+const TALLER_FEATURE_MASK: Partial<Record<FeatureKey, false>> = {
   kds: false,
   mesas: false,
   recipes: false,
@@ -319,8 +360,8 @@ export function resolveVendorPlan(
   else if (grace) status = "past_due";
   else status = expired ? "expired" : "gratuito";
 
-  // Gastro, comercio, moda, servicios y estética pueden tener planes pagos;
-  // el resto de los verticales resuelven siempre como gratuito.
+  // Gastro, comercio, moda, servicios, estética y talleres pueden tener
+  // planes pagos; el resto de los verticales resuelven siempre como gratuito.
   // En desarrollo mostramos todos los planes para poder probarlos.
   const eligibleForPaid =
     (process.env.NODE_ENV as string) === "development" ||
@@ -328,7 +369,8 @@ export function resolveVendorPlan(
     isComercioVendor(vendor) ||
     isServicioVendor(vendor) ||
     isModaVendor(vendor) ||
-    isEsteticaVendor(vendor);
+    isEsteticaVendor(vendor) ||
+    isTallerVendor(vendor);
 
   const can = (feature: FeatureKey): boolean => {
     if (isModaVendor(vendor)) {
@@ -364,6 +406,19 @@ export function resolveVendorPlan(
       }
       return ESTETICA_FREE_FEATURES[feature] === true;
     }
+    if (isTallerVendor(vendor)) {
+      // Mask del vertical: gestión trae kds/mesas/recipes en su JSONB, pero
+      // un taller nunca los usa.
+      if (TALLER_FEATURE_MASK[feature] === false) return false;
+      if (paid) {
+        // El presupuesto completo (cotizar con precio + seña MP) es parte de
+        // la propuesta de los planes pagos de taller ("Taller" usa la fila
+        // `pedidos`).
+        if (feature === "quotes_respond" || feature === "deposits") return true;
+        return featureOf(plan, feature);
+      }
+      return TALLER_FREE_FEATURES[feature] === true;
+    }
     if (!eligibleForPaid) return GRATUITO_FEATURES[feature] === true;
     if (paid) return featureOf(plan, feature);
     return FREE_GASTRO_FEATURES[feature] === true;
@@ -373,7 +428,7 @@ export function resolveVendorPlan(
   // plan; en cualquier otro caso (gratuito o pago vencido) se leen del plan
   // "gratuito" para que el admin pueda configurar el tope sin tocar código.
   // Excepciones con tope propio: moda gratis/vencido usa el suyo (5 pedidos,
-  // no los 20 de gastro); estética gratis/vencido usa los suyos (5
+  // no los 20 de gastro); los híbridos gratis/vencido usan los suyos (5
   // solicitudes + 5 pedidos).
   const freePlanRow = plans.find((p) => p.slug === "gratuito") ?? null;
   const limitRow = paid ? plan : freePlanRow;
@@ -382,11 +437,15 @@ export function resolveVendorPlan(
       ? MODA_FREE_ORDERS_MONTH
       : isEsteticaVendor(vendor) && !(paid)
         ? ESTETICA_FREE_ORDERS_MONTH
-        : (limitRow?.max_orders_month ?? null);
+        : isTallerVendor(vendor) && !(paid)
+          ? TALLER_FREE_ORDERS_MONTH
+          : (limitRow?.max_orders_month ?? null);
   const maxQuotesMonth =
     isEsteticaVendor(vendor) && !(paid)
       ? ESTETICA_FREE_QUOTES_MONTH
-      : (limitRow?.max_quotes_month ?? null);
+      : isTallerVendor(vendor) && !(paid)
+        ? TALLER_FREE_QUOTES_MONTH
+        : (limitRow?.max_quotes_month ?? null);
   // Pantallas TV: el gratuito tiene 1 (growth), la gestión 2. Servicios y los
   // planes vencidos no tienen (0). El tope viene del plan (max_screens).
   const fallbackScreens = paid

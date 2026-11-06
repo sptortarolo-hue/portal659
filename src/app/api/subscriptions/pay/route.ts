@@ -53,21 +53,22 @@ export async function POST(request: Request) {
   }
   // Servicios solo puede comprar Oficios (ni Pedidos ni Gestión: son de cocina/mostrador).
   // Gastro, comercio y moda compran Pedidos/Gestión.
-  // Estética compra "Turnera" (fila `pedidos`) o Gestión integral. Oficios ya
-  // no se vende a estética: solo queda accesible como renovación
-  // grandfathering para quien ya lo tiene activo.
-  const grandfatheredOficios = vendor.vertical === "estetica" && vendor.plan_id === PLAN_IDS.oficios;
+  // Estética y taller compran "Turnera"/"Taller" (fila `pedidos`) o Gestión
+  // integral. Oficios ya no se vende a estética/taller: solo queda accesible
+  // como renovación grandfathering para quien ya lo tiene activo.
+  const isHybrid = vendor.vertical === "estetica" || vendor.vertical === "taller";
+  const grandfatheredOficios = isHybrid && vendor.plan_id === PLAN_IDS.oficios;
   const allowedSlugs =
     vendor.vertical === "servicio"
       ? ["oficios"]
-      : vendor.vertical === "estetica"
+      : isHybrid
         ? grandfatheredOficios ? ["oficios", "pedidos", "gestion"] : ["pedidos", "gestion"]
       : vendor.vertical === "gastronomia" || vendor.vertical === "comercio" || vendor.vertical === "moda"
         ? ["pedidos", "gestion"]
         : [];
   if (allowedSlugs.length === 0) {
     return NextResponse.json(
-      { error: "Los planes pagos están disponibles para gastronomía, comercios de barrio, moda, estética y servicios" },
+      { error: "Los planes pagos están disponibles para gastronomía, comercios de barrio, moda, estética, talleres y servicios" },
       { status: 400 }
     );
   }

@@ -48,6 +48,8 @@ const VERTICAL_OPTIONS = [
   { value: "gastronomia", label: "Gastronomía" },
   { value: "comercio", label: "Comercio del barrio" },
   { value: "servicio", label: "Servicio u oficio" },
+  { value: "estetica", label: "Peluquería y Estética" },
+  { value: "taller", label: "Talleres y Reparaciones" },
   { value: "otro", label: "Otro" },
 ];
 

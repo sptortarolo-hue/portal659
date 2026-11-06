@@ -95,7 +95,15 @@ export default function PresupuestoPrintPage() {
           <p className="text-sm font-bold">Cliente</p>
           <p>{quote.customer_name}</p>
           {quote.customer_phone && <p className="text-sm text-neutral-600">Tel: {quote.customer_phone}</p>}
-          {quote.service_name && <p className="text-sm text-neutral-600">Servicio: {quote.service_name}</p>}
+          {quote.equipment_kind && (quote.equipment_brand || quote.equipment_model || quote.equipment_identifier) && (
+            <p className="text-sm text-neutral-600">
+              🚲 Equipo: {[quote.equipment_brand, quote.equipment_model].filter(Boolean).join(" ")}
+              {quote.equipment_rodado ? ` · Rodado ${quote.equipment_rodado}` : ""}
+              {quote.equipment_identifier ? ` · N° ${quote.equipment_identifier}` : ""}
+              {quote.equipment_color ? ` · ${quote.equipment_color}` : ""}
+            </p>
+          )}
+          {quote.service_name && !quote.equipment_kind && <p className="text-sm text-neutral-600">{vendor?.vertical === "taller" ? "Equipo / Bici" : "Servicio"}: {quote.service_name}</p>}
           {quote.preferred_date && <p className="text-sm text-neutral-600">Fecha estimada: {quote.preferred_date}</p>}
         </div>
 

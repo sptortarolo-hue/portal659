@@ -36,7 +36,7 @@ export const POST = withRateLimit(async (request: Request) => {
      FROM vendors WHERE id = $1 LIMIT 1`,
     [vendorId]
   ).catch(() => undefined);
-  if (!vendor || vendor.vertical !== "estetica") {
+  if (!vendor || (vendor.vertical !== "estetica" && vendor.vertical !== "taller")) {
     return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });
   }
 

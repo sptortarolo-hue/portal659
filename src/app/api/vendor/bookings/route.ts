@@ -1,5 +1,6 @@
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { gateRequest } from "@/lib/subscription-gate";
+import { resolveEquipmentForWorkTx, hasEquipmentColumnTx } from "@/lib/equipment-server";
 import { queryMany, queryOne, withTransaction } from "@/lib/db";
 import { ensureServiceCustomer } from "@/lib/customers";
 import { toE164 } from "@/lib/phone";
@@ -86,8 +87,8 @@ export async function POST(request: Request) {
   if (!gate.ok) {
     return NextResponse.json({ error: gate.error }, { status: gate.status });
   }
-  if (gate.vendor.vertical !== "servicio" && gate.vendor.vertical !== "estetica") {
-    return NextResponse.json({ error: "Solo disponible para servicios y estética" }, { status: 403 });
+  if (gate.vendor.vertical !== "servicio" && (gate.vendor.vertical !== "estetica" && gate.vendor.vertical !== "taller")) {
+    return NextResponse.json({ error: "Solo disponible para servicios, estética y talleres" }, { status: 403 });
   }
 
   const body = await request.json().catch(() => ({}));
@@ -130,6 +131,11 @@ export async function POST(request: Request) {
   let bookingId: string | null = null;
   try {
     bookingId = await withTransaction(async (tx) => {
+      const eqId = await resolveEquipmentForWorkTx(tx, gate.vendor.id, body, {
+        name: customerName,
+        phone: customerPhone,
+      });
+      const hasEqCol = eqId ? await hasEquipmentColumnTx(tx, "bookings") : false;
       let b;
       const notesVal = String(body.notes || "").trim().slice(0, 2000) || null;
       const pnameVal = serviceName || String(body.product_name || "").trim() || null;
@@ -166,6 +172,10 @@ export async function POST(request: Request) {
       }
       const id = b[0]?.id;
       if (!id) throw new Error("No se pudo crear el turno");
+      // Enlaza el equipo (tolerante: sin columna equipment_id no se setea).
+      if (hasEqCol && eqId) {
+        await tx.queryVoid(`UPDATE bookings SET equipment_id = $1 WHERE id = $2`, [eqId, id]);
+      }
       if (!isPreview) {
         await ensureServiceCustomer(tx, gate.vendor.id, { phone: customerPhone, name: customerName });
       }

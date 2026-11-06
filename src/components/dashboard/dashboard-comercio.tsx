@@ -70,6 +70,8 @@ const VERTICAL_OPTIONS = [
   { value: "comercio", label: "Comercio del barrio (almacén, verdulería, carnicería, kiosco, librería, ferretería, floristería, pet shop, veterinaria)" },
   { value: "servicio", label: "Servicio u oficio (sin menú)" },
   { value: "moda", label: "Ropa y accesorios" },
+  { value: "estetica", label: "Peluquería y estética" },
+  { value: "taller", label: "Talleres y reparaciones" },
   { value: "otro", label: "Otro" },
 ] as const;
 
@@ -79,6 +81,8 @@ const CATEGORY_SUGGESTIONS: Record<string, string[]> = {
   servicio: ["electricista", "plomero", "jardinería", "pintura", "albañilería", "mudanza", "limpieza", "seguridad", "otros"],
   moda: ["ropa", "calzado", "accesorios", "bijouterie", "bolsos", "confección", "sastrería", "otros"],
   salud: ["farmacia", "peluquería", "estética", "gimnasio", "consultorio", "otros"],
+  estetica: ["peluquería", "barbería", "uñas", "pestañas", "cejas", "masajes", "depilación", "maquillaje", "facial", "corporal", "otros"],
+  taller: ["bicicletería", "bicicletas", "servicio técnico", "servicio técnico celulares", "servicio técnico electrodomésticos", "electrodomésticos", "gomería", "reparación de calzado", "reparación", "taller mecánico", "cerrajería", "otros"],
   otro: ["otros"],
 };
 

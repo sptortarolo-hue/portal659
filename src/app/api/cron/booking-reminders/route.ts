@@ -387,7 +387,7 @@ export async function GET(request: Request) {
                 v.store_name, v.slug, v.google_review_url, v.wa_reminders
          FROM bookings b JOIN vendors v ON v.id = b.vendor_id
          WHERE b.status = 'confirmed' AND b.booking_date = $1
-           AND v.vertical = 'estetica'${previewFilter}
+           AND v.vertical IN ('estetica', 'taller')${previewFilter}
            AND NOT EXISTS (SELECT 1 FROM service_review_log l WHERE l.booking_id = b.id)
          LIMIT 100`,
         [yesterdayAR]
@@ -421,18 +421,20 @@ export async function GET(request: Request) {
         store_name: string;
         slug: string | null;
         wa_reminders: boolean | null;
+        vertical: string | null;
       }>(
-        `SELECT c.vendor_id, c.phone, c.name, v.store_name, v.slug, v.wa_reminders
+        `SELECT c.vendor_id, c.phone, c.name, v.store_name, v.slug, v.wa_reminders, v.vertical
          FROM customers c JOIN vendors v ON v.id = c.vendor_id
-         WHERE v.vertical = 'estetica'
+         WHERE v.vertical IN ('estetica', 'taller')
            AND c.last_order_at IS NOT NULL AND c.last_order_at < now() - interval '45 days'
            AND (c.last_winback_at IS NULL OR c.last_winback_at < now() - interval '45 days')
          LIMIT 50`
       ).catch(() => []);
       for (const c of gone || []) {
         try {
+          const emoji = c.vertical === "taller" ? "🛠️" : "💅";
           await notifyServiceClient(c.phone, {
-            title: `¡Te extrañamos en ${c.store_name}! 💅`,
+            title: `¡Te extrañamos en ${c.store_name}! ${emoji}`,
             body: `Hace rato no venís. Reservá tu próximo turno acá: ${siteUrl}/tienda/${c.slug || c.vendor_id}`,
             link: `/tienda/${c.slug || c.vendor_id}`,
           });
@@ -440,7 +442,7 @@ export async function GET(request: Request) {
             await sendWaText({
               vendorId: c.vendor_id,
               waId: c.phone,
-              text: `Hola ${String(c.name || "").split(" ")[0] || ""}! En ${c.store_name} te extrañamos 💅 Reservá tu próximo turno acá: ${siteUrl}/tienda/${c.slug || c.vendor_id}`.trim(),
+              text: `Hola ${String(c.name || "").split(" ")[0] || ""}! En ${c.store_name} te extrañamos ${emoji} Reservá tu próximo turno acá: ${siteUrl}/tienda/${c.slug || c.vendor_id}`.trim(),
             }).catch(() => undefined);
           }
           await query(`UPDATE customers SET last_winback_at = now() WHERE vendor_id = $1 AND phone = $2`, [c.vendor_id, c.phone]).catch(() => undefined);

@@ -2,6 +2,7 @@ import { gateRequest } from "@/lib/subscription-gate";
 import { queryMany, withTransaction } from "@/lib/db";
 import { ensureServiceCustomer } from "@/lib/customers";
 import { toE164 } from "@/lib/phone";
+import { resolveEquipmentForWorkTx, hasEquipmentColumnTx } from "@/lib/equipment-server";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -24,10 +25,16 @@ export async function GET(request: Request) {
   }
 
   const quotes = await queryMany<Record<string, unknown>>(
-    `SELECT id, customer_name, customer_phone, service_name, description,
-            preferred_date, preferred_time, status, vendor_notes, quoted_price,
-            deposit_amount, deposit_pct, deposit_status, photo_urls, is_preview, created_at
-     FROM quotes WHERE ${conditions.join(" AND ")} ORDER BY created_at DESC LIMIT 100`,
+    `SELECT q.id, q.customer_name, q.customer_phone, q.service_name, q.description,
+            q.preferred_date, q.preferred_time, q.status, q.vendor_notes, q.quoted_price,
+            q.deposit_amount, q.deposit_pct, q.deposit_status, q.photo_urls, q.is_preview, q.created_at,
+            e.kind AS equipment_kind, e.brand AS equipment_brand, e.model AS equipment_model,
+            e.identifier AS equipment_identifier, e.rodado AS equipment_rodado, e.color AS equipment_color
+     FROM quotes q LEFT JOIN equipment e ON e.id = q.equipment_id
+     WHERE ${conditions
+        .join(" AND ")
+        .replace(/vendor_id/g, "q.vendor_id")
+        .replace(/status/g, "q.status")} ORDER BY q.created_at DESC LIMIT 100`,
     params
   ).catch(() =>
     // Sin flag de prueba: sin columna.
@@ -87,8 +94,8 @@ export async function POST(request: Request) {
   if (!gate.ok) {
     return NextResponse.json({ error: gate.error }, { status: gate.status });
   }
-  if (gate.vendor.vertical !== "servicio" && gate.vendor.vertical !== "estetica") {
-    return NextResponse.json({ error: "Solo disponible para servicios y estética" }, { status: 403 });
+  if (gate.vendor.vertical !== "servicio" && (gate.vendor.vertical !== "estetica" && gate.vendor.vertical !== "taller")) {
+    return NextResponse.json({ error: "Solo disponible para servicios, estética y talleres" }, { status: 403 });
   }
 
   const body = await request.json().catch(() => ({}));
@@ -118,22 +125,45 @@ export async function POST(request: Request) {
   const isPreview = gate.previewSession === true;
   try {
     quoteId = await withTransaction(async (tx) => {
-      const q = await tx.query<{ id: string }>(
-        `INSERT INTO quotes (vendor_id, customer_name, customer_phone, service_name, description, preferred_date, preferred_time, status, vendor_notes, quoted_price, origin, is_preview)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'responded', $8, $9, 'vendor', $10) RETURNING id`,
-        [
-          gate.vendor.id,
-          customerName,
-          customerPhone,
-          String(body.service_name || "").trim() || null,
-          description,
-          String(body.preferred_date || "").trim() || null,
-          String(body.preferred_time || "").trim() || null,
-          String(body.vendor_notes || "").trim().slice(0, 2000) || null,
-          quotedPrice,
-          isPreview,
-        ]
-      );
+      const eqId = await resolveEquipmentForWorkTx(tx, gate.vendor.id, body, {
+        name: customerName,
+        phone: customerPhone,
+      });
+      const hasEqCol = eqId ? await hasEquipmentColumnTx(tx, "quotes") : false;
+      const q = hasEqCol
+        ? await tx.query<{ id: string }>(
+            `INSERT INTO quotes (vendor_id, customer_name, customer_phone, service_name, description, preferred_date, preferred_time, status, vendor_notes, quoted_price, origin, is_preview, equipment_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, 'responded', $8, $9, 'vendor', $10, $11) RETURNING id`,
+            [
+              gate.vendor.id,
+              customerName,
+              customerPhone,
+              String(body.service_name || "").trim() || null,
+              description,
+              String(body.preferred_date || "").trim() || null,
+              String(body.preferred_time || "").trim() || null,
+              String(body.vendor_notes || "").trim().slice(0, 2000) || null,
+              quotedPrice,
+              isPreview,
+              eqId,
+            ]
+          )
+        : await tx.query<{ id: string }>(
+            `INSERT INTO quotes (vendor_id, customer_name, customer_phone, service_name, description, preferred_date, preferred_time, status, vendor_notes, quoted_price, origin, is_preview)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, 'responded', $8, $9, 'vendor', $10) RETURNING id`,
+            [
+              gate.vendor.id,
+              customerName,
+              customerPhone,
+              String(body.service_name || "").trim() || null,
+              description,
+              String(body.preferred_date || "").trim() || null,
+              String(body.preferred_time || "").trim() || null,
+              String(body.vendor_notes || "").trim().slice(0, 2000) || null,
+              quotedPrice,
+              isPreview,
+            ]
+          );
       const id = q[0]?.id;
       if (!id) throw new Error("No se pudo crear el presupuesto");
       for (const it of items) {

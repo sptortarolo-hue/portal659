@@ -4,6 +4,7 @@ import { addServiceJob, decrementCustomerFromOrder, ensureServiceCustomer } from
 import { isPreviewRow } from "@/lib/preview-flag";
 import { queryOne, query, withTransaction } from "@/lib/db";
 import { toE164 } from "@/lib/phone";
+import { resolveEquipmentForWorkTx, hasEquipmentColumnTx } from "@/lib/equipment-server";
 import { computeBookingWarnings, computeStartsEnds, isISODate, resolveBookingRefs, toMinutes } from "@/lib/vendor-booking";
 import { NextResponse } from "next/server";
 
@@ -105,10 +106,12 @@ export async function PATCH(
     body?.products_used != null && String(body.products_used).trim() !== ""
       ? String(body.products_used).trim().slice(0, 500)
       : null;
+  // Equipo (ficha del turno): enlaza equipment_id (del picker) o crea inline.
+  const wantEquip = body?.equipment_id !== undefined || body?.equipment !== undefined;
   // Edición de campos del turno (reprogramar / cambiar servicio, profesional,
   // sede, cliente o notas). Puede combinarse con el cambio de estado.
   const wantsEdit = EDIT_FIELDS.some((k) => (body as Record<string, unknown>)[k] !== undefined);
-  if (!hasStatus && !wantProducts && !wantsEdit) {
+  if (!hasStatus && !wantProducts && !wantsEdit && !wantEquip) {
     return NextResponse.json({ error: "Nada para actualizar" }, { status: 400 });
   }
 
@@ -221,6 +224,16 @@ export async function PATCH(
           // Sin 'forfeited' en el CHECK (migración pendiente): la seña queda
           // pagada igual (el comercio ya la tiene), solo se informa.
           consequence = "Seña pagada: queda en tu cuenta (falta migración para marcarla retenida)";
+        }
+      }
+      if (wantEquip) {
+        const eqId = await resolveEquipmentForWorkTx(tx, vendor.id, body, {
+          name: edit?.name ?? existing?.customer_name ?? null,
+          phone: edit?.phone ?? existing?.customer_phone ?? null,
+        });
+        const hasEqCol = await hasEquipmentColumnTx(tx, "bookings");
+        if (hasEqCol) {
+          await tx.queryVoid(`UPDATE bookings SET equipment_id = $1 WHERE id = $2`, [eqId ?? null, id]);
         }
       }
       if (wantProducts) {

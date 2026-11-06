@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 
 /**
  * Ajustes de agenda por FECHA (modo "Agenda por semana"): abrir un día con
- * horas propias o cerrarlo. Solo `estetica`.
+ * horas propias o cerrarlo. Vertical `estetica` o `taller`.
  * - GET /api/vendor/estetica-schedule-days?from=YYYY-MM-DD[&staffId=]
  * - POST { date, staff_id, ranges:[["09:00","13:00"]] } (upsert; [] = cerrado)
  * - DELETE ?id=  (o ?day=YYYY-MM-DD&staffId=)
@@ -15,7 +15,7 @@ const MIGRATION = "Falta aplicar la migración migrate-estetica-schedule.sql en 
 
 function checkEstetica(gate: { ok: boolean; vendor?: { vertical?: string } }) {
   if (!gate.ok || !gate.vendor) return null;
-  if (gate.vendor.vertical !== "estetica") return "only-estetica";
+  if ((gate.vendor.vertical !== "estetica" && gate.vendor.vertical !== "taller")) return "only-estetica";
   return "ok";
 }
 
@@ -54,7 +54,7 @@ export async function POST(request: Request) {
   const gate: any = await gateRequest(request);
   if (!gate.ok) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   if (checkEstetica(gate) !== "ok") {
-    return NextResponse.json({ error: "Solo disponible para estética" }, { status: 403 });
+    return NextResponse.json({ error: "Solo disponible para estética y talleres" }, { status: 403 });
   }
   const body = await request.json().catch(() => ({}));
   const date = String(body.date || "");
@@ -93,7 +93,7 @@ export async function DELETE(request: Request) {
   const gate: any = await gateRequest(request);
   if (!gate.ok) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   if (checkEstetica(gate) !== "ok") {
-    return NextResponse.json({ error: "Solo disponible para estética" }, { status: 403 });
+    return NextResponse.json({ error: "Solo disponible para estética y talleres" }, { status: 403 });
   }
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id") || "";

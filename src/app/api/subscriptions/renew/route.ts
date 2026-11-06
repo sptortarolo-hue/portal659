@@ -65,12 +65,12 @@ export async function POST(request: Request) {
   const allowed =
     vendor.vertical === "servicio"
       ? ["oficios"]
-      : vendor.vertical === "estetica"
+      : vendor.vertical === "gastronomia" || vendor.vertical === "comercio" || vendor.vertical === "moda" || vendor.vertical === "estetica" || vendor.vertical === "taller"
         ? ["pedidos", "gestion"]
-        : ["pedidos", "gestion"];
+        : [];
   if (allowed.length === 0) {
     return NextResponse.json(
-      { error: "Los planes pagos están disponibles para gastronomía, comercios, moda, estética y servicios" },
+      { error: "Los planes pagos están disponibles para gastronomía, comercios, moda, estética, talleres y servicios" },
       { status: 400 }
     );
   }

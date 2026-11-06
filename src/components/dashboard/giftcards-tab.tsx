@@ -15,7 +15,7 @@ type Summary = {
 };
 
 /**
- * Pestaña Tarjetas (comercio/moda/estética): resumen + emisión/canje +
+ * Pestaña Tarjetas (comercio/moda/estética/taller): resumen + emisión/canje +
  * montos + historial por tarjeta. Sin gate de plan (como el resto del
  * módulo): solo importa el vertical.
  */
@@ -37,7 +37,7 @@ export function GiftcardsTab({
       .catch(() => {});
   }, []);
 
-  if (vertical === "estetica") {
+  if (vertical === "estetica" || vertical === "taller") {
     return (
       <div className="space-y-4">
         <EsteticaGiftcardsManager />

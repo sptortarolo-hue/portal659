@@ -21,6 +21,8 @@ export function businessTypeForVertical(vertical: string | null | undefined): st
     case "estetica":
     case "salud":
       return "HealthAndBeautyBusiness";
+    case "taller":
+      return "Store";
     case "comercio":
       return "Store";
     default:
@@ -35,6 +37,7 @@ const VERTICAL_SEO_NAME: Record<string, string> = {
   moda: "Ropa y accesorios",
   servicio: "Servicios y oficios",
   estetica: "Peluquería y estética",
+  taller: "Talleres y reparaciones",
   salud: "Salud y bienestar",
 };
 

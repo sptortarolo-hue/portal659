@@ -12,6 +12,7 @@ export type Vertical =
   | "moda"
   | "salud"
   | "estetica"
+  | "taller"
   | "otro";
 
 export type PlanSlug = "gratuito" | "pedidos" | "gestion" | "oficios";

@@ -15,8 +15,9 @@ export async function GET(
     return NextResponse.json({ error: gate.error }, { status: gate.status });
   }
   if (!gate.plan.can("quotes_respond")) {
+    const planName = gate.vendor.vertical === "estetica" ? "Turnera" : gate.vendor.vertical === "taller" ? "Taller" : "Oficios";
     return NextResponse.json(
-      { error: gate.vendor.vertical === "estetica" ? "El documento de la consulta requiere el plan Oficios." : "El documento del presupuesto requiere el plan Oficios." },
+      { error: `El documento del presupuesto requiere el plan ${planName} o Gestión integral.` },
       { status: 403 }
     );
   }
@@ -36,7 +37,7 @@ export async function GET(
   ).catch(() => []);
 
   const vendor = await queryOne<Record<string, unknown>>(
-    `SELECT store_name, address, phone, whatsapp, logo_url FROM vendors WHERE id = $1 LIMIT 1`,
+    `SELECT store_name, address, phone, whatsapp, logo_url, vertical FROM vendors WHERE id = $1 LIMIT 1`,
     [gate.vendor.id]
   );
 
@@ -48,6 +49,7 @@ export async function GET(
       phone: (vendor?.phone as string) || null,
       whatsapp: (vendor?.whatsapp as string) || null,
       logo_url: (vendor?.logo_url as string) || null,
+      vertical: (vendor?.vertical as import("@/types/database").Vertical) || "otro",
     },
     quote: {
       customer_name: String(quote.customer_name || ""),

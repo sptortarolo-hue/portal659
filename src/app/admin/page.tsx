@@ -58,6 +58,8 @@ const VERTICAL_COLORS: Record<string, string> = {
   servicio: "#0ea5e9",
   moda: "#8b5cf6",
   salud: "#ec4899",
+  estetica: "#f472b6",
+  taller: "#f97316",
 };
 
 const ORDER_STATUS_LABELS: Record<string, string> = {

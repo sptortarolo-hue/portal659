@@ -228,7 +228,7 @@ export async function POST(request: Request) {
     return out;
   }
 
-  const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "salud", "estetica", "otro"];
+  const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "salud", "estetica", "taller", "otro"];
   // "salud" legacy: lo nuevo va a comercio (su modelo real); lo existente se
   // conserva tal cual (no se toca si el vendor ya es salud).
   const normalizedVertical = vertical === "salud" ? "comercio" : vertical;

@@ -355,7 +355,7 @@ export async function PATCH(
     if (!giftOnlyOrder) {
       const vertical = fullVendor?.vertical ?? null;
       const isGastro = vertical === null || vertical === "gastronomia";
-      const isRetail = vertical === "moda" || vertical === "comercio" || vertical === "estetica";
+      const isRetail = vertical === "moda" || vertical === "comercio" || vertical === "estetica" || vertical === "taller";
       const needsKitchen = (currentOrder.items || []).some(
         (i) => (i as OrderItem)?.requires_prep !== false
       );
@@ -769,7 +769,7 @@ export async function PATCH(
 
   const pushText = customerNotificationText(
     status,
-    isRetailVendor({ vertical: fullVendor?.vertical ?? null }) || fullVendor?.vertical === "estetica",
+    isRetailVendor({ vertical: fullVendor?.vertical ?? null }) || (fullVendor?.vertical === "estetica" || fullVendor?.vertical === "taller"),
     fullVendor?.store_name,
     Number(order.total),
     order.pickup_number as number | null,

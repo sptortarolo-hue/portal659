@@ -25,9 +25,11 @@ type Props = {
   /** Seña al cancelar dentro del plazo: false = no se devuelve. */
   cancelRefundsDeposit?: boolean;
   cancelHours?: number;
+  /** Vertical taller: bloque opcional "Tu equipo" para guardar la ficha (bici/electro). */
+  equipment?: boolean;
 };
 
-export function BookingForm({ vendorId, vendorName, services, serviceOptions, staffOptions, locationOptions, cancelPolicy, cancelRefundsDeposit, cancelHours }: Props) {
+export function BookingForm({ vendorId, vendorName, services, serviceOptions, staffOptions, locationOptions, cancelPolicy, cancelRefundsDeposit, cancelHours, equipment }: Props) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [productName, setProductName] = useState("");
@@ -52,6 +54,12 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
   const [waiting, setWaiting] = useState(false);
   const [waitDone, setWaitDone] = useState(false);
   const [waitBusy, setWaitBusy] = useState(false);
+  // Equipo del cliente (taller): datos mínimos para su ficha.
+  const [eqBrand, setEqBrand] = useState("");
+  const [eqModel, setEqModel] = useState("");
+  const [eqRodado, setEqRodado] = useState("");
+  const [eqIdentifier, setEqIdentifier] = useState("");
+  const [eqColor, setEqColor] = useState("");
 
   // Carta visual: "Elegir" preselecciona el servicio en el formulario.
   useEffect(() => {
@@ -217,6 +225,9 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
         notes: notes || null,
         isPreview,
         previewToken: previewCtx?.token ?? null,
+        equipment: equipment && [eqBrand, eqModel, eqRodado, eqIdentifier, eqColor].some((v) => v.trim())
+          ? { brand: eqBrand.trim() || null, model: eqModel.trim() || null, rodado: eqRodado.trim() || null, identifier: eqIdentifier.trim() || null, color: eqColor.trim() || null, notes: null }
+          : undefined,
       }),
     });
 
@@ -414,6 +425,21 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
             </div>
           )}
         </div>
+      )}
+      {equipment && (
+        <details className="rounded-xl border border-dashed border-border p-3">
+          <summary className="cursor-pointer text-sm font-medium">🚲 Tu equipo (opcional — queda en tu ficha)</summary>
+          <p className="text-xs text-muted-foreground mt-1.5 mb-2">
+            Para recordar tu bicicleta/equipo: cada vez que venís a service queda anotado en tu historial.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <Input value={eqBrand} onChange={(e) => setEqBrand(e.target.value)} placeholder="Marca (ej: Scott)" className="h-9 text-sm" />
+            <Input value={eqModel} onChange={(e) => setEqModel(e.target.value)} placeholder="Modelo (ej: XT)" className="h-9 text-sm" />
+            <Input value={eqRodado} onChange={(e) => setEqRodado(e.target.value)} placeholder="Rodado / medida" className="h-9 text-sm" />
+            <Input value={eqIdentifier} onChange={(e) => setEqIdentifier(e.target.value)} placeholder="N° de cuadro / serie" className="h-9 text-sm" />
+            <Input value={eqColor} onChange={(e) => setEqColor(e.target.value)} placeholder="Color" className="h-9 text-sm col-span-2" />
+          </div>
+        </details>
       )}
       <div>
         <Label htmlFor="b-notes">Notas (opcional)</Label>

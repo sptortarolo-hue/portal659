@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, useRef } from "react";
 import { LivePreview } from "@/components/dashboard/shared";
@@ -334,6 +334,8 @@ export default function DashboardServicio({
   // Estética opera sobre este mismo panel (turnera + consultas) y suma
   // catálogo de servicios, profesionales y política de cancelación.
   const isEstetica = vendor?.vertical === "estetica";
+  const isTaller = vendor?.vertical === "taller";
+  const isHybrid = isEstetica || isTaller;
   // Copy: en estética los "presupuestos" son consultas/evaluaciones.
   const presupuestosLabel = isEstetica ? "Consultas" : "Presupuestos";
   const presupuestosLow = isEstetica ? "consultas" : "presupuestos";
@@ -385,7 +387,7 @@ export default function DashboardServicio({
   const [formAlerts, setFormAlerts] = useState<Record<string, { template: string; session_no: number; labels: string[] }[]>>({});
 
   useEffect(() => {
-    if (!isEstetica || bookings.length === 0) return;
+    if (!isHybrid || bookings.length === 0) return;
     (async () => {
       try {
         const res = await fetch("/api/vendor/form-entries/alerts");
@@ -393,7 +395,7 @@ export default function DashboardServicio({
         if (res.ok && data.alerts) setFormAlerts(data.alerts);
       } catch { /* sin migración: sin alertas */ }
     })();
-  }, [isEstetica, bookings.length]);
+  }, [isHybrid, bookings.length]);
   // Catálogo para el modal de turno manual (estética): servicios + staff.
   const [catalogServices, setCatalogServices] = useState<{ id: string; name: string; price?: number | null; price_from?: number | null; price_to?: number | null }[]>([]);
   const [catalogStaff, setCatalogStaff] = useState<{ id: string; name: string }[]>([]);
@@ -416,7 +418,7 @@ export default function DashboardServicio({
     agendaViewInit.current = true;
     const d = loadDraft<{ view?: string }>(vendor.id, "agenda");
     if (d?.view === "day" || d?.view === "list" || d?.view === "month" || d?.view === "plan") setAgendaView(d.view);
-    else setAgendaView(vendor.vertical === "estetica" ? "month" : "list");
+    else setAgendaView(vendor.vertical === "estetica" || vendor.vertical === "taller" ? "month" : "list");
   }, [vendor?.id, vendor?.vertical]);
   useEffect(() => {
     if (!agendaViewInit.current || !vendor?.id) return;
@@ -707,7 +709,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
 
   // Catálogo de servicios + profesionales (estética) para el turno manual.
   useEffect(() => {
-    if (!isEstetica) return;
+    if (!isHybrid) return;
     (async () => {
       try {
         const [sRes, tRes, lRes] = await Promise.all([
@@ -735,7 +737,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
         }
       } catch { /* sin migración: listas vacías */ }
     })();
-  }, [isEstetica]);
+  }, [isHybrid]);
 
   async function handleUpdateBookingStatus(id: string, status: string) {
     // Con retención de seña, confirmar antes de marcar ausente.
@@ -1090,6 +1092,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
             >
               <option value="servicio">Servicio u oficio</option>
               <option value="estetica">Peluquería y estética</option>
+              <option value="taller">Talleres y reparaciones</option>
               <option value="gastronomia">Gastronomía</option>
               <option value="comercio">Comercio del barrio</option>
               <option value="moda">Ropa y accesorios</option>
@@ -1402,7 +1405,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
           <Button size="sm" className="w-full h-8 text-xs" onClick={() => setBookingModalOpen(true)}>
             ＋ Nuevo turno
           </Button>
-          {isEstetica && (
+          {isHybrid && (
             <EsteticaWaitlistManager
               onSchedule={(w: WaitEntry) => {
                 setRebook({
@@ -1534,7 +1537,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
               )
             }
             planContent={
-              isEstetica ? (
+              isHybrid ? (
                 <EsteticaWeekPlanner vendor={vendor} saveVendor={saveVendor} setMsg={setMsg} />
               ) : undefined
             }
@@ -1887,7 +1890,9 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
         <p className="text-[11px] text-muted-foreground mt-2">
           {isEstetica
             ? "Estadísticas de 7 días con el plan Turnera (completas e ilimitadas con Gestión integral)."
-            : "Estadísticas completas de 30 días con el plan Oficios."}
+            : isTaller
+              ? "Estadísticas de 7 días con el plan Taller (completas e ilimitadas con Gestión integral)."
+              : "Estadísticas completas de 30 días con el plan Oficios."}
         </p>
       </CollapsibleSection>
       </>
@@ -1897,8 +1902,8 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
         <ServicioHoy
           quotes={quotes}
           bookings={bookings}
-          orders={isEstetica ? ordersProp : undefined}
-          isEstetica={isEstetica}
+          orders={isHybrid ? ordersProp : undefined}
+          isEstetica={isHybrid}
           onNavigate={onNavigate}
         />
       )}
@@ -1907,7 +1912,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
         <ServicioHistorial
           quotes={quotes}
           bookings={bookings}
-          isEstetica={isEstetica}
+          isEstetica={isHybrid}
         />
       )}
 
@@ -1923,14 +1928,14 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
         ) : (
           <PlanLock
             title="Libro de clientes"
-            description={`Tus clientes con su historial de trabajos y ${presupuestosLow}, notas y contacto directo por WhatsApp. Parte del plan ${isEstetica ? "Gestión integral" : "Oficios"}.`}
+            description={`Tus clientes con su historial de trabajos y ${presupuestosLow}, notas y contacto directo por WhatsApp. Parte del plan ${isHybrid ? "Gestión integral" : "Oficios"}.`}
           />
         )
       )}
 
       {quoteModalOpen && (
         <QuoteManualModal
-          estetica={isEstetica}
+          variant={isHybrid ? (isTaller ? "taller" : "estetica") : undefined}
           onClose={() => setQuoteModalOpen(false)}
           onCreated={() => {
             setQuoteModalOpen(false);
@@ -1946,9 +1951,10 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
           key={rebook ? `rebook-${rebook.customerPhone}-${rebook.serviceId}-${rebook.staffId}-${rebook.date || ""}` : "new"}
           onClose={() => { setBookingModalOpen(false); setRebook(null); }}
           initialDate={rebook?.date}
-          serviceOptions={isEstetica ? catalogServices : undefined}
-          staffOptions={isEstetica ? catalogStaff : undefined}
-          locationOptions={isEstetica ? catalogLocations : undefined}
+          serviceOptions={isHybrid ? catalogServices : undefined}
+          staffOptions={isHybrid ? catalogStaff : undefined}
+          locationOptions={isHybrid ? catalogLocations : undefined}
+          equipment={isTaller}
           initialCustomerName={rebook?.customerName}
           initialCustomerPhone={rebook?.customerPhone}
           initialServiceId={rebook?.serviceId}
@@ -1969,9 +1975,10 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
           key={`edit-${editingBooking.id}`}
           booking={editingBooking}
           onClose={() => setEditingBooking(null)}
-          serviceOptions={isEstetica ? catalogServices : undefined}
-          staffOptions={isEstetica ? catalogStaff : undefined}
-          locationOptions={isEstetica ? catalogLocations : undefined}
+          serviceOptions={isHybrid ? catalogServices : undefined}
+          staffOptions={isHybrid ? catalogStaff : undefined}
+          locationOptions={isHybrid ? catalogLocations : undefined}
+          equipment={isTaller}
           onCreated={(warning) => {
             setEditingBooking(null);
             setMsg(warning || "Turno actualizado");

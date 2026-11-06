@@ -18,7 +18,7 @@ export default function BasicoPage() {
       </div>
       <p className="text-muted-foreground mb-4 text-sm">
         Sirve para <strong>todos los rubros</strong> (gastronomía, comercio,
-        servicios, moda y estética). Los detalles propios de tu rubro están en
+        servicios, moda, estética y talleres). Los detalles propios de tu rubro están en
         su manual específico.
       </p>
 

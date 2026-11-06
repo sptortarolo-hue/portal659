@@ -14,7 +14,7 @@ import { hasTable, hasColumn, type Tx } from "@/lib/db";
  * después.
  */
 
-export const GIFT_VERTICALS = ["estetica", "comercio", "moda"] as const;
+export const GIFT_VERTICALS = ["estetica", "taller", "comercio", "moda"] as const;
 
 export function canSellGiftcards(vertical: string | null | undefined): boolean {
   return !!vertical && (GIFT_VERTICALS as readonly string[]).includes(vertical);
@@ -23,6 +23,7 @@ export function canSellGiftcards(vertical: string | null | undefined): boolean {
 export function giftCodePrefix(vertical: string | null | undefined): string {
   if (vertical === "comercio") return "COM";
   if (vertical === "moda") return "MOD";
+  if (vertical === "taller") return "TAL";
   return "EST";
 }
 

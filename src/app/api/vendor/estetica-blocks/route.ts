@@ -3,7 +3,7 @@ import { queryMany, queryOne } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 /**
- * Días bloqueados de la agenda (feriados, vacaciones). Solo `estetica`.
+ * Días bloqueados de la agenda (feriados, vacaciones). Vertical `estetica` o `taller`.
  * - GET /api/vendor/estetica-blocks?from=YYYY-MM-DD → próximos bloqueos.
  * - POST { date, staff_id?, reason? } → crea (staff null = todo el centro).
  * - DELETE ?id= → elimina.
@@ -11,7 +11,7 @@ import { NextResponse } from "next/server";
  */
 function checkEstetica(gate: { ok: boolean; vendor?: { vertical?: string } }) {
   if (!gate.ok || !gate.vendor) return null;
-  if (gate.vendor.vertical !== "estetica") return "only-estetica";
+  if ((gate.vendor.vertical !== "estetica" && gate.vendor.vertical !== "taller")) return "only-estetica";
   return "ok";
 }
 
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
   if (checkEstetica(gate) !== "ok") {
-    return NextResponse.json({ error: "Solo disponible para estética" }, { status: 403 });
+    return NextResponse.json({ error: "Solo disponible para estética y talleres" }, { status: 403 });
   }
   const body = await request.json().catch(() => ({}));
   const date = String(body.date || "");
@@ -100,7 +100,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
   if (checkEstetica(gate) !== "ok") {
-    return NextResponse.json({ error: "Solo disponible para estética" }, { status: 403 });
+    return NextResponse.json({ error: "Solo disponible para estética y talleres" }, { status: 403 });
   }
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id") || "";

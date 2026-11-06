@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { isAdmin } from "@/lib/admin-utils";
 import { queryMany, queryOne, query, withTransaction } from "@/lib/db";
 import { seedDefaultCategories } from "@/lib/vendor-utils";
@@ -87,7 +87,7 @@ export async function POST(request: Request) {
   }
 
   // Whitelist de verticales ("salud" legacy va a comercio, su modelo real).
-  const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "estetica", "otro"];
+  const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "estetica", "taller", "otro"];
   const safeVertical = vertical === "salud" ? "comercio" : vertical;
   const resolvedVertical = VALID_VERTICALS.includes(safeVertical) ? safeVertical : "gastronomia";
 

@@ -7,6 +7,7 @@ import { toE164 } from "@/lib/phone";
 import { fitsInRanges, shiftsFromHoursText, staffRangesForDate } from "@/lib/booking-schedule";
 import { NextResponse } from "next/server";
 import { withRateLimit } from "@/lib/api-wrapper";
+import { upsertEquipmentTx, hasEquipmentColumnTx } from "@/lib/equipment-server";
 import crypto from "crypto";
 
 const toMinutes = (t: string): number | null => {
@@ -356,6 +357,41 @@ export const POST = withRateLimit(async (request: Request) => {
           );
         }
       }
+    }
+  }
+
+  // Equipo del cliente (taller): si el body trae `equipment`, crea/reutiliza
+  // la ficha y la enlaza al turno. Tolerante: sin tabla equipment no se toca
+  // nada del flujo de reserva.
+  const eqInput =
+    raw.equipment && typeof raw.equipment === "object" && raw.equipment !== null
+      ? (raw.equipment as Record<string, unknown>)
+      : null;
+  if (eqInput && booking?.id) {
+    const pseudoTx = {
+      query: <T extends import("pg").QueryResultRow>(sql: string, params?: unknown[]) => queryMany<T>(sql, params),
+      queryOne: <T extends import("pg").QueryResultRow>(sql: string, params?: unknown[]) => queryOne<T>(sql, params),
+      queryVoid: async (sql: string, params?: unknown[]) => {
+        await query(sql, params);
+      },
+    };
+    try {
+      const eqId = await upsertEquipmentTx(pseudoTx, vendorId, {
+        kind: eqInput.kind as string | undefined,
+        brand: eqInput.brand as string | undefined,
+        model: eqInput.model as string | undefined,
+        identifier: eqInput.identifier as string | undefined,
+        rodado: eqInput.rodado as string | undefined,
+        color: eqInput.color as string | undefined,
+        notes: eqInput.notes as string | undefined,
+        customer_name: customerName,
+        customer_phone: customerPhone,
+      });
+      if (eqId && (await hasEquipmentColumnTx(pseudoTx, "bookings"))) {
+        await query(`UPDATE bookings SET equipment_id = $1 WHERE id = $2`, [eqId, booking.id]);
+      }
+    } catch {
+      /* sin tabla equipment: el turno queda igual */
     }
   }
 

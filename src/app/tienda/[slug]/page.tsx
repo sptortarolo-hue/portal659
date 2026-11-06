@@ -513,8 +513,10 @@ export default async function TiendaPage({
     shipZones = [];
   }
 
-  const isService = v.vertical === "servicio" || v.vertical === "estetica";
+  const isService = v.vertical === "servicio" || v.vertical === "estetica" || v.vertical === "taller";
   const isEstetica = v.vertical === "estetica";
+  const isTaller = v.vertical === "taller";
+  const isHybrid = isEstetica || isTaller;
   // Catálogo de servicios + profesionales (estética): turnera por servicio
   // con duración y agenda por profesional. Tolerante a migración sin aplicar.
   let esteticaServices: { id: string; name: string; deposit_amount: number | null; duration_min: number | null; price: number | null; price_from: number | null; price_to: number | null; featured_today?: boolean | null; require_deposit: boolean | null; deposit_hours: number | null; image_url: string | null; category: string | null; description: string | null }[] = [];
@@ -538,7 +540,7 @@ export default async function TiendaPage({
   }
   // Gate de la sección Tarjeta de regalo (comercio/moda con menú visible).
   const showGiftSection = isRetailGift && !menuHidden && retailGiftCards.length > 0;
-  if (isEstetica) {
+  if (isHybrid) {
     try {
       // Cascade tolerante a migraciones sin aplicar: se prueba de la query
       // más completa (destacado + precio "desde" + foto + categoría) a la
@@ -730,7 +732,7 @@ export default async function TiendaPage({
           retailDeliveryPaused={retailDeliveryPaused}
           retailPauseMsg={retailPauseMsg}
           deliveryCoordinar={(v as any).delivery_coordinar === true}
-        isEstetica={isEstetica}
+        isEstetica={isHybrid}
         urgentSurcharge={urgentSurcharge}
       />
 
@@ -749,7 +751,7 @@ export default async function TiendaPage({
           <>
             <div className="border border-border rounded-2xl p-8 text-center bg-card mb-6">
               <h2 className="font-display text-2xl font-semibold mb-2">
-                {rubroHeading || (isEstetica ? "Estética del barrio" : "Servicio del barrio")}
+                {rubroHeading || (isTaller ? "Taller del barrio" : isEstetica ? "Estética del barrio" : "Servicio del barrio")}
               </h2>
               {v.services_list && (
                 <p className="text-muted-foreground max-w-md mx-auto mb-2">
@@ -761,7 +763,7 @@ export default async function TiendaPage({
                   Zona: {v.service_area}
                 </p>
               )}
-              {isEstetica && esteticaLocations.length > 0 && (
+              {isHybrid && esteticaLocations.length > 0 && (
                 <div className="flex flex-wrap justify-center gap-1.5 max-w-md mx-auto mb-2">
                   {esteticaLocations.map((l) => (
                     <span key={l.id} className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
@@ -770,24 +772,24 @@ export default async function TiendaPage({
                   ))}
                 </div>
               )}
-              {!isEstetica && v.free_estimate && (
+              {!isHybrid && v.free_estimate && (
                 <p className="text-sm text-primary font-medium max-w-md mx-auto mb-4">
                   Presupuesto sin compromiso
                 </p>
               )}
-              {!isEstetica && v.urgent_enabled && (
+              {!isHybrid && v.urgent_enabled && (
                 <p className="text-sm max-w-md mx-auto mb-4 rounded-full bg-red-50 border border-red-200 text-red-700 font-medium px-3 py-1.5 inline-block">
                   🚨 Urgencias 24 h{urgentSurcharge != null ? ` (+${urgentSurcharge} %)` : ""}
                 </p>
               )}
-              {!isEstetica && !v.services_list && (
+              {!isHybrid && !v.services_list && (
                 <p className="text-muted-foreground max-w-md mx-auto">
                   Este comercio ofrece un servicio en el barrio. Completá el formulario o escribile por WhatsApp.
                 </p>
               )}
             </div>
 
-            {v.accepting_quotes && !serviceQuotaFull && !isEstetica && (
+            {v.accepting_quotes && !serviceQuotaFull && !isHybrid && (
               <div className="border border-border rounded-2xl p-6 bg-card mb-6">
                 <h3 className="font-display text-lg font-semibold mb-4">
                   📋 Solicitar presupuesto
@@ -809,7 +811,7 @@ export default async function TiendaPage({
               <h3 className="font-display text-lg font-semibold mb-4">
                 📅 Reservar turno
               </h3>
-              {isEstetica && esteticaServices.length > 0 && (
+              {isHybrid && esteticaServices.length > 0 && (
                 <EsteticaServicesSection
                   services={esteticaServices}
                   vendorId={v.id}
@@ -819,16 +821,17 @@ export default async function TiendaPage({
                   cancelPolicy={typeof v.cancel_policy_text === "string" && v.cancel_policy_text.trim() ? v.cancel_policy_text.trim() : null}
                   cancelRefundsDeposit={(v as any).cancel_refunds_deposit !== false}
                   cancelHours={(v as any).cancel_hours != null ? Number((v as any).cancel_hours) : 24}
+                  equipment={isTaller}
                 />
               )}
-              {isEstetica && esteticaStaff.some((t) => t.photo_url || t.bio) && (
+              {isHybrid && esteticaStaff.some((t) => t.photo_url || t.bio) && (
                 <div className="mb-5">
-                  <h4 className="font-display text-base font-semibold mb-2">💇 Nuestro equipo</h4>
+                  <h4 className="font-display text-base font-semibold mb-2">{isTaller ? "🛠️ Nuestro equipo" : "💇 Nuestro equipo"}</h4>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     {esteticaStaff.map((t) => (
                       <div key={t.id} className="rounded-2xl border border-border bg-card p-3 text-center">
                         <div className="h-16 w-16 rounded-full overflow-hidden mx-auto bg-muted">
-                          <ProductImage src={t.photo_url} name={t.name} vertical="estetica" alt={t.name} className="w-full h-full object-cover" />
+                          <ProductImage src={t.photo_url} name={t.name} vertical={isTaller ? "taller" : "estetica"} alt={t.name} className="w-full h-full object-cover" />
                         </div>
                         <p className="font-semibold text-sm mt-2 truncate">{t.name}</p>
                         {t.bio && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{t.bio}</p>}
@@ -837,17 +840,18 @@ export default async function TiendaPage({
                   </div>
                 </div>
               )}
-              {(!isEstetica || esteticaServices.length === 0) && (
+              {(!isHybrid || esteticaServices.length === 0) && (
                 <BookingForm
                   vendorId={v.id}
                   vendorName={v.store_name}
-                  services={isEstetica && esteticaServices.length > 0 ? undefined : offers?.map((o: any) => ({ id: o.id, name: o.name }))}
-                  serviceOptions={isEstetica && esteticaServices.length > 0 ? esteticaServices : undefined}
-                  staffOptions={isEstetica && esteticaStaff.length > 0 ? esteticaStaff : undefined}
-                  locationOptions={isEstetica && esteticaLocations.length > 0 ? esteticaLocations : undefined}
-                  cancelPolicy={isEstetica && typeof v.cancel_policy_text === "string" && v.cancel_policy_text.trim() ? v.cancel_policy_text.trim() : null}
-                  cancelRefundsDeposit={isEstetica ? (v as any).cancel_refunds_deposit !== false : undefined}
-                  cancelHours={isEstetica ? ((v as any).cancel_hours != null ? Number((v as any).cancel_hours) : 24) : undefined}
+                  services={isHybrid && esteticaServices.length > 0 ? undefined : offers?.map((o: any) => ({ id: o.id, name: o.name }))}
+                  serviceOptions={isHybrid && esteticaServices.length > 0 ? esteticaServices : undefined}
+                  staffOptions={isHybrid && esteticaStaff.length > 0 ? esteticaStaff : undefined}
+                  locationOptions={isHybrid && esteticaLocations.length > 0 ? esteticaLocations : undefined}
+                  cancelPolicy={typeof v.cancel_policy_text === "string" && v.cancel_policy_text.trim() ? v.cancel_policy_text.trim() : null}
+                  cancelRefundsDeposit={(v as any).cancel_refunds_deposit !== false}
+                  cancelHours={(v as any).cancel_hours != null ? Number((v as any).cancel_hours) : 24}
+                  equipment={isTaller}
                 />
               )}
             </div>
@@ -941,7 +945,7 @@ export default async function TiendaPage({
             )}
 
             {/* Consultanos (estética): al final, colapsado salvo sin servicios */}
-            {isEstetica && v.accepting_quotes && !serviceQuotaFull && (
+            {isHybrid && v.accepting_quotes && !serviceQuotaFull && (
               <details
                 className="border border-border rounded-2xl bg-card mt-6 mb-6 group"
                 open={esteticaServices.length === 0}
@@ -958,7 +962,7 @@ export default async function TiendaPage({
                     vendorId={v.id}
                     vendorName={v.store_name}
                     servicesList={v.services_list}
-                    estetica
+                    estetica={isEstetica}
                     prefEnabled={v.quote_pref_enabled !== false}
                     prefDays={Array.isArray(v.quote_days) ? v.quote_days : undefined}
                     prefSlots={Array.isArray(v.quote_slots) ? v.quote_slots : undefined}

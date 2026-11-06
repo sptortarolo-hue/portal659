@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { CustomerPicker } from "@/components/dashboard/quote-manual-modal";
+import { EquipmentPicker } from "@/components/dashboard/equipment-picker";
+import type { Equipment } from "@/lib/equipment";
+import { equipmentLabel } from "@/lib/equipment";
 
 export function BookingManualModal({
   initialDate,
@@ -22,13 +25,14 @@ export function BookingManualModal({
   initialNotes,
   initialLocationId,
   booking,
+  equipment,
 }: {
   initialDate?: string;
   onClose: () => void;
   onCreated: (warning?: string | null) => void;
   serviceOptions?: { id: string; name: string }[];
   staffOptions?: { id: string; name: string }[];
-  locationOptions?: { id: string; name: string }[];
+  locationOptions?: { id: string; name: string; address?: string | null }[];
   initialCustomerName?: string;
   initialCustomerPhone?: string;
   initialServiceId?: string;
@@ -38,6 +42,8 @@ export function BookingManualModal({
   initialLocationId?: string;
   /** Turno existente → modo edición (PATCH en vez de POST). */
   booking?: any | null;
+  /** Taller: muestra el picker de equipo (ficha por bici/moto/electro). */
+  equipment?: boolean;
 }) {
   const editing = !!booking;
   const [customerName, setCustomerName] = useState(
@@ -68,6 +74,20 @@ export function BookingManualModal({
     String((editing ? booking.duration_min : initialDurationMin) || 60)
   );
   const [notes, setNotes] = useState(editing ? String(booking.notes || "") : initialNotes || "");
+  // Ficha de equipo (taller): preferencia precargada en modo edición.
+  const [equip, setEquip] = useState<Equipment | null>(null);
+  const [equipDetected] = useState<string>(
+    editing ? String(booking?.equipment_id || "") : ""
+  );
+  useEffect(() => {
+    if (!equipDetected) return;
+    fetch(`/api/vendor/equipment?id=${encodeURIComponent(equipDetected)}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d?.equipment) && d.equipment[0]) setEquip(d.equipment[0] as Equipment);
+      })
+      .catch(() => {});
+  }, [equipDetected]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -86,7 +106,8 @@ export function BookingManualModal({
         body: JSON.stringify({
           customer_name: customerName.trim(),
           customer_phone: customerPhone.trim(),
-          product_name: serviceId ? null : serviceName.trim() || null,
+          // Taller: product_name = etiqueta del equipo (no se pisa con null).
+          product_name: serviceId ? (equip ? equipmentLabel(equip) || null : null) : serviceName.trim() || null,
           service_id: serviceId || null,
           staff_id: staffId || null,
           location_id: locationId || null,
@@ -94,6 +115,7 @@ export function BookingManualModal({
           booking_time: bookingTime,
           duration_min: Number(duration) || 60,
           notes: notes.trim() || null,
+          ...(equipment ? { equipment_id: equip?.id || null } : {}),
         }),
       });
       const data = await res.json();
@@ -169,6 +191,14 @@ export function BookingManualModal({
               <Label className="text-xs">Servicio</Label>
               <Input value={serviceName} onChange={(e) => setServiceName(e.target.value)} placeholder="Ej: arreglo, instalación..." className="mt-1 h-9 text-sm" />
             </div>
+          )}
+          {equipment && (
+            <EquipmentPicker
+              phone={customerPhone}
+              customerName={customerName}
+              value={equip}
+              onChange={setEquip}
+            />
           )}
           {locationOptions && locationOptions.length > 0 && (
             <div>

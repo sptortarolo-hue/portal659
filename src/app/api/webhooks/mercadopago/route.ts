@@ -1,4 +1,4 @@
-﻿import { query, queryOne, queryMany, withTransaction } from "@/lib/db";
+import { query, queryOne, queryMany, withTransaction } from "@/lib/db";
 import { logApiError } from "@/lib/api-error";
 import { adjustStockForItems, OutOfStockError } from "@/lib/stock";
 import { sendPushToUser } from "@/lib/push";
@@ -1233,7 +1233,7 @@ export async function POST(request: Request) {
                 // Sin ítems de cocina: retail (comercio/moda/estética) imprime el
                 // comprobante de venta; el resto, el stub de retiro.
                 const isRetailVendor =
-                  printerVendor?.vertical === "moda" || printerVendor?.vertical === "comercio" || printerVendor?.vertical === "estetica";
+                  printerVendor?.vertical === "moda" || printerVendor?.vertical === "comercio" || printerVendor?.vertical === "estetica" || printerVendor?.vertical === "taller";
                 const printType = orderNeedsKitchen(order) ? "comanda" : isRetailVendor ? "ticket" : "retiro";
                 const printed = await dispatchPrint({
                   vendor: printerVendor,

@@ -4,14 +4,14 @@ import { NextResponse } from "next/server";
 
 /**
  * Profesionales del centro de estética (v1: solo agenda por profesional,
- * sin comisiones). Solo vertical `estetica`. Tolerante a migración sin
+ * sin comisiones). Vertical `estetica` o `taller`. Tolerante a migración sin
  * aplicar (503 con mensaje claro).
  */
 export async function GET(request: Request) {
   const gate = await gateRequest(request);
   if (!gate.ok) return NextResponse.json({ staff: [] });
   const vendor = gate.vendor;
-  if (vendor.vertical !== "estetica") return NextResponse.json({ staff: [] });
+  if ((vendor.vertical !== "estetica" && vendor.vertical !== "taller")) return NextResponse.json({ staff: [] });
   try {
     const staff = await queryMany<Record<string, unknown>>(
       `SELECT * FROM estetica_staff WHERE vendor_id = $1 ORDER BY position ASC, name ASC`,
@@ -29,8 +29,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: gate.error }, { status: gate.status });
   }
   const vendor = gate.vendor;
-  if (vendor.vertical !== "estetica") {
-    return NextResponse.json({ error: "Solo disponible para estética" }, { status: 403 });
+  if ((vendor.vertical !== "estetica" && vendor.vertical !== "taller")) {
+    return NextResponse.json({ error: "Solo disponible para estética y talleres" }, { status: 403 });
   }
   const body = await request.json().catch(() => ({}));
   const name = String(body.name || "").trim().slice(0, 120);

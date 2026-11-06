@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { Suspense, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -677,7 +677,7 @@ function VendorDashboardInner() {
         });
       }
       // Solicitudes solo para servicios y estética.
-      if (me.vendor?.vertical === "servicio" || me.vendor?.vertical === "estetica") await loadServiceData();
+      if (me.vendor?.vertical === "servicio" || me.vendor?.vertical === "estetica" || me.vendor?.vertical === "taller") await loadServiceData();
     } catch (err) {
       console.error("[dashboard] loadData error:", err);
     } finally {
@@ -1208,10 +1208,12 @@ function VendorDashboardInner() {
   // comparte bandeja, agenda y cobros con servicios, pero la Configuración
   // es propia (DashboardEstetica: turnera, profesionales, fichas, packs).
   const isEstetica = vendor?.vertical === "estetica";
+  const isTaller = vendor?.vertical === "taller";
+  const isHybrid = isEstetica || isTaller;
   // Seña online (estética): sólo se puede cobrar con Mercado Pago o Stripe
   // conectado; sin ninguno, los campos de seña se muestran deshabilitados.
   const canChargeDeposits = !!((vendor as any)?.mp_user_id || (vendor as any)?.stripe_account_id);
-  const isService = vendor?.vertical === "servicio" || isEstetica;
+  const isService = vendor?.vertical === "servicio" || isHybrid;
   const isGastro = vendor?.vertical === "gastronomia";
   const isComercio = vendor?.vertical === "comercio";
   const isModa = vendor?.vertical === "moda";
@@ -1219,7 +1221,7 @@ function VendorDashboardInner() {
   const isRetail = isModa || isComercio;
   // Estética vende productos sin cocina: sus pedidos usan el flow retail
   // ("Empaquetando", etc.) aunque no sea vertical retail.
-  const orderFlowRetail = isRetail || isEstetica;
+  const orderFlowRetail = isRetail || isHybrid;
 
   // Usuario del local nivel Empleado: opera (pedidos, mostrador, mesas,
   // comanda, caja con Z, histórico) sin config ni gestión. El Encargado
@@ -1297,7 +1299,7 @@ function VendorDashboardInner() {
       orderUsage.maxOrdersMonth != null && orderUsage.ordersThisMonth >= orderUsage.maxOrdersMonth,
   } as const;
 
-  const configContent = isEstetica ? (
+  const configContent = isHybrid ? (
     <DashboardEstetica {...dashboardProps} configSectionId={configSection} onConfigSectionId={handleConfigSection} />
   ) : isGastro ? (
     <DashboardGastro {...dashboardProps} configSectionId={configSection} onConfigSectionId={handleConfigSection} />
@@ -1682,10 +1684,10 @@ function VendorDashboardInner() {
     : isService && tab === "clientes" ? "Clientes"
     : isService && tab === "galeria" ? "Galería"
     : isComercio && tab === "galeria" ? "Galería"
-    : isEstetica && tab === "pedidos" ? "Pedidos"
-    : isEstetica && tab === "mostrador" ? "Mostrador"
-    : isEstetica && tab === "menu" ? "Catálogo"
-    : isEstetica && tab === "servicios" ? "Servicios"
+    : isHybrid && tab === "pedidos" ? "Pedidos"
+    : isHybrid && tab === "mostrador" ? "Mostrador"
+    : isHybrid && tab === "menu" ? "Catálogo"
+    : isHybrid && tab === "servicios" ? "Servicios"
     : tab === "menu" ? (isRetail ? "Catálogo" : "Menú")
     : tab === "hoy" ? "Hoy"
     : tab === "orders" ? "Pedidos"
@@ -1732,7 +1734,7 @@ function VendorDashboardInner() {
         isModa={isModa}
         isComercio={isComercio}
         isService={isService}
-        isEstetica={isEstetica}
+        isEstetica={isHybrid}
         pendingQuotesCount={pendingQuotesCount}
         pendingBookingsCount={pendingBookingsCount}
         pendingPosCount={pendingPosCount}
@@ -1976,9 +1978,9 @@ function VendorDashboardInner() {
           <TabErrorBoundary tab={tab || "dashboard"}>
           {isService ? (
             <div className="space-y-4">
-              {isEstetica && tab === "pedidos" ? (
+              {isHybrid && tab === "pedidos" ? (
                 <TabErrorBoundary tab="orders">{ordersContent}</TabErrorBoundary>
-              ) : isEstetica && tab === "menu" ? (
+              ) : isHybrid && tab === "menu" ? (
                 <TabErrorBoundary tab="menu">
                 <MemoProductManager
                   isModa={false}
@@ -1995,11 +1997,11 @@ function VendorDashboardInner() {
                   vendorId={vendor?.id}
                 />
                 </TabErrorBoundary>
-              ) : isEstetica && tab === "servicios" ? (
+              ) : isHybrid && tab === "servicios" ? (
                 <TabErrorBoundary tab="servicios">
                 <EsteticaServicesManager onChanged={() => loadData()} canChargeDeposits={canChargeDeposits} />
                 </TabErrorBoundary>
-              ) : isEstetica && tab === "config" ? (
+              ) : isHybrid && tab === "config" ? (
               <div className="flex gap-4 items-start">
                 <ConfigDesktopNav vendor={vendor} configSection={configSection} onSelect={handleConfigSection} />
                 <div className="flex-1 min-w-0 space-y-4">
@@ -2025,7 +2027,7 @@ function VendorDashboardInner() {
                   />
                 </div>
               </div>
-              ) : isEstetica && tab === "mostrador" ? (
+              ) : isHybrid && tab === "mostrador" ? (
                 <TabErrorBoundary tab="pos">
                   {effectivePlan.can("pos") ? (
                     <MemoMostrador vendorId={vendor.id} />
@@ -2036,7 +2038,7 @@ function VendorDashboardInner() {
                     />
                   )}
                 </TabErrorBoundary>
-              ) : isEstetica && tab === "gastos" ? (
+              ) : isHybrid && tab === "gastos" ? (
                 <TabErrorBoundary tab="gastos">
                   {effectivePlan.can("pos") ? (
                     <MemoExpensesManager />
@@ -2047,7 +2049,7 @@ function VendorDashboardInner() {
                     />
                   )}
                 </TabErrorBoundary>
-              ) : isEstetica && tab === "fiscal" ? (
+              ) : isHybrid && tab === "fiscal" ? (
                 <TabErrorBoundary tab="fiscal">
                   {effectivePlan.can("fiscal") ? (
                     <FiscalConfigSection defaultOpen />
@@ -2058,7 +2060,7 @@ function VendorDashboardInner() {
                     />
                   )}
                 </TabErrorBoundary>
-              ) : isEstetica && tab === "inventario" ? (
+              ) : isHybrid && tab === "inventario" ? (
                 <TabErrorBoundary tab="inventario">
                   {effectivePlan.can("inventory") ? (
                     <MemoInventoryTab highlightPurchase={purchaseHighlight} />
@@ -2069,7 +2071,7 @@ function VendorDashboardInner() {
                     />
                   )}
                 </TabErrorBoundary>
-              ) : isEstetica && tab === "galeria" ? (
+              ) : isHybrid && tab === "galeria" ? (
                 <TabErrorBoundary tab="galeria">
                   <GalleryManager
                     title="Galería de fotos de tu local"
@@ -2077,7 +2079,7 @@ function VendorDashboardInner() {
                     captionPlaceholder="Ej: frente del local, trabajos..."
                   />
                 </TabErrorBoundary>
-              ) : isEstetica && tab === "analytics" ? (
+              ) : isHybrid && tab === "analytics" ? (
                 <TabErrorBoundary tab="analytics">
                   <MemoVendorAnalytics />
                 </TabErrorBoundary>
@@ -2085,7 +2087,7 @@ function VendorDashboardInner() {
               <DashboardServicio
                 {...dashboardProps}
                 quotes={quotes}
-                orders={isEstetica ? orders : undefined}
+                orders={isHybrid ? orders : undefined}
                 quota={serviceQuota}
                 canQuotePrice={canQuotePrice}
                 canDeposits={canDeposits}
@@ -2106,7 +2108,7 @@ function VendorDashboardInner() {
                 canCrm={effectivePlan.can("crm")}
               />
               )}
-              {isEstetica && tab === "caja" && effectivePlan.can("pos") && (
+              {isHybrid && tab === "caja" && effectivePlan.can("pos") && (
                 <TabErrorBoundary tab="caja-z">
                   <MemoCajaManager closeRequest={cashCloseReq} />
                 </TabErrorBoundary>
@@ -2124,7 +2126,7 @@ function VendorDashboardInner() {
                     {/* Alertas push: en gastro/comercio/moda/estética vive como sección
                         "Alertas" del menú de Configuración; servicio puro la muestra
                         fija acá. */}
-                    {isService && !isEstetica && (
+                    {isService && !isHybrid && (
                       <div className="space-y-3">
                         <PushAlertCard />
                         <WaRemindersCard />
@@ -2326,7 +2328,7 @@ function VendorDashboardInner() {
                   <MemoVendorOrderHistory isRetail={isRetail} vendorId={vendor?.id} onOpenOrder={setSelectedOrder} />
                 </div>
               )}
-              {(isComercio || isModa || isEstetica) && mountedTabs.has("tarjetas") && (
+              {(isComercio || isModa || isHybrid) && mountedTabs.has("tarjetas") && (
                 <div className={tab === "tarjetas" ? "" : "hidden"}>
                   <TabErrorBoundary tab="tarjetas">
                     <GiftcardsTab
@@ -2389,7 +2391,7 @@ function VendorDashboardInner() {
           <div className="flex">
             <button onClick={() => setTab("hoy")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "hoy" ? "text-primary" : "text-muted-foreground"}`}>
               <Home className="h-5 w-5" />Hoy
-              {isService && (pendingQuotesCount + pendingBookingsCount + (isEstetica ? activeOrderCount : 0)) > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{pendingQuotesCount + pendingBookingsCount + (isEstetica ? activeOrderCount : 0)}</span>}
+              {isService && (pendingQuotesCount + pendingBookingsCount + (isHybrid ? activeOrderCount : 0)) > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{pendingQuotesCount + pendingBookingsCount + (isHybrid ? activeOrderCount : 0)}</span>}
             </button>
             {isService ? (
               <>
@@ -2458,12 +2460,12 @@ function VendorDashboardInner() {
                     <Share className="h-5 w-5" />Promos
                   </button>
                   )}
-                  {isEstetica && (
+                  {isHybrid && (
                   <button onClick={() => { setTab("tarjetas"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "tarjetas" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                     <Gift className="h-5 w-5" />Tarjetas
                   </button>
                   )}
-                  {isEstetica && (
+                  {isHybrid && (
                     <>
                       <button onClick={() => { setTab("pedidos"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "pedidos" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                         <Package className="h-5 w-5" />Pedidos
@@ -2483,17 +2485,17 @@ function VendorDashboardInner() {
                       )}
                     </>
                   )}
-                  {isEstetica && !isEmployee && (
+                  {isHybrid && !isEmployee && (
                     <button onClick={() => { setTab("gastos"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "gastos" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                       <Receipt className="h-5 w-5" />Gastos
                     </button>
                   )}
-                  {isEstetica && effectivePlan.can("fiscal") && !isEmployee && (
+                  {isHybrid && effectivePlan.can("fiscal") && !isEmployee && (
                     <button onClick={() => { setTab("fiscal"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "fiscal" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                       <Receipt className="h-5 w-5" />Facturación
                     </button>
                   )}
-                  {isEstetica && effectivePlan.can("inventory") && !isEmployee && (
+                  {isHybrid && effectivePlan.can("inventory") && !isEmployee && (
                     <button onClick={() => { setTab("inventario"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "inventario" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                       <Boxes className="h-5 w-5" />Inventario
                     </button>
@@ -2506,7 +2508,7 @@ function VendorDashboardInner() {
                   <button onClick={() => { setTab("history"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "history" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                     <History className="h-5 w-5" />Historial
                   </button>
-                  {isEstetica && !isEmployee && (
+                  {isHybrid && !isEmployee && (
                     <button onClick={() => { setTab("analytics"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "analytics" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                       <BarChart className="h-5 w-5" />Estadísticas
                     </button>

@@ -32,7 +32,7 @@ export const POST = withRateLimit(async (request: Request) => {
   } catch { /* sin TZ: se sigue */ }
   try {
     const vendor = await queryOne<{ id: string }>(
-      `SELECT id FROM vendors WHERE id = $1 AND vertical = 'estetica' LIMIT 1`,
+      `SELECT id FROM vendors WHERE id = $1 AND vertical IN ('estetica', 'taller') LIMIT 1`,
       [vendorId]
     ).catch(() => undefined);
     if (!vendor) return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });

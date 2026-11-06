@@ -13,6 +13,7 @@ export const WORK_ORDER_STATES = [
   "quoted",
   "approved",
   "repairing",
+  "waiting_parts",
   "ready",
   "completed",
   "cancelled",
@@ -21,7 +22,7 @@ export const WORK_ORDER_STATES = [
 export type WorkOrderState = (typeof WORK_ORDER_STATES)[number];
 
 /** Orden del flujo productivo (sin contar recibida ni descartada). */
-export const WORK_ORDER_FLOW = ["pending", "diagnosed", "quoted", "approved", "repairing", "ready", "completed"] as const;
+export const WORK_ORDER_FLOW = ["pending", "diagnosed", "quoted", "approved", "repairing", "waiting_parts", "ready", "completed"] as const;
 
 const LABELS: Record<WorkOrderState, string> = {
   pending: "Recibida",
@@ -29,6 +30,7 @@ const LABELS: Record<WorkOrderState, string> = {
   quoted: "Presupuestada",
   approved: "Aprobada",
   repairing: "En reparación",
+  waiting_parts: "Esperando repuesto",
   ready: "Lista",
   completed: "Entregada",
   cancelled: "Descartada",
@@ -41,6 +43,7 @@ const TONES: Record<WorkOrderState, string> = {
   quoted: "bg-violet-100 text-violet-700",
   approved: "bg-emerald-100 text-emerald-700",
   repairing: "bg-blue-100 text-blue-700",
+  waiting_parts: "bg-orange-100 text-orange-700",
   ready: "bg-green-100 text-green-700",
   completed: "bg-muted text-muted-foreground",
   cancelled: "bg-red-100 text-red-700",
@@ -65,6 +68,23 @@ export function isTerminalState(status: unknown): boolean {
   return status === "completed" || status === "cancelled";
 }
 
+/**
+ * Columnas del job board "🛠️ Taller": Recibida → Diagnosticada →
+ * Presupuestada → Aprobada → En reparación → Esperando repuesto → Lista.
+ * (Entregada/Descartada no forman columna: se ven en el historial.)
+ */
+export const WORK_ORDER_BOARD_COLUMNS = [
+  "pending",
+  "diagnosed",
+  "quoted",
+  "approved",
+  "repairing",
+  "waiting_parts",
+  "ready",
+] as const;
+
+export type WorkOrderBoardFilter = "all" | "overdue" | "ready" | "pending";
+
 /** Botón de avance del flujo: de "recibida" se puede saltar a cualquiera. */
 export function workOrderNextLabel(status: unknown): string {
   const s = String(status || "pending");
@@ -78,6 +98,8 @@ export function workOrderNextLabel(status: unknown): string {
     case "approved":
       return "Pasar a reparación";
     case "repairing":
+      return "Esperar repuesto";
+    case "waiting_parts":
       return "Marcar lista";
     case "ready":
       return "Entregar";
@@ -93,7 +115,7 @@ export function workOrderNextLabel(status: unknown): string {
 export function workOrderQuickActions(status: unknown): { to: string; label: string }[] {
   const s = String(status || "pending");
   if (s === "completed" || s === "cancelled") return [];
-  const order = ["diagnosed", "quoted", "approved", "repairing", "ready", "completed"] as const;
+  const order = ["diagnosed", "quoted", "approved", "repairing", "waiting_parts", "ready", "completed"] as const;
   const currentIdx = order.findIndex((x) => x === s);
   return order
     .filter((to) => currentIdx < 0 || to > s)

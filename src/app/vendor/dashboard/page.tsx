@@ -163,7 +163,7 @@ type Offer = DBProduct;
 
 type MenuCategory = { id: string; name: string; position: number };
 
-  type DashTab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "gastos" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario" | "galeria" | "promos" | "tarjetas" | "pantalla" | "servicios";
+  type DashTab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "gastos" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario" | "galeria" | "promos" | "tarjetas" | "pantalla" | "servicios" | "taller";
 
 /**
  * Segunda columna de Configuración en desktop (estilo Fudo): la usan todas
@@ -417,7 +417,7 @@ function VendorDashboardInner() {
   const dashDraftReady = useRef(false);
   const pendingOrderId = useRef<string | null>(null);
   const [bookingHighlight, setBookingHighlight] = useState<string | null>(null);
-  const VALID_TABS: DashTab[] = ["hoy", "config", "menu", "orders", "pedidos", "mostrador", "history", "comanda", "analytics", "pos", "mesas", "caja", "gastos", "clientes", "reviews", "recetas", "fiscal", "inventario", "promos", "tarjetas", "pantalla", "servicios"];
+  const VALID_TABS: DashTab[] = ["hoy", "config", "menu", "orders", "pedidos", "mostrador", "history", "comanda", "analytics", "pos", "mesas", "caja", "gastos", "clientes", "reviews", "recetas", "fiscal", "inventario", "promos", "tarjetas", "pantalla", "servicios", "taller"];
   useEffect(() => {
     if (dashDraftReady.current || !vendor?.id) return;
     dashDraftReady.current = true;
@@ -495,6 +495,17 @@ function VendorDashboardInner() {
     const handler = () => handleTabChange("tarjetas");
     window.addEventListener("portal:go-tarjetas", handler);
     return () => window.removeEventListener("portal:go-tarjetas", handler);
+  }, [handleTabChange]);
+  // Contadores del Hoy (taller) → tab 🛠️ Taller con filtro, o tab Turnos día.
+  useEffect(() => {
+    const hTaller = () => handleTabChange("taller");
+    const hTurnos = () => handleTabChange("pos");
+    window.addEventListener("portal:go-taller", hTaller);
+    window.addEventListener("portal:go-turnos", hTurnos);
+    return () => {
+      window.removeEventListener("portal:go-taller", hTaller);
+      window.removeEventListener("portal:go-turnos", hTurnos);
+    };
   }, [handleTabChange]);
   // Gastos automáticos ("Ver origen" en Gastos) → pestaña del origen: compra
   // (Inventario→Compras, con la compra resaltada) o movimiento de caja.
@@ -1674,10 +1685,15 @@ function VendorDashboardInner() {
   const pendingQuotesCount = quotes.filter((q) => q.status === "pending" || q.status === "responded").length;
   const pendingBookingsCount = bookings.filter((b: any) => b.status === "pending").length;
   const pendingDepositsCount = quotes.filter((q) => q.deposit_status === "pending").length;
+  // Badge del tab "🛠️ Taller": órdenes de servicio abiertas (no completadas).
+  const openOrdersCount = bookings.filter(
+    (b: any) => b.kind === "orden" && b.status !== "completed" && b.status !== "cancelled"
+  ).length;
 
   const tabTitle =
     isService && tab === "orders" ? (isEstetica ? "Consultas" : "Presupuestos")
     : isService && tab === "pos" ? "Turnos"
+    : isService && tab === "taller" ? "🛠️ Taller"
     : isService && tab === "caja" ? "Caja"
     : isService && tab === "config" ? "Configuración"
     : isService && tab === "history" ? "Historial"
@@ -1735,6 +1751,7 @@ function VendorDashboardInner() {
         isComercio={isComercio}
         isService={isService}
         isEstetica={isHybrid}
+        isTaller={isTaller}
         pendingQuotesCount={pendingQuotesCount}
         pendingBookingsCount={pendingBookingsCount}
         pendingPosCount={pendingPosCount}
@@ -2097,6 +2114,7 @@ function VendorDashboardInner() {
                 section={
                   tab === "orders" ? "presupuestos"
                   : tab === "pos" ? "turnos"
+                  : tab === "taller" ? "taller"
                   : tab === "caja" ? "cobros"
                   : tab === "galeria" ? "galeria"
                   : tab === "reviews" ? "reviews"
@@ -2403,6 +2421,12 @@ function VendorDashboardInner() {
                   <CalendarDays className="h-5 w-5" />Turnos
                   {pendingBookingsCount > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{pendingBookingsCount}</span>}
                 </button>
+                {isTaller && (
+                  <button onClick={() => setTab("taller")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "taller" ? "text-primary" : "text-muted-foreground"}`}>
+                    <Wrench className="h-5 w-5" />Taller
+                    {openOrdersCount > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{openOrdersCount}</span>}
+                  </button>
+                )}
                 <button onClick={() => setTab("caja")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "caja" ? "text-primary" : "text-muted-foreground"}`}>
                   <DollarSign className="h-5 w-5" />Cobros
                   {pendingDepositsCount > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{pendingDepositsCount}</span>}
@@ -2445,6 +2469,11 @@ function VendorDashboardInner() {
             <div className="grid grid-cols-2 gap-2">
               {isService ? (
                 <>
+                  {isTaller && (
+                    <button onClick={() => { setTab("taller"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "taller" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                      <Wrench className="h-5 w-5" />Taller
+                    </button>
+                  )}
                   {!isEmployee && (
                     <button onClick={() => { setTab("galeria"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "galeria" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                       <Image className="h-5 w-5" />Galería

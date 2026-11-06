@@ -33,11 +33,12 @@ import {
   Monitor,
   ChevronLeft,
   ChevronRight,
+  Wrench,
 } from "lucide-react";
 import type { ConfigSectionStatus } from "@/components/dashboard/config-nav";
 import { PanelUiSwitch } from "@/components/panel-ui/panel-ui-switch";
 
-type Tab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "gastos" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario" | "galeria" | "promos" | "tarjetas" | "pantalla" | "servicios";
+type Tab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "gastos" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario" | "galeria" | "promos" | "tarjetas" | "pantalla" | "servicios" | "taller";
 
 interface VendorSidebarProps {
   open: boolean;
@@ -57,6 +58,8 @@ interface VendorSidebarProps {
   isService?: boolean;
   /** Vertical estética: suma Pedidos + Catálogo al menú de servicios. */
   isEstetica?: boolean;
+  /** Vertical taller (incluido en isEstetica=hybrid): muestra el tab "🛠️ Taller" y el copy "Presupuestos". */
+  isTaller?: boolean;
   pendingQuotesCount?: number;
   pendingBookingsCount?: number;
   /** Pendientes offline por pestaña (outbox IndexedDB, Track Ventas F1). */
@@ -270,6 +273,7 @@ export default function VendorSidebar({
   isComercio = false,
   isService = false,
   isEstetica = false,
+  isTaller = false,
   pendingQuotesCount = 0,
   pendingBookingsCount = 0,
   pendingPosCount = 0,
@@ -309,12 +313,15 @@ export default function VendorSidebar({
   if (isService) {
     railItems.push({
       tab: "orders",
-      label: isEstetica ? "Consultas" : "Presup.",
-      title: isEstetica ? "Consultas" : "Presupuestos",
+      label: isEstetica && !isTaller ? "Consultas" : "Presup.",
+      title: isEstetica && !isTaller ? "Consultas" : "Presupuestos",
       icon: MessageSquare,
       badge: pendingQuotesCount,
     });
     railItems.push({ tab: "pos", label: "Turnos", title: "Turnos", icon: CalendarDays, badge: pendingBookingsCount });
+    if (isTaller) {
+      railItems.push({ tab: "taller" as any, label: "🛠️ Taller", title: "Taller", icon: Wrench, badge: pendingBookingsCount });
+    }
     railItems.push({ tab: "caja", label: "Caja", title: "Caja", icon: DollarSign });
     if (isEstetica) {
       railItems.push({ tab: "pedidos", label: "Pedidos", title: "Pedidos", icon: Package, badge: orderCount });
@@ -367,7 +374,7 @@ export default function VendorSidebar({
               active={currentTab === "orders"}
               onClick={() => handleTab("orders")}
               icon={MessageSquare}
-              label={isEstetica ? "Consultas" : "Presupuestos"}
+              label={isEstetica && !isTaller ? "Consultas" : "Presupuestos"}
               badge={pendingQuotesCount}
             />
             <NavButton
@@ -377,6 +384,14 @@ export default function VendorSidebar({
               label="Turnos"
               badge={pendingBookingsCount}
             />
+            {isTaller && (
+              <NavButton
+                active={currentTab === "taller" as any}
+                onClick={() => handleTab("taller" as any)}
+                icon={Wrench}
+                label="🛠️ Taller"
+              />
+            )}
             <NavButton
               active={currentTab === "caja"}
               onClick={() => handleTab("caja")}

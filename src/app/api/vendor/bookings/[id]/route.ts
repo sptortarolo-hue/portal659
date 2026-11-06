@@ -15,6 +15,7 @@ const VALID_STATUS = [
   "quoted",
   "approved",
   "repairing",
+  "waiting_parts",
   "ready",
   // Turnos / comunes.
   "confirmed",
@@ -392,7 +393,7 @@ export async function PATCH(
   } catch (e) {
     const emsg = (e as Error)?.message || "";
     // Estados de orden sin el CHECK nuevo (migración pendiente).
-    if (["diagnosed", "quoted", "approved", "repairing", "ready"].includes(status) && /check|constraint|violates/i.test(emsg)) {
+    if (["diagnosed", "quoted", "approved", "repairing", "waiting_parts", "ready"].includes(status) && /check|constraint|violates/i.test(emsg)) {
       return NextResponse.json(
         { error: "Falta aplicar la migración migrate-work-orders.sql en la base" },
         { status: 503 }

@@ -59,14 +59,29 @@ export function TallerHoyPanel({
     <div className="space-y-2">
       <div className="rounded-xl border border-orange-200 bg-orange-50/40 p-3 space-y-1.5">
         <div className="flex items-center justify-between">
-          <p className="text-sm font-semibold text-orange-800">
+          <button
+            type="button"
+            className="text-sm font-semibold text-orange-800 hover:underline text-left"
+            title="Ver el tablero del taller"
+            onClick={() => window.dispatchEvent(new CustomEvent("portal:go-taller", { detail: { filter: "all" } }))}
+          >
             🛠️ En el taller ({openOrders.length})
-          </p>
-          {openOrders.length > 5 && (
-            <button type="button" className="text-[11px] font-medium text-orange-700 underline" onClick={() => setShowAll((v) => !v)}>
-              {showAll ? "Ver menos" : `Ver todas (${openOrders.length})`}
+          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="text-[11px] font-medium text-orange-700 underline"
+              title="Ver en el tablero del taller"
+              onClick={() => window.dispatchEvent(new CustomEvent("portal:go-taller", { detail: { filter: "all" } }))}
+            >
+              Ver en Taller →
             </button>
-          )}
+            {openOrders.length > 5 && (
+              <button type="button" className="text-[11px] font-medium text-orange-700 underline" onClick={() => setShowAll((v) => !v)}>
+                {showAll ? "Ver menos" : `Ver todas (${openOrders.length})`}
+              </button>
+            )}
+          </div>
         </div>
         {openOrders.length === 0 ? (
           <p className="text-xs text-muted-foreground">No hay unidades en el taller.</p>
@@ -100,7 +115,17 @@ export function TallerHoyPanel({
 
       {hoyTurnos.length > 0 && (
         <div className="rounded-xl border border-border p-3 space-y-1.5">
-          <p className="text-sm font-semibold">📅 Turnos de hoy ({hoyTurnos.length})</p>
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold">📅 Turnos de hoy ({hoyTurnos.length})</p>
+            <button
+              type="button"
+              className="text-[11px] font-medium text-primary underline"
+              title="Ver el día completo en la agenda"
+              onClick={() => window.dispatchEvent(new CustomEvent("portal:go-turnos"))}
+            >
+              Ver en Turnos →
+            </button>
+          </div>
           <div className="space-y-1">
             {hoyTurnos.map((b: any) => (
               <button

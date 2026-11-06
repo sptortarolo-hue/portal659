@@ -13,8 +13,9 @@
 --   - diagnosis: diagnóstico del taller (opcional).
 --   - status suma los estados del flujo de taller, TODOS salteables:
 --     recibida → diagnosticada → presupuestada → aprobada → en reparación →
---     lista → entregada (pending → diagnosed → quoted → approved →
---     repairing → ready → completed) + cancelled (descartada).
+--     esperando repuesto → lista → entregada (pending → diagnosed → quoted →
+--     approved → repairing → waiting_parts → ready → completed) +
+--     cancelled (descartada).
 --
 -- Aplicar contra el contenedor (ver AGENTS.md):
 --   docker exec -i portal659-db psql -U portal659 -d portal659 < supabase/self-host/migrate-work-orders.sql
@@ -43,7 +44,7 @@ ALTER TABLE public.bookings
 ALTER TABLE public.bookings DROP CONSTRAINT IF EXISTS bookings_status_check;
 ALTER TABLE public.bookings
   ADD CONSTRAINT bookings_status_check
-  CHECK (status IN ('pending', 'diagnosed', 'quoted', 'approved', 'repairing', 'ready', 'confirmed', 'completed', 'noshow', 'cancelled'));
+  CHECK (status IN ('pending', 'diagnosed', 'quoted', 'approved', 'repairing', 'waiting_parts', 'ready', 'confirmed', 'completed', 'noshow', 'cancelled'));
 
 -- 5) Numeración corrida por comercio (única entre órdenes).
 CREATE UNIQUE INDEX IF NOT EXISTS bookings_work_order_no_unique

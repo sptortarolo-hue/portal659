@@ -29,7 +29,7 @@ import { StaffManager } from "@/components/vendor/staff-manager";
 import { arToday } from "@/lib/booking-schedule";
 import { bookingReminderMessage, bookingWhenLabel } from "@/lib/booking-message";
 import { isOrderBooking } from "@/lib/agenda";
-import { isoTodayAR, workOrderExtensionText } from "@/lib/work-order";
+import { isoTodayAR, workOrderExtensionText, type WorkOrderBoardFilter } from "@/lib/work-order";
 import { loadDraft, saveDraft } from "@/lib/draft";
 import { AgendaView, type AgendaViewMode } from "@/components/dashboard/agenda-view";
 import { EsteticaWeekPlanner } from "@/components/dashboard/estetica-week-planner";
@@ -38,6 +38,7 @@ import { BookingCobroModal } from "@/components/dashboard/booking-cobro-modal";
 import { BookingFichaModal } from "@/components/dashboard/booking-ficha-modal";
 import { TallerHoyPanel } from "@/components/dashboard/taller-hoy-panel";
 import { TallerOpenOrdersStrip } from "@/components/dashboard/taller-open-orders-strip";
+import { TallerJobBoard } from "@/components/dashboard/taller-job-board";
 import { Modal } from "@/components/ui/modal";
 import type { Vendor, Product, ProductModifier, Booking, VendorGallery } from "@/types/database";
 
@@ -55,7 +56,7 @@ type Props = {
   uploading: boolean;
   onCrop: (target: "cover" | "logo" | "offer", src?: string) => void;
   /** Sub-vista a mostrar (el dashboard switchea por tab). Sin section = todo (legacy). */
-  section?: "hoy" | "presupuestos" | "turnos" | "cobros" | "ficha" | "reviews" | "history" | "clientes" | "galeria";
+  section?: "hoy" | "presupuestos" | "turnos" | "cobros" | "ficha" | "reviews" | "history" | "clientes" | "galeria" | "taller";
   /** Navegación a otra sub-vista (botones del Hoy). */
   onNavigate?: (section: "orders" | "pos" | "caja" | "config" | "pedidos" | "clientes", phone?: string | null) => void;
   /** Pedidos de productos (solo estética los muestra en el Hoy). */
@@ -471,6 +472,27 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
   const [extendOrder, setExtendOrder] = useState<any | null>(null);
   // Cotizar una orden: modal de presupuesto con la orden precargada.
   const [orderQuoteFor, setOrderQuoteFor] = useState<any | null>(null);
+  // Tab "🛠️ Taller": filtro del job board (todas / recibidas / listas / vencidas).
+  const [tallerFilter, setTallerFilter] = useState<WorkOrderBoardFilter>("all");
+
+  // Atajos desde los contadores del Hoy (mismo patrón que portal:go-caja):
+  // "portal:go-taller" + filter, "portal:go-turnos" → día de hoy.
+  useEffect(() => {
+    const hTaller = (ev: Event) => {
+      const d = (ev as CustomEvent<{ filter?: WorkOrderBoardFilter }>).detail;
+      if (d?.filter) setTallerFilter(d.filter);
+    };
+    const hTurnos = () => {
+      setAgendaView("day");
+      setAgendaDate(isoTodayAR());
+    };
+    window.addEventListener("portal:go-taller", hTaller);
+    window.addEventListener("portal:go-turnos", hTurnos);
+    return () => {
+      window.removeEventListener("portal:go-taller", hTaller);
+      window.removeEventListener("portal:go-turnos", hTurnos);
+    };
+  }, []);
   // Rebooking: prefill del turno manual con los datos de un turno anterior.
   const [rebook, setRebook] = useState<{
     customerName: string;
@@ -1169,6 +1191,14 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
 
   return (
     <div className="space-y-4">
+      {sec === "taller" && isTaller && (
+        <TallerJobBoard
+          bookings={bookings}
+          filter={tallerFilter}
+          onFilter={setTallerFilter}
+          bookingCardProps={bookingCardProps}
+        />
+      )}
       {(sec === "all" || sec === "hoy") && quota && quota.limit != null && (
         <div className={`rounded-xl border px-4 py-3 text-sm ${quota.used >= quota.limit ? "bg-red-50 border-red-200 text-red-700" : "bg-muted border-border text-muted-foreground"}`}>
           {quota.used >= quota.limit ? (
@@ -2011,24 +2041,39 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
 
       {(sec === "all" || sec === "hoy") && isTaller && (
         <div className="grid grid-cols-3 gap-2 text-center">
-          <div className="rounded-xl border border-orange-200 bg-orange-50/50 p-3">
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent("portal:go-taller", { detail: { filter: "pending" } }))}
+            className="rounded-xl border border-orange-200 bg-orange-50/50 p-3 hover:bg-orange-50 transition-colors text-center"
+            title="Ver órdenes recibidas hoy"
+          >
             <p className="font-display text-xl font-bold text-orange-700">
               {bookings.filter((b: any) => isOrderBooking(b) && String(b.booking_date || "").slice(0, 10) === isoTodayAR()).length}
             </p>
             <p className="text-[11px] text-muted-foreground">Recibidas hoy</p>
-          </div>
-          <div className="rounded-xl border border-border p-3">
+          </button>
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent("portal:go-taller", { detail: { filter: "ready" } }))}
+            className="rounded-xl border border-border p-3 hover:bg-muted/50 transition-colors text-center"
+            title="Ver órdenes listas para retirar"
+          >
             <p className="font-display text-xl font-bold">
               {bookings.filter((b: any) => isOrderBooking(b) && b.status === "ready").length}
             </p>
             <p className="text-[11px] text-muted-foreground">Listas p/ retirar</p>
-          </div>
-          <div className="rounded-xl border border-border p-3">
+          </button>
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent("portal:go-taller", { detail: { filter: "overdue" } }))}
+            className="rounded-xl border border-border p-3 hover:bg-muted/50 transition-colors text-center"
+            title="Ver órdenes vencidas o que vencen hoy"
+          >
             <p className="font-display text-xl font-bold">
               {bookings.filter((b: any) => isOrderBooking(b) && b.status !== "completed" && b.status !== "cancelled" && b.delivery_date && String(b.delivery_date).slice(0, 10) <= isoTodayAR()).length}
             </p>
             <p className="text-[11px] text-muted-foreground">Vencen hoy</p>
-          </div>
+          </button>
         </div>
       )}
       {(sec === "all" || sec === "hoy") && (

@@ -202,7 +202,7 @@ export default async function BuscarPage({
           >
             Todos
           </Link>
-          {VERTICALS.filter((vert) => vert.slug !== "salud").map((vert) => (
+          {VERTICALS.map((vert) => (
             <Link
               key={vert.slug}
               href={hrefVertical(vert.slug)}
@@ -418,7 +418,7 @@ export default async function BuscarPage({
         >
           Todos
         </Link>
-        {VERTICALS.filter((vert) => vert.slug !== "salud").map((vert) => (
+        {VERTICALS.map((vert) => (
           <Link
             key={vert.slug}
             href={hrefVertical(vert.slug)}

@@ -23,7 +23,7 @@ export default async function MapaPage() {
   return (
     <MapPageClient
       vendors={vendors}
-      verticals={VERTICALS.filter((v) => v.slug !== "salud").map((v) => ({
+      verticals={VERTICALS.map((v) => ({
         slug: v.slug,
         name: v.name,
         emoji: v.emoji,

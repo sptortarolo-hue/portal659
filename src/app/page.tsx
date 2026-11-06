@@ -217,7 +217,7 @@ export default async function HomePage() {
       {/* Categorías */}
       <section className="container mx-auto px-4 py-6" id="categorias">
         <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
-          {VERTICALS.filter((vert) => vert.slug !== "salud").map((vert, i) => (
+          {VERTICALS.map((vert, i) => (
             <Link
               key={vert.slug}
               href={`/buscar?vertical=${vert.slug}`}

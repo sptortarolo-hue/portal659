@@ -86,6 +86,14 @@ export async function GET(request: Request) {
         ? b.booking_date.toISOString().slice(0, 10)
         : String(b.booking_date).slice(0, 10)
       : b?.booking_date,
+    // Mismo tratamiento para la fecha de entrega de las órdenes: el panel la
+    // compara como "YYYY-MM-DD" (banda todo-el-día, chips del Mes, semáforo).
+    delivery_date:
+      b?.delivery_date instanceof Date
+        ? b.delivery_date.toISOString().slice(0, 10)
+        : b?.delivery_date != null
+          ? String(b.delivery_date).slice(0, 10)
+          : b?.delivery_date,
   }));
   return NextResponse.json({ bookings: normalized });
 }

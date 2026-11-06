@@ -2,7 +2,7 @@ import { gateRequest } from "@/lib/subscription-gate";
 import { notifyServiceClient } from "@/lib/service-notify";
 import { addServiceJob } from "@/lib/customers";
 import { isPreviewRow } from "@/lib/preview-flag";
-import { query, queryOne, withTransaction } from "@/lib/db";
+import { query, queryOne, withTransaction, hasColumn } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -77,6 +77,17 @@ export async function PATCH(
             name: existing.customer_name,
             total: Number(row[0]?.quoted_price) || 0,
           });
+        }
+        // Si el presupuesto es de una orden de servicio, al aceptarlo la
+        // orden pasa a "Aprobada" (ya se puede reparar).
+        const hasOrderCol = await hasColumn(tx, "bookings", "quote_id");
+        if (hasOrderCol) {
+          await tx.queryVoid(
+            `UPDATE bookings SET status = 'approved'
+              WHERE quote_id = $1 AND vendor_id = $2 AND kind = 'orden'
+                AND status NOT IN ('approved', 'repairing', 'ready', 'completed', 'cancelled')`,
+            [id, gate.vendor.id]
+          );
         }
       }
     });

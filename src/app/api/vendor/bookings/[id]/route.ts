@@ -304,6 +304,31 @@ export async function PATCH(
           );
         }
       }
+      // Vínculo con el presupuesto (orden de servicio cotizada): se guarda
+      // aparte porque no es un campo del form de turno.
+      if (body?.quote_id !== undefined) {
+        const colRows = await tx.query<{ column_name: string }>(
+          `SELECT column_name FROM information_schema.columns
+           WHERE table_schema = 'public' AND table_name = 'bookings'`,
+          []
+        );
+        const has = new Set((colRows || []).map((r) => String(r.column_name)));
+        if (has.has("quote_id")) {
+        const qid = typeof body.quote_id === "string" && /^[0-9a-f-]{36}$/i.test(body.quote_id)
+          ? body.quote_id
+          : null;
+        // Valida que el presupuesto sea de este vendor (no enlazar el de otro).
+        let valid: string | null = null;
+        if (qid) {
+          const own = await tx.queryOne<{ ok: boolean }>(
+            `SELECT true AS ok FROM quotes WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+            [qid, vendor.id]
+          );
+          valid = own?.ok === true ? qid : null;
+        }
+        await tx.queryVoid(`UPDATE bookings SET quote_id = $1 WHERE id = $2`, [valid, id]);
+        }
+      }
       if (wantEquip) {
         const eqId = await resolveEquipmentForWorkTx(tx, vendor.id, body, {
           name: edit?.name ?? existing?.customer_name ?? null,

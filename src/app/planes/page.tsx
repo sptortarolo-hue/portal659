@@ -214,7 +214,7 @@ export default async function PlanesPage() {
             (carrito, pedidos, turnos) arranca en el plan Básico.
           </p>
           <p className="text-xs text-muted-foreground mt-2">
-            Los planes pagos están disponibles para <b>gastronomía</b>, <b>comercios de barrio</b>, <b>moda</b>, <b>peluquería y estética</b>, <b>talleres y reparaciones</b> y <b>servicios</b> (plan <b>Oficios</b>). Peluquería y estética usa <b>Básico</b> (Turnera) y Gestión integral; talleres usa <b>Básico</b> (Taller) y Gestión integral; servicios usa <b>Oficios</b>.
+            Los planes pagos están disponibles para <b>gastronomía</b>, <b>comercios de barrio</b>, <b>moda</b>, <b>peluquería y estética</b>, <b>salud y bienestar</b>, <b>talleres y reparaciones</b> y <b>servicios</b> (plan <b>Oficios</b>). Peluquería y estética y salud y bienestar usan <b>Básico</b> (Turnera) y Gestión integral; talleres usa <b>Básico</b> (Taller) y Gestión integral; servicios usa <b>Oficios</b>.
           </p>
         </div>
 

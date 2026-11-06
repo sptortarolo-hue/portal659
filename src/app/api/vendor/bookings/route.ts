@@ -43,12 +43,15 @@ export async function GET(request: Request) {
   let bookings;
   try {
     bookings = await queryMany<Record<string, unknown>>(
-      `SELECT b.*, p.name AS product_label, s.name AS service_label, st.name AS staff_label, l.name AS location_label
+      `SELECT b.*, p.name AS product_label, s.name AS service_label, st.name AS staff_label, l.name AS location_label,
+              e.brand AS equipment_brand, e.model AS equipment_model, e.identifier AS equipment_identifier,
+              e.rodado AS equipment_rodado, e.color AS equipment_color, e.id::text AS equipment_id
        FROM bookings b
        LEFT JOIN products p ON p.id = b.product_id
        LEFT JOIN services s ON s.id = b.service_id
        LEFT JOIN estetica_staff st ON st.id = b.staff_id
        LEFT JOIN estetica_locations l ON l.id = b.location_id
+       LEFT JOIN equipment e ON e.id = b.equipment_id
        WHERE ${conditions.join(" AND ")}
        ORDER BY b.booking_date ASC, b.booking_time ASC`,
       params
@@ -56,11 +59,14 @@ export async function GET(request: Request) {
   } catch {
     try {
       bookings = await queryMany<Record<string, unknown>>(
-        `SELECT b.*, p.name AS product_label, s.name AS service_label, st.name AS staff_label
+        `SELECT b.*, p.name AS product_label, s.name AS service_label, st.name AS staff_label,
+                e.brand AS equipment_brand, e.model AS equipment_model, e.identifier AS equipment_identifier,
+                e.rodado AS equipment_rodado, e.color AS equipment_color, e.id::text AS equipment_id
          FROM bookings b
          LEFT JOIN products p ON p.id = b.product_id
          LEFT JOIN services s ON s.id = b.service_id
          LEFT JOIN estetica_staff st ON st.id = b.staff_id
+         LEFT JOIN equipment e ON e.id = b.equipment_id
          WHERE ${conditions.join(" AND ")}
          ORDER BY b.booking_date ASC, b.booking_time ASC`,
         params

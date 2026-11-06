@@ -82,6 +82,12 @@ export type BookingCardProps = {
   onPrintEtiqueta?: (id: string) => void;
   /** Orden de servicio: prorroga la fecha de entrega (modal interna). */
   onExtendDelivery?: (booking: any) => void;
+  /** Orden de servicio: abre el modal para cotizarla. */
+  onQuoteOrder?: (booking: any) => void;
+  /** Orden de servicio: envía el presupuesto vinculado por WhatsApp. */
+  onSendOrderQuote?: (booking: any) => void;
+  /** Presupuestos del comercio (para mostrar el vinculado a la orden). */
+  orderQuotes?: any[];
   /** Ids con impresión en curso (deshabilita los botones). */
   printBusyId?: string | null;
 };
@@ -119,6 +125,9 @@ export function BookingCard({
   onPrintOrden,
   onPrintEtiqueta,
   onExtendDelivery,
+  onQuoteOrder,
+  onSendOrderQuote,
+  orderQuotes,
   printBusyId,
 }: BookingCardProps) {
   // Defensa contra datos basura ("null"/"undefined" de ediciones viejas).
@@ -138,7 +147,10 @@ export function BookingCard({
   const orderDeclared = isOrder ? nz((booking as any).declared_issue) : "";
   const orderDiagnosis = isOrder ? nz((booking as any).diagnosis) : "";
   const nextLabel = isOrder ? workOrderNextLabel(booking.status) : "";
-  // Estados en los que las acciones comunes (ficha/editar/repetir) aplican.
+  // Presupuesto vinculado a la orden (para mostrar y enviar por WhatsApp).
+  const linkedQuote = isOrder
+    ? (orderQuotes || []).find((q: any) => String(q?.id) === String(booking.quote_id || "")) ?? null
+    : null;
   const actionStatuses = isOrder
     ? ["pending", "diagnosed", "quoted", "approved", "repairing", "ready", "completed"]
     : ["pending", "confirmed", "completed"];
@@ -390,6 +402,36 @@ export function BookingCard({
               >
                 🏷️ Etiqueta
               </Button>
+            )}
+            {onQuoteOrder && !linkedQuote && booking.status !== "cancelled" && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                title="Cotizar con materiales y mano de obra antes de reparar"
+                onClick={() => onQuoteOrder(booking)}
+              >
+                💰 Cotizar
+              </Button>
+            )}
+            {linkedQuote && (
+              <>
+                <p className="w-full text-xs text-muted-foreground">
+                  Presupuesto: <strong className="text-foreground">${Number(linkedQuote.quoted_price || 0).toLocaleString("es-AR")}</strong>
+                  {linkedQuote.status === "accepted" ? " · aprobado ✅" : linkedQuote.status === "responded" ? " · enviado" : " · borrador"}
+                </p>
+                {onSendOrderQuote && linkedQuote.status !== "accepted" && booking.status !== "cancelled" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs text-green-600"
+                    title="Enviar el presupuesto al cliente por WhatsApp"
+                    onClick={() => onSendOrderQuote(booking)}
+                  >
+                    📲 Enviar presupuesto
+                  </Button>
+                )}
+              </>
             )}
             {onExtendDelivery && booking.status !== "cancelled" && (
               <Button

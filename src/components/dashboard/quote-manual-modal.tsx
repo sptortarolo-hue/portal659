@@ -93,24 +93,34 @@ export function QuoteManualModal({
   onClose,
   onCreated,
   variant = "oficios",
+  initialCustomerName = "",
+  initialCustomerPhone = "",
+  initialDeclaredIssue = "",
+  initialEquipment = null,
 }: {
   onClose: () => void;
-  onCreated: () => void;
+  /** Recibe el presupuesto creado (para vincularlo a la orden y avisar). */
+  onCreated: (data: { quote: any | null }) => void;
   /**
    * estetica: precio directo ("consulta"). taller: partidas (materiales +
    * mano de obra), como oficios, con campo "Equipo / Bici" y toggle para
    * precio cerrado. oficios (default): partidas sin "Equipo / Bici".
    */
   variant?: QuoteVariant;
+  /** Prefill desde una orden de servicio (cliente + equipo + falla). */
+  initialCustomerName?: string;
+  initialCustomerPhone?: string;
+  initialDeclaredIssue?: string;
+  initialEquipment?: Equipment | null;
 }) {
   const isEstetica = variant === "estetica";
   const isTaller = variant === "taller";
-  const [customerName, setCustomerName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
+  const [customerName, setCustomerName] = useState(initialCustomerName);
+  const [customerPhone, setCustomerPhone] = useState(initialCustomerPhone);
   const [serviceName, setServiceName] = useState("");
   // Ficha de equipo (taller): el presupuesto queda ligado a la bici/equipo.
-  const [equipment, setEquipment] = useState<Equipment | null>(null);
-  const [description, setDescription] = useState("");
+  const [equipment, setEquipment] = useState<Equipment | null>(initialEquipment);
+  const [description, setDescription] = useState(initialDeclaredIssue);
   // Precio cerrado (taller en modo "cerrado", estética siempre).
   const [directPrice, setDirectPrice] = useState("");
   // Taller: modo de cotización — partidas (materiales + mano de obra) o precio cerrado.
@@ -194,7 +204,7 @@ export function QuoteManualModal({
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || "No se pudo crear");
-      onCreated();
+      onCreated({ quote: data?.quote ?? null });
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo crear");
     } finally {

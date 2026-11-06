@@ -46,6 +46,7 @@ const VERTICAL_OPTIONS = [
   { value: "servicio", label: "Servicio u oficio" },
   { value: "moda", label: "Ropa y accesorios" },
   { value: "estetica", label: "Peluquería y estética (peluquería, barbería, uñas, pestañas, cejas, masajes)" },
+  { value: "salud", label: "Salud y bienestar (terapias holísticas, reiki, tarot, videncia, mesa cuántica, coaching)" },
   { value: "taller", label: "Talleres y reparaciones (bicicletería, servicio técnico de celulares y electrodomésticos, gomería, reparación de calzado)" },
   { value: "otro", label: "Otro" },
 ] as const;

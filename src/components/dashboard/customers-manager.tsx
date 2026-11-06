@@ -370,7 +370,7 @@ function waLink(phone: string): string {
   return `https://wa.me/${d}`;
 }
 
-export function CustomersManager({ serviceMode = false, vendorId = null, loyaltyEvery = null, loyaltyPct = null, highlightPhone = null }: { serviceMode?: boolean; vendorId?: string | null; loyaltyEvery?: number | null; loyaltyPct?: number | null; highlightPhone?: string | null } = {}) {
+export function CustomersManager({ serviceMode = false, vendorId = null, loyaltyEvery = null, loyaltyPct = null, highlightPhone = null, estetica = true, taller = false }: { serviceMode?: boolean; vendorId?: string | null; loyaltyEvery?: number | null; loyaltyPct?: number | null; highlightPhone?: string | null; /** Fichas dinámicas (customer-form-timeline): solo estética; taller y oficios no las usan. */ estetica?: boolean; /** Vertical taller: oculta bloques de estética (cumpleaños). */ taller?: boolean } = {}) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -603,8 +603,9 @@ export function CustomersManager({ serviceMode = false, vendorId = null, loyalty
 
       {msg && <p className="text-sm text-green-600 bg-green-50 rounded-lg px-3 py-2">{msg}</p>}
 
-      {serviceMode && (() => {
+      {serviceMode && !taller && (() => {
         // Próximos cumpleaños (30 días): día+mes de birthdate, año corrido.
+        // Solo estética: un taller no felicita cumpleaños.
         const today = new Date();
         const upcoming = customers
           .filter((c) => /^\d{4}-\d{2}-\d{2}/.test(c.birthdate || ""))
@@ -837,7 +838,7 @@ export function CustomersManager({ serviceMode = false, vendorId = null, loyalty
                     />
                   )}
 
-                  {serviceMode && (
+                  {serviceMode && estetica && (
                     <CustomerFormTimeline vendorId={vendorId} phone={c.phone} />
                   )}
 

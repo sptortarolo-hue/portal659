@@ -71,6 +71,7 @@ const VERTICAL_OPTIONS = [
   { value: "servicio", label: "Servicio u oficio (sin menú)" },
   { value: "moda", label: "Ropa y accesorios" },
   { value: "estetica", label: "Peluquería y estética" },
+  { value: "salud", label: "Salud y bienestar" },
   { value: "taller", label: "Talleres y reparaciones" },
   { value: "otro", label: "Otro" },
 ] as const;

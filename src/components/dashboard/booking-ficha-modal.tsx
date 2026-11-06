@@ -33,6 +33,8 @@ export type BookingFichaModalProps = {
   onClose: () => void;
   onNavigate?: (section: "orders" | "pos" | "caja" | "config" | "pedidos" | "clientes", phone?: string | null) => void;
   vendorId?: string | null;
+  /** Fichas dinámicas (customer-form-timeline): solo estética; taller/oficios no las usan. */
+  estetica?: boolean;
 };
 
 export function BookingFichaModal({
@@ -41,6 +43,7 @@ export function BookingFichaModal({
   onClose,
   onNavigate,
   vendorId,
+  estetica = true,
 }: BookingFichaModalProps) {
   const phone = booking?.customer_phone ? String(booking.customer_phone) : "";
   const [customer, setCustomer] = useState<Customer | null>(null);
@@ -342,7 +345,7 @@ export function BookingFichaModal({
               )}
             </div>
 
-            {phone && (
+            {estetica && phone && (
               <CustomerFormTimeline
                 phone={phone}
                 vendorId={vendorId}

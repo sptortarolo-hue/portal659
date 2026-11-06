@@ -36,6 +36,8 @@ import { EsteticaWeekPlanner } from "@/components/dashboard/estetica-week-planne
 import { BookingCard, type BookingCardProps } from "@/components/dashboard/booking-card";
 import { BookingCobroModal } from "@/components/dashboard/booking-cobro-modal";
 import { BookingFichaModal } from "@/components/dashboard/booking-ficha-modal";
+import { TallerHoyPanel } from "@/components/dashboard/taller-hoy-panel";
+import { TallerOpenOrdersStrip } from "@/components/dashboard/taller-open-orders-strip";
 import { Modal } from "@/components/ui/modal";
 import type { Vendor, Product, ProductModifier, Booking, VendorGallery } from "@/types/database";
 
@@ -467,6 +469,8 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
   const [orderCanCreate, setOrderCanCreate] = useState(false);
   const [printBusyId, setPrintBusyId] = useState<string | null>(null);
   const [extendOrder, setExtendOrder] = useState<any | null>(null);
+  // Cotizar una orden: modal de presupuesto con la orden precargada.
+  const [orderQuoteFor, setOrderQuoteFor] = useState<any | null>(null);
   // Rebooking: prefill del turno manual con los datos de un turno anterior.
   const [rebook, setRebook] = useState<{
     customerName: string;
@@ -1058,8 +1062,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
   }
 
   // Prorroga la entrega: guarda la nueva fecha y ofrece avisar al cliente.
-  async function handleExtendSave(id: string, newDate: string, notify: boolean) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) {
+  async function handleExtendSave(id: string, newDate: string, notify: boolean) {    if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) {
       setMsg("Elegí una fecha válida");
       return;
     }
@@ -1098,6 +1101,31 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
     }
   }
 
+  // Cotizar una orden: abre el modal de presupuesto con sus datos.
+  function handleQuoteOrder(booking: any) {
+    setSelectedBookingId(null);
+    setOrderQuoteFor(booking);
+    setQuoteModalOpen(true);
+  }
+
+  // Enviar el presupuesto vinculado a la orden por WhatsApp (mensaje armado
+  // con el mismo formato de la bandeja de presupuestos).
+  function handleSendOrderQuote(booking: any) {
+    const quote = (quotesProp || quotes || []).find((q: any) => String(q?.id) === String(booking?.quote_id || ""));
+    if (!quote) {
+      setMsg("No encontré el presupuesto vinculado a esta orden.");
+      return;
+    }
+    const text = quoteShareText(quote);
+    const phone = String(quote.customer_phone || booking.customer_phone || "").replace(/\D/g, "");
+    if (phone.length < 8) {
+      setMsg("El cliente no tiene teléfono para WhatsApp.");
+      return;
+    }
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, "_blank");
+    setMsg("Presupuesto listo para enviar por WhatsApp.");
+  }
+
   // Props compartidas por la tarjeta de turno (lista y modal de detalle).
   const bookingCardProps: Omit<BookingCardProps, "booking"> = {
     formAlerts,
@@ -1133,6 +1161,9 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
     onPrintOrden: orderCanCreate ? (id: string) => handlePrintOrder(id, "orden") : undefined,
     onPrintEtiqueta: orderCanCreate ? (id: string) => handlePrintOrder(id, "orden_tag") : undefined,
     onExtendDelivery: orderCanCreate ? (b: any) => setExtendOrder(b) : undefined,
+    onQuoteOrder: isTaller && orderCanCreate ? handleQuoteOrder : undefined,
+    onSendOrderQuote: isTaller ? handleSendOrderQuote : undefined,
+    orderQuotes: isTaller ? (quotesProp || quotes || []) : undefined,
     printBusyId,
   };
 
@@ -1181,6 +1212,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
             >
               <option value="servicio">Servicio u oficio</option>
               <option value="estetica">Peluquería y estética</option>
+              <option value="salud">Salud y bienestar (terapias holísticas)</option>
               <option value="taller">Talleres y reparaciones</option>
               <option value="gastronomia">Gastronomía</option>
               <option value="comercio">Comercio del barrio</option>
@@ -1641,6 +1673,13 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
               ) : undefined
             }
           />
+
+          {isTaller && (
+            <TallerOpenOrdersStrip
+              bookings={bookings}
+              onOpenBooking={(id) => setSelectedBookingId(id)}
+            />
+          )}
         </div>
       </CollapsibleSection>
       </>
@@ -1962,6 +2001,15 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
       )}
 
       {(sec === "all" || sec === "hoy") && isTaller && (
+        <TallerHoyPanel
+          bookings={bookings}
+          onOpenBooking={(id: string) => setSelectedBookingId(id)}
+          onCobroBooking={handleCobroBooking}
+          canCobro
+        />
+      )}
+
+      {(sec === "all" || sec === "hoy") && isTaller && (
         <div className="grid grid-cols-3 gap-2 text-center">
           <div className="rounded-xl border border-orange-200 bg-orange-50/50 p-3">
             <p className="font-display text-xl font-bold text-orange-700">
@@ -2045,6 +2093,8 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
             loyaltyEvery={(vendor as any)?.loyalty_every ?? null}
             loyaltyPct={(vendor as any)?.loyalty_pct ?? null}
             highlightPhone={highlightClientPhone}
+            estetica={!isTaller}
+            taller={isTaller}
           />
         ) : (
           <PlanLock
@@ -2057,12 +2107,42 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
       {quoteModalOpen && (
         <QuoteManualModal
           variant={isHybrid ? (isTaller ? "taller" : "estetica") : undefined}
-          onClose={() => setQuoteModalOpen(false)}
-          onCreated={() => {
+          initialCustomerName={orderQuoteFor ? String(orderQuoteFor.customer_name || "") : undefined}
+          initialCustomerPhone={orderQuoteFor ? String(orderQuoteFor.customer_phone || "") : undefined}
+          initialDeclaredIssue={orderQuoteFor ? String(orderQuoteFor.declared_issue || "") : undefined}
+          initialEquipment={orderQuoteFor
+            ? ({
+                id: orderQuoteFor.equipment_id ? String(orderQuoteFor.equipment_id) : null,
+                kind: null,
+                brand: orderQuoteFor.equipment_brand ?? null,
+                model: orderQuoteFor.equipment_model ?? null,
+                identifier: orderQuoteFor.equipment_identifier ?? null,
+                rodado: orderQuoteFor.equipment_rodado ?? null,
+                color: orderQuoteFor.equipment_color ?? null,
+                notes: null,
+              } as any)
+            : null}
+          onClose={() => { setQuoteModalOpen(false); setOrderQuoteFor(null); }}
+          onCreated={async (data: { quote: any | null }) => {
             setQuoteModalOpen(false);
-            setMsg(isEstetica ? "Consulta creada (no cuenta para el tope mensual)" : "Presupuesto creado (no cuenta para el tope mensual)");
+            const quote = data?.quote ?? null;
+            const order = orderQuoteFor;
+            setOrderQuoteFor(null);
             onQuotesChanged?.();
             reload();
+            // Vincular el presupuesto a la orden y pasarla a "Presupuestada".
+            if (order?.id && quote?.id) {
+              try {
+                await fetch(`/api/vendor/bookings/${order.id}`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ quote_id: quote.id, status: "quoted" }),
+                });
+              } catch {
+                /* el vínculo se puede rehacer desde el detalle */
+              }
+            }
+            setMsg("Presupuesto creado (no cuenta para el tope mensual). Mandámelo al cliente por WhatsApp.");
           }}
         />
       )}
@@ -2165,6 +2245,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
           onClose={() => setFichaOpenId(null)}
           onNavigate={onNavigate}
           vendorId={vendor?.id}
+          estetica={!isTaller}
         />
       )}
     </div>

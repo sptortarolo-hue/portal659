@@ -222,7 +222,7 @@ export function StoreSwitcher({
                 onChange={(e) => setForm({ ...form, vertical: e.target.value })}
                 className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary"
               >
-                {VERTICALS.filter((v) => v.slug !== "salud").map((v) => (
+                {VERTICALS.map((v) => (
                   <option key={v.slug} value={v.slug}>{v.emoji} {v.name}</option>
                 ))}
                 <option value="otro">📋 Otro</option>

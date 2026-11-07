@@ -2381,9 +2381,9 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                 {catalogBlock("xl:grid-cols-4")}
               </div>
               {/* Cuenta sticky con scroll interno */}
-              <div className="flex rounded-2xl border border-border bg-card p-4 flex-col gap-2 max-h-[70vh] lg:sticky lg:top-24 lg:h-[calc(100vh-12rem)] lg:max-h-none">
+              <div className="flex rounded-2xl border border-border bg-card p-4 flex-col gap-2 lg:sticky lg:top-24 lg:h-[calc(100vh-12rem)] lg:max-h-none">
                 <h3 className="font-display font-semibold text-sm mb-2 flex-shrink-0">Cuenta · {selected.name}</h3>
-                <div className="flex-1 space-y-3 min-h-0 overflow-y-auto">
+                <div className="flex-1 space-y-3 min-h-0">
                   {consumicionesBlock(false)}
                   {cart.length > 0 && (
                     <div className="space-y-1">

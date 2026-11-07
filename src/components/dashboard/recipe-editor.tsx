@@ -261,7 +261,7 @@ export function RecipeEditor({
                 <select
                   value={l.ingredient_id}
                   onChange={(e) => pickIngredient(l.key, e.target.value)}
-                  className="flex-1 min-w-0 rounded-lg border border-input bg-background px-2 py-2 text-sm"
+                  className="flex-1 min-w-0 w-0 rounded-lg border border-input bg-background px-2 py-2 text-sm"
                 >
                   <option value="">Elegí insumo…</option>
                   {ingredients.map((i) => (
@@ -529,7 +529,7 @@ function RecipePresentations({
           <select
             value={selProduct}
             onChange={(e) => setSelProduct(e.target.value)}
-            className="flex-1 min-w-0 rounded-lg border border-input bg-background px-2 py-2 text-sm"
+            className="flex-1 min-w-0 w-0 rounded-lg border border-input bg-background px-2 py-2 text-sm"
           >
             <option value="">Vincular producto…</option>
             {eligible.map((p) => (

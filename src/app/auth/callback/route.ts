@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 import { queryOne } from "@/lib/db";
-import { signAccessToken } from "@/lib/auth";
+import { signAccessToken, signPending2faToken } from "@/lib/auth";
 import { getSiteUrl } from "@/lib/site-url";
 
 export async function GET(request: Request) {
@@ -19,8 +19,8 @@ export async function GET(request: Request) {
 
   if (type === "magic") {
     const tokenHash = createHash("sha256").update(token).digest("hex");
-    const profile = await queryOne<{ id: string; email: string; role: string; token_version: number }>(
-      `SELECT id, email, role, token_version FROM profiles WHERE magic_token_hash = $1 AND magic_token_expires > now() LIMIT 1`,
+    const profile = await queryOne<{ id: string; email: string; role: string; token_version: number; is_admin: boolean; totp_enabled: boolean }>(
+      `SELECT id, email, role, token_version, is_admin, COALESCE(totp_enabled, false) AS totp_enabled FROM profiles WHERE magic_token_hash = $1 AND magic_token_expires > now() LIMIT 1`,
       [tokenHash]
     );
     if (!profile) {
@@ -31,6 +31,13 @@ export async function GET(request: Request) {
       `UPDATE profiles SET magic_token_hash = NULL, magic_token_expires = NULL WHERE id = $1 RETURNING id`,
       [profile.id]
     );
+
+    // 2FA: si el admin tiene segundo factor, no se crea la sesión: se redirige
+    // al login con un token pendiente que requiere el código TOTP.
+    if (profile.is_admin && profile.totp_enabled) {
+      const pendingToken = await signPending2faToken({ id: profile.id, tokenVersion: profile.token_version });
+      return NextResponse.redirect(`${origin}/login?pending=${encodeURIComponent(pendingToken)}`);
+    }
 
     const accessToken = await signAccessToken({ id: profile.id, email: profile.email, role: profile.role, tokenVersion: profile.token_version });
     const response = NextResponse.redirect(origin);

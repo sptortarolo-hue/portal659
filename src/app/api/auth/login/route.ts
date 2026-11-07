@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { queryOne } from "@/lib/db";
-import { verifyPassword, signAccessToken } from "@/lib/auth";
+import { verifyPassword, signAccessToken, signPending2faToken } from "@/lib/auth";
 import { withRateLimit } from "@/lib/api-wrapper";
 import { phoneVariantsAR } from "@/lib/phone";
 
@@ -27,8 +27,10 @@ export const POST = withRateLimit(async (request: Request) => {
       password_hash: string;
       email_confirmed: boolean;
       token_version: number;
+      is_admin: boolean;
+      totp_enabled: boolean;
     }>(
-      `SELECT id, email, full_name, role, password_hash, email_confirmed, token_version FROM profiles WHERE lower(email) = lower($1)`,
+      `SELECT id, email, full_name, role, password_hash, email_confirmed, token_version, is_admin, COALESCE(totp_enabled, false) AS totp_enabled FROM profiles WHERE lower(email) = lower($1)`,
       [identifier]
     );
   } else {
@@ -44,8 +46,10 @@ export const POST = withRateLimit(async (request: Request) => {
         password_hash: string;
         email_confirmed: boolean;
         token_version: number;
+        is_admin: boolean;
+        totp_enabled: boolean;
       }>(
-        `SELECT id, email, full_name, role, password_hash, email_confirmed, token_version FROM profiles
+        `SELECT id, email, full_name, role, password_hash, email_confirmed, token_version, is_admin, COALESCE(totp_enabled, false) AS totp_enabled FROM profiles'
          WHERE regexp_replace(whatsapp, '[^0-9]', '', 'g') = ANY($1)
             OR regexp_replace(phone, '[^0-9]', '', 'g') = ANY($1)
          LIMIT 1`,
@@ -68,6 +72,17 @@ export const POST = withRateLimit(async (request: Request) => {
       { error: "confirm_email", message: "Confirmá tu email para poder iniciar sesión." },
       { status: 403 }
     );
+  }
+
+  // 2FA (TOTP): los admins con segundo factor activado reciben un desafío
+  // en vez de una sesión. El token pendiente se canjea en
+  // /api/auth/2fa/verify-login tras verificar el código TOTP.
+  if (user.is_admin && user.totp_enabled) {
+    const pendingToken = await signPending2faToken({
+      id: user.id,
+      tokenVersion: user.token_version,
+    });
+    return NextResponse.json({ need2fa: true, pendingToken });
   }
 
   const accessToken = await signAccessToken({

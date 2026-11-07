@@ -20,6 +20,9 @@ function LoginForm() {
   const [message, setMessage] = useState("");
   const [verified, setVerified] = useState(false);
   const [needsConfirmation, setNeedsConfirmation] = useState(false);
+  const [pending2fa, setPending2fa] = useState<string | null>(searchParams.get("pending"));
+  const [totpCode, setTotpCode] = useState("");
+  const [verifying2fa, setVerifying2fa] = useState(false);
   const [resending, setResending] = useState(false);
   const [resendMsg, setResendMsg] = useState("");
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
@@ -115,6 +118,9 @@ function LoginForm() {
       } else {
         setMessage(data.error || "Error al iniciar sesión");
       }
+    } else if (data.need2fa && data.pendingToken) {
+      // Desafío 2FA: no hay sesión todavía, pedimos el código TOTP.
+      setPending2fa(data.pendingToken);
     } else {
       window.dispatchEvent(new Event("auth-changed"));
       const role = data.user?.role;
@@ -122,6 +128,43 @@ function LoginForm() {
       router.push(safeNext || (role === "vendor" ? "/vendor/dashboard" : "/"));
     }
     setLoading(false);
+  }
+
+  async function handleTotpSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!pending2fa) return;
+    const clean = totpCode.replace(/\\D/g, "");
+    if (clean.length !== 6) {
+      setMessage("Ingresá el código de 6 dígitos.");
+      return;
+    }
+    setVerifying2fa(true);
+    setMessage("");
+    try {
+      const res = await fetch("/api/auth/2fa/verify-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pendingToken: pending2fa, code: clean }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMessage(data.error || "Código inválido");
+      } else {
+        window.dispatchEvent(new Event("auth-changed"));
+        const role = data.user?.role;
+        const safeNext = next && next.startsWith("/") ? next : null;
+        router.push(safeNext || (role === "vendor" ? "/vendor/dashboard" : "/"));
+      }
+    } catch {
+      setMessage("Error al verificar el código.");
+    }
+    setVerifying2fa(false);
+  }
+
+  function handleCancel2fa() {
+    setPending2fa(null);
+    setTotpCode("");
+    setMessage("");
   }
 
   async function handleResend() {
@@ -192,7 +235,39 @@ function LoginForm() {
         </button>
       </div>
 
-      {mode === "equipo" ? (
+      {pending2fa ? (
+      <form onSubmit={handleTotpSubmit} className="space-y-4">
+        <div className="text-sm text-muted-foreground">
+          Verificación en dos pasos. Abrí tu app autenticadora (Google
+          Authenticator, Authy, etc.) e ingresá el código de 6 dígitos.
+        </div>
+        <div>
+          <Label htmlFor="totp">Código de 6 dígitos</Label>
+          <Input
+            id="totp"
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            placeholder="123456"
+            value={totpCode}
+            onChange={(e) => setTotpCode(e.target.value.replace(/\\D/g, "").slice(0, 6))}
+            className="text-center text-2xl tracking-widest font-mono"
+            autoFocus
+          />
+        </div>
+        {message && <p className="text-sm text-red-600">{message}</p>}
+        <Button type="submit" className="w-full" disabled={verifying2fa || totpCode.length !== 6}>
+          {verifying2fa ? "Verificando..." : "Verificar"}
+        </Button>
+        <button
+          type="button"
+          onClick={handleCancel2fa}
+          className="w-full text-sm text-muted-foreground hover:text-foreground"
+        >
+          Cancelar y volver
+        </button>
+      </form>
+      ) : mode === "equipo" ? (
       <form onSubmit={handleTeamLogin} className="space-y-4">
         <div>
           <Label htmlFor="store">Comercio</Label>

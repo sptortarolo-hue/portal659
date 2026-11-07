@@ -22,6 +22,7 @@ import {
   Activity,
   ChevronLeft,
   ChevronRight,
+  Shield,
 } from "lucide-react";
 import { PanelUiSwitch } from "@/components/panel-ui/panel-ui-switch";
 
@@ -40,6 +41,7 @@ const NAV_ITEMS = [
   { href: "/admin/auditoria", label: "Auditoría", short: "Auditoría", icon: FileText },
   { href: "/admin/alerta", label: "Alerta Vecinal", short: "Alerta", icon: Megaphone },
   { href: "/admin/config", label: "Configuración", short: "Config", icon: Settings },
+  { href: "/admin/seguridad", label: "Seguridad (2FA)", short: "Seguridad", icon: Shield },
 ];
 
 interface AdminSidebarProps {

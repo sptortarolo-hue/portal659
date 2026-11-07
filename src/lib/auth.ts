@@ -47,6 +47,39 @@ type DecodedToken = { userId: string; email?: string; role?: string; tv?: number
  * encargado, login "Soy del equipo"): el proxy la limita a su panel
  * (/vendor, /perfil y /manuales) — ver src/proxy.ts.
  */
+// ============================================================
+// 2FA (TOTP) para admins: token de sesión "pendiente".
+// Al loguear un admin con 2FA activada se devuelve este token (5 min)
+// en el body en vez de crear la sesión; el paso /api/auth/2fa/verify-login
+// lo canjea por la sesión real tras verificar el código TOTP.
+// ============================================================
+export async function signPending2faToken(user: {
+  id: string;
+  tokenVersion?: number;
+}): Promise<string> {
+  return new SignJWT({ twofa: "pending", tv: user.tokenVersion ?? 1 })
+    .setProtectedHeader({ alg: "HS256" })
+    .setSubject(user.id)
+    .setIssuedAt()
+    .setExpirationTime("5m")
+    .sign(getJwtSecret());
+}
+
+export async function verifyPending2faToken(
+  token: string
+): Promise<{ userId: string; tokenVersion: number } | null> {
+  try {
+    const { payload } = await jwtVerify(token, getJwtSecret());
+    if (payload.twofa !== "pending") return null;
+    return {
+      userId: (payload.sub as string) || "",
+      tokenVersion: typeof payload.tv === "number" ? payload.tv : 1,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function signAccessToken(user: {
   id: string;
   email: string;

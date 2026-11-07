@@ -47,6 +47,7 @@ function verifyMercadoPagoSignature(
 export async function POST(request: Request) {
   const bodyText = await request.text();
   const MP_WEBHOOK_SECRET = process.env.MP_WEBHOOK_SECRET;
+  const isProd = process.env.NODE_ENV === "production";
   let body: any;
   try {
     body = JSON.parse(bodyText);
@@ -55,20 +56,49 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Body inválido" }, { status: 400 });
   }
 
-  if (MP_WEBHOOK_SECRET) {
+  // Ping del panel de MP (se dispara al guardar la configuración del
+  // webhook): no procesa nada, no lleva firma verificable.
+  if (body?.type === "ping") {
+    return NextResponse.json({ ok: true });
+  }
+
+  // ============================================================
+  // FAIL-CLOSED: en producción la firma es OBLIGATORIA.
+  // Antes, si faltaba MP_WEBHOOK_SECRET (o data.id), el webhook se
+  // aceptaba sin verificar: un atacante que descubriera la URL podía
+  // falsificar acreditaciones de pago. Ahora:
+  //   - sin secret en prod → 500 (MP reintenta mientras se arregla el .env)
+  //   - con secret pero sin data.id → 401 (imposible verificar)
+  // En dev se permite sin secret para probar localmente.
+  // ============================================================
+  if (!MP_WEBHOOK_SECRET) {
+    if (isProd) {
+      console.error(
+        "[mp-webhook] MP_WEBHOOK_SECRET no configurada: webhook RECHAZADO (fail-closed)"
+      );
+      return NextResponse.json({ error: "Webhook sin verificar" }, { status: 500 });
+    }
+    console.warn("[mp-webhook] sin MP_WEBHOOK_SECRET (dev): se omite verificación");
+  } else {
     const signature = request.headers.get("x-signature");
     const requestId = request.headers.get("x-request-id");
     const url = new URL(request.url);
     // data.id puede venir en el query param (webhook de app) o en el body
-    // (notification_url de la preferencia). Si no está en ninguno, no podemos
-    // armar el manifiesto — logueamos y dejamos pasar (la URL solo la conoce MP).
+    // (notification_url de la preferencia). Sin data.id no se puede armar
+    // el manifiesto de firma → rechazo (en dev se deforma y sigue).
     const dataId =
       url.searchParams.get("data.id") ||
       (body?.data?.id != null ? String(body.data.id) : null) ||
       (body?.id != null ? String(body.id) : null);
     if (!dataId) {
+      if (isProd) {
+        console.error(
+          `[mp-webhook] sin data.id: imposible verificar firma (type=${body?.type || "?"}, request-id=${requestId || "?"}) — RECHAZADO (fail-closed)`
+        );
+        return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+      }
       console.warn(
-        `[mp-webhook] sin data.id para verificar firma (type=${body?.type || "?"}, request-id=${requestId || "?"}) — se omite verificación`
+        `[mp-webhook] sin data.id para verificar firma (type=${body?.type || "?"}, request-id=${requestId || "?"}) — se omite verificación (dev)`
       );
     } else if (!verifyMercadoPagoSignature(signature, requestId, dataId, MP_WEBHOOK_SECRET)) {
       console.warn(

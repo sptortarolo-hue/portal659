@@ -2016,9 +2016,15 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                 onClick={async () => {
                   try {
                     const res = await fetch(`/api/vendor/orders/${o.id}`);
-                    const data = await res.json();
+const data = await res.json();
                     if (data?.error) { setMsg(String(data.error)); return; }
-                    setEditingConsumicion(data);
+                    setEditingConsumicion({
+                      ...data,
+                      method: data.method || "pickup",
+                      channel: data.channel || "mesa",
+                      customer_name: data.customer_name || selected?.name || "Mesa",
+                      items: Array.isArray(data.items) ? data.items : [],
+                    });
                   } catch {
                     setMsg("No se pudo cargar la consumición");
                   }

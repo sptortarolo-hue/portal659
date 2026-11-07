@@ -290,12 +290,12 @@ export function RecipeEditor({
                   placeholder="Cantidad neta"
                   value={l.qty_net}
                   onChange={(e) => patchLine(l.key, { qty_net: e.target.value })}
-                  className="flex-1"
+                  className="flex-1 min-w-0"
                 />
                 <select
                   value={l.unit}
                   onChange={(e) => patchLine(l.key, { unit: e.target.value })}
-                  className="w-24 rounded-lg border border-input bg-background px-2 py-2 text-sm"
+                  className="w-20 sm:w-24 rounded-lg border border-input bg-background px-2 py-2 text-sm"
                 >
                   {units.map((u) => (
                     <option key={u} value={u}>{u}</option>
@@ -542,7 +542,7 @@ function RecipePresentations({
             step="any"
             value={servings}
             onChange={(e) => setServings(e.target.value)}
-            className="w-20"
+            className="w-16 sm:w-20"
             title="Porciones del batch que representa"
             placeholder="Porc."
           />

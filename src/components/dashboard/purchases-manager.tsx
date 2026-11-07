@@ -445,7 +445,7 @@ function PurchaseForm({
     <Card className="p-4 border-primary/30">
       <form onSubmit={handleSubmit} className="space-y-3">
         <h4 className="font-medium text-sm">Nueva compra</h4>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <div className="col-span-2 sm:col-span-1">
             <Label className="text-xs">Proveedor</Label>
             <select

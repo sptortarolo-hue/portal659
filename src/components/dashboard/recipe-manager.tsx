@@ -81,7 +81,7 @@ function ThresholdSettings({
         </span>
         <span className="text-primary font-semibold ml-auto flex-shrink-0">Editar</span>
       </summary>
-      <div className="flex items-end gap-2 pt-2">
+      <div className="flex items-end gap-2 pt-2 flex-wrap">
         <div>
           <Label className="text-xs">🟡 desde %</Label>
           <Input type="number" min={1} max={99} step="any" value={warn} onChange={(e) => setWarn(e.target.value)} className="w-24" />
@@ -175,22 +175,22 @@ export function RecipeManager() {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <h2 className="font-display text-xl font-semibold">Preparación y Costo</h2>
-        <div className="flex rounded-xl border border-border overflow-hidden text-sm font-medium">
+        <div className="flex rounded-xl border border-border overflow-hidden text-sm font-medium flex-wrap w-full sm:w-auto">
           <button
             onClick={() => setView("platos")}
-            className={`px-4 py-2 ${view === "platos" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+            className={`px-4 py-2 flex-1 sm:flex-none ${view === "platos" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
           >
             🍽️ Platos
           </button>
           <button
             onClick={() => setView("insumos")}
-            className={`px-4 py-2 ${view === "insumos" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+            className={`px-4 py-2 flex-1 sm:flex-none ${view === "insumos" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
           >
             🧂 Insumos ({ingredients.filter((i) => i.active !== false).length})
           </button>
           <button
             onClick={() => setView("compras")}
-            className={`px-4 py-2 ${view === "compras" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+            className={`px-4 py-2 flex-1 sm:flex-none ${view === "compras" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
           >
             🧾 Compras
           </button>

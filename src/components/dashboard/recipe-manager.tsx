@@ -75,8 +75,8 @@ function ThresholdSettings({
 
   return (
     <details className="rounded-xl border border-border bg-card px-3 py-2">
-      <summary className="text-xs cursor-pointer list-none flex items-center gap-2">
-        <span className="tabular-nums">
+      <summary className="text-xs cursor-pointer list-none flex items-center gap-2 flex-wrap">
+        <span className="tabular-nums min-w-0 break-words">
           🚦 Semáforo: 🟢 &lt;{thresholds.warn}% · 🟡 {thresholds.warn}–{thresholds.bad}% · 🔴 &gt;{thresholds.bad}%
         </span>
         <span className="text-primary font-semibold ml-auto flex-shrink-0">Editar</span>
@@ -239,7 +239,7 @@ export function RecipeManager() {
                   >
                     <span className="flex-1 min-w-0">
                       <span className="block text-sm font-medium truncate">{p.name}</span>
-                      <span className="block text-xs text-muted-foreground tabular-nums">
+                      <span className="block text-xs text-muted-foreground tabular-nums truncate">
                         Venta ${p.price.toLocaleString("es-AR")}
                         {c?.has_recipe && c.cost !== null
                           ? ` · Costo ${formatMoney(c.cost)}`
@@ -332,7 +332,7 @@ export function RecipeManager() {
                       <span className="block text-sm font-medium truncate">
                         {i.name} {i.is_elaborated ? "🧪" : ""}
                       </span>
-                      <span className="block text-xs text-muted-foreground tabular-nums">
+                      <span className="block text-xs text-muted-foreground tabular-nums truncate">
                         ${Number(i.cost_per_unit).toLocaleString("es-AR")}/{i.base_unit}
                         {i.waste_pct > 0 ? ` · merma ${i.waste_pct}%` : ""}
                         {i.is_elaborated ? (hasSub ? " · con sub-preparación" : " · sin sub-preparación") : ""}

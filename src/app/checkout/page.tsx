@@ -1201,7 +1201,7 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
             id="notes"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder={esRetail ? "Ej: aclaraciones del pedido, referencias de entrega, alergias..." : "Sin cebolla, extra picante, acceso por el costado..."}
+            placeholder={esRetail ? "Ej: aclaraciones del pedido, referencias de entrega, si es para regalo..." : "Sin cebolla, extra picante, acceso por el costado..."}
             className="h-16 text-sm resize-none"
             maxLength={200}
           />

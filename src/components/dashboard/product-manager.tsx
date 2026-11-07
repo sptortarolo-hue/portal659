@@ -53,6 +53,9 @@ type Props = {
   isModa?: boolean;
   /** Comercio del barrio: usa el mismo editor genérico (sin variantes). */
   isComercio?: boolean;
+  /** Catálogo completo (Categorías · Opciones · Volumen · Combos) sin activar
+   *  el modo moda (variantes color×talle, guía de talles, etc.). */
+  showCatalogViews?: boolean;
   showStock?: boolean;
   showPrep?: boolean;
   /** Muestra el chip de food-cost por plato (requiere plan con preparación). */
@@ -99,9 +102,12 @@ const PM_VIEWS: { id: string; icon: string; label: string }[] = [
 ];
 
 /** Gestión completa de platos/productos (listado + ficha inline + modificadores), sin ir a Configuración. */
-export function ProductManager({ isModa = false, isComercio = false, showStock = true, showPrep = false, showCosts = false, canEditCost = false, showExpiry = false, vendorId = null, variants, productImages, onCrop, onChanged }: Props) {
+export function ProductManager({ isModa = false, isComercio = false, showCatalogViews = false, showStock = true, showPrep = false, showCosts = false, canEditCost = false, showExpiry = false, vendorId = null, variants, productImages, onCrop, onChanged }: Props) {
   // Wording por vertical: gastro habla de "platos", retail de "productos".
   const noun = isModa || isComercio ? "Producto" : "Plato";
+  // Vistas del catálogo: moda las trae por defecto; otros verticales
+  // (estética/taller) las prenden con showCatalogViews.
+  const catalogViews = isModa || showCatalogViews;
   const [offers, setOffers] = useState<OfferRow[]>([]);
   const [categories, setCategories] = useState<MenuCategory[]>([]);
   const [costByProduct, setCostByProduct] = useState<Record<string, CostInfo>>({});
@@ -264,7 +270,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     const comboRows = comboItemsByProduct?.[offer.id] || [];
     const isComboRow = Array.isArray(comboRows) && comboRows.length > 0;
     setOffIsCombo(isComboRow);
-    if (isModa) setComboFormMode(isComboRow);
+    if (catalogViews) setComboFormMode(isComboRow);
     setOffComboItems(Array.isArray(comboRows) ? comboRows : []);
     setShowForm(true);
   }
@@ -892,14 +898,14 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="font-display text-xl font-semibold">{isModa || isComercio ? "Catálogo" : "Menú y catálogo"}</h2>
-        {(!isModa || view === "productos") && (
+        {(!catalogViews || view === "productos") && (
           <Button size="sm" onClick={() => { if (editingId || showForm) resetForm(); else setShowForm(true); }}>
             {editingId || showForm ? "Cancelar" : `+ ${noun}`}
           </Button>
         )}
       </div>
 
-      {isModa && (
+      {catalogViews && (
         <div className="flex rounded-xl border border-border overflow-x-auto max-w-full text-sm font-medium">
           {PM_VIEWS.map((v) => (
             <button
@@ -927,7 +933,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
 
       {msg && <p className="text-sm text-green-600">{msg}</p>}
 
-      {isModa ? (
+      {catalogViews ? (
         <>
           {view === "productos" && (
             <>
@@ -987,7 +993,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
                 categories={categories}
               />
               <p className="text-xs text-muted-foreground">
-                Packs "llevá N y pagá X" combinando prendas o accesorios. Se aplican en el checkout.
+                Packs "llevá N y pagá X" combinando {isModa ? "prendas o accesorios" : "productos"}. Se aplican en el checkout.
               </p>
             </>
           )}

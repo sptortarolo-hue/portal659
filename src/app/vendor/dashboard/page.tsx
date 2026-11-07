@@ -2004,6 +2004,7 @@ function VendorDashboardInner() {
                 <MemoProductManager
                   isModa={false}
                   isComercio
+                  showCatalogViews
                   showStock
                   showPrep={false}
                   showCosts={false}

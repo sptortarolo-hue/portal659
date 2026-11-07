@@ -161,7 +161,7 @@ export async function POST(
   }
 
   const orders = await queryMany<Record<string, any>>(
-    `SELECT id, total, status, paid_at, items FROM orders WHERE vendor_id = $1 AND table_id = $2 AND status NOT IN ('cancelled', 'completed')`,
+    `SELECT id, total, status, paid_at, items FROM orders WHERE vendor_id = $1 AND table_id = $2 AND closed_at IS NULL AND status <> 'cancelled'`,
     [gate.vendor.id, table.id]
   );
 
@@ -449,17 +449,14 @@ export async function POST(
       }
     }
 
-    const toUpdate = list.filter((o) => o.status !== "completed");
-    if (toUpdate.length > 0) {
+    // Todas las consumiciones de la cuenta (incluidas las ya "entregadas" a la
+    // mesa, que tienen status completed pero closed_at NULL) se cierran y
+    // cobran ahora. Idempotente: las que ya estaban completas solo reciben
+    // paid_at/closed_at.
+    if (list.length > 0) {
       await tx.query(
         `UPDATE orders SET status = 'completed', paid_at = $1, closed_at = $1 WHERE id = ANY($2)`,
-        [now, toUpdate.map((o) => o.id)]
-      );
-    } else {
-      // ya estaban completadas: solo registrar el cierre de la mesa
-      await tx.query(
-        `UPDATE orders SET paid_at = $1 WHERE table_id = $2 AND id = ANY($3)`,
-        [now, table.id, list.map((o) => o.id)]
+        [now, list.map((o) => o.id)]
       );
     }
 

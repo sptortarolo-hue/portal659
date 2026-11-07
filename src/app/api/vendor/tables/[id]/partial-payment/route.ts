@@ -25,7 +25,7 @@ export async function GET(
   if (!table) return NextResponse.json({ error: "Mesa no encontrada" }, { status: 404 });
 
   const orders = await queryMany<{ total: number }>(
-    `SELECT total FROM orders WHERE vendor_id = $1 AND table_id = $2 AND status NOT IN ('cancelled', 'completed')`,
+    `SELECT total FROM orders WHERE vendor_id = $1 AND table_id = $2 AND closed_at IS NULL AND status <> 'cancelled'`,
     [gate.vendor.id, id]
   );
   const total = (orders || []).reduce((s, o) => s + (Number(o.total) || 0), 0);
@@ -94,7 +94,7 @@ export async function POST(
 
   // Total pendiente actual
   const orders = await queryMany<{ total: number }>(
-    `SELECT total FROM orders WHERE vendor_id = $1 AND table_id = $2 AND status NOT IN ('cancelled', 'completed')`,
+    `SELECT total FROM orders WHERE vendor_id = $1 AND table_id = $2 AND closed_at IS NULL AND status <> 'cancelled'`,
     [gate.vendor.id, id]
   );
   const total = (orders || []).reduce((s, o) => s + (Number(o.total) || 0), 0);

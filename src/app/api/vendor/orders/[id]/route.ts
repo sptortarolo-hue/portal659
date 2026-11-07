@@ -398,7 +398,14 @@ export async function PATCH(
         throw new PricingError("Progreso de cocina no disponible (falta migración)");
       }
       if (status) updateData.status = status;
-      if (status === "completed" || status === "cancelled") updateData.closed_at = new Date().toISOString();
+      if (status === "completed" || status === "cancelled") {
+        // En mesas, "entregado" (Llevar a la mesa) NO cierra la cuenta: la
+        // consumición sigue abierta hasta "Cobrar y cerrar" de la mesa. Por
+        // eso no se sella closed_at (la cuenta se filtra por closed_at).
+        if (status === "cancelled" || currentOrder.channel !== "mesa") {
+          updateData.closed_at = new Date().toISOString();
+        }
+      }
       // Cancelación: motivo electivo + quién lo hizo (para distinguir de un
       // auto-cancel por vencimiento de transferencia, M4.2). Tolerante a
       // migración sin aplicar: sin las columnas, cancela como siempre.

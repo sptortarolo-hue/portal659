@@ -107,6 +107,7 @@ type Order = {
   status: string;
   created_at: string;
   paid_at?: string | null;
+  closed_at?: string | null;
   pickup_number?: number | null;
 };
 
@@ -190,7 +191,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
   }
   const tableSubtotal = (id: string) =>
     allOrders
-      .filter((o) => o.table_id === id && o.status !== "cancelled" && o.status !== "completed")
+      .filter((o) => o.table_id === id && o.status !== "cancelled" && !o.closed_at)
       .reduce((s, o) => s + Number(o.total), 0);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -598,7 +599,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
   // el saldo abierto.
   useEffect(() => {
     if (!selected?.id || selected.status !== "ocupada") return;
-    const hasOpen = allOrders.some((o: any) => o.table_id === selected.id && o.status !== "completed" && o.status !== "cancelled");
+    const hasOpen = allOrders.some((o: any) => o.table_id === selected.id && o.status !== "cancelled" && !o.closed_at);
     if (hasOpen) return;
     // Re-fetch orders una sola vez.
     fetch("/api/vendor/orders")
@@ -825,7 +826,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
     () =>
       selected
         ? allOrders.filter(
-            (o) => o.table_id === selected.id && o.status !== "cancelled" && o.status !== "completed"
+            (o) => o.table_id === selected.id && o.status !== "cancelled" && !o.closed_at
           )
         : [],
     [allOrders, selected]
@@ -833,7 +834,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
   const closedOrders = useMemo(
     () =>
       selected
-        ? allOrders.filter((o) => o.table_id === selected.id && o.status === "completed")
+        ? allOrders.filter((o) => o.table_id === selected.id && !!o.closed_at)
         : [],
     [allOrders, selected]
   );

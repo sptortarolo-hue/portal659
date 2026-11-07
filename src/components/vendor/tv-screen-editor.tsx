@@ -165,6 +165,28 @@ export function TvScreenEditor({
     edit({ dayparts: next });
   };
 
+  /** Selecciona todos los productos de las categorías mostradas en esta franja. */
+  const selectAllDaypartProducts = (idx: number, catIds: string[]) => {
+    const allPids = catIds.flatMap((cat) => (productsByCategory.get(cat) || []).map((p) => p.id));
+    const next = config.dayparts.map((x, j) => (j !== idx ? x : { ...x, productIds: allPids }));
+    edit({ dayparts: next });
+  };
+
+  /** Deselecciona todos los productos de esta franja. */
+  const clearAllDaypartProducts = (idx: number) => {
+    const next = config.dayparts.map((x, j) => (j !== idx ? x : { ...x, productIds: [] }));
+    edit({ dayparts: next });
+  };
+
+  /** Invierte la selección de productos de esta franja. */
+  const invertDaypartProducts = (idx: number, catIds: string[]) => {
+    const allPids = new Set(catIds.flatMap((cat) => (productsByCategory.get(cat) || []).map((p) => p.id)));
+    const current = new Set(config.dayparts[idx]?.productIds || []);
+    const nextIds = [...allPids].filter((pid) => !current.has(pid));
+    const next = config.dayparts.map((x, j) => (j !== idx ? x : { ...x, productIds: nextIds }));
+    edit({ dayparts: next });
+  };
+
   if (!screen) return null;
 
   return (
@@ -583,6 +605,29 @@ export function TvScreenEditor({
                         <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                           Productos a mostrar en esta franja
                         </p>
+                        <div className="flex flex-wrap gap-2 mb-1">
+                          <button
+                            type="button"
+                            onClick={() => selectAllDaypartProducts(i, catsForD)}
+                            className="text-xs border border-border rounded px-2 py-1 hover:bg-muted transition-colors"
+                          >
+                            Seleccionar todos
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => clearAllDaypartProducts(i)}
+                            className="text-xs border border-border rounded px-2 py-1 hover:bg-muted transition-colors"
+                          >
+                            Deseleccionar todos
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => invertDaypartProducts(i, catsForD)}
+                            className="text-xs border border-border rounded px-2 py-1 hover:bg-muted transition-colors"
+                          >
+                            Invertir selección
+                          </button>
+                        </div>
                         <div className="grid gap-1 sm:grid-cols-2">
                           {catsForD.flatMap((cat) => {
                             const prods = productsByCategory.get(cat) || [];

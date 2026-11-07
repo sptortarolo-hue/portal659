@@ -532,7 +532,15 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
-  // On/off "Exigir tildado" (persistido por comercio; default false = libre).
+
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem("portal659-sound-enabled");
+      if (v === "false") setSoundEnabled(false);
+    } catch {
+      /* noop */
+    }
+  }, []);
   const [strictClose, setStrictClose] = useState(false);
   const [strictSaving, setStrictSaving] = useState(false);
   const [pullDistance, setPullDistance] = useState(0);
@@ -921,7 +929,7 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
         </div>
         <div className="flex items-center gap-1.5">
           <button
-            onClick={() => { resumeAudioContext(); setSoundEnabled(!soundEnabled); }}
+            onClick={() => { resumeAudioContext(); setSoundEnabled((prev) => { const next = !prev; try { localStorage.setItem("portal659-sound-enabled", String(next)); } catch { /* noop */ } return next; }); }}
             className={`text-xs px-2 py-1.5 rounded-lg font-medium transition-colors ${
               soundEnabled ? "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400" : "bg-muted text-muted-foreground"
             }`}

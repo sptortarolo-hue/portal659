@@ -67,11 +67,8 @@ export function TvScreenEditor({
   const [msg, setMsg] = useState<string | null>(null);
   /** Modal para elegir los destacados a mano (modo manual). */
   const [pickerOpen, setPickerOpen] = useState(false);
-  /** Modal para elegir productos de una franja horaria (qué índice se está editando). */
-  const [daypartPickerOpen, setDaypartPickerOpen] = useState(false);
-  const [daypartPickerIdx, setDaypartPickerIdx] = useState<number | null>(null);
-  /** Todos los productos del comercio (para el picker de franja, independiente del preview). */
-  const [allProducts, setAllProducts] = useState<Array<{ id: string; name: string; priceLabel: string | null; imageUrl: string | null }>>([]);
+  /** Todos los productos del comercio (para elegir cuáles se muestran en cada franja). */
+  const [allProducts, setAllProducts] = useState<Array<{ id: string; name: string; priceLabel: string | null; imageUrl: string | null; category: string | null }>>([]);
   const [productsLoaded, setProductsLoaded] = useState(false);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -144,6 +141,17 @@ export function TvScreenEditor({
     // Aplana la carta entera para el picker de destacados (con foto y precio).
     return snapshot.sections.flatMap((s) => s.items);
   }, [snapshot]);
+
+  /** Productos del comercio agrupados por categoría, para la lista de franjas. */
+  const productsByCategory = useMemo(() => {
+    const map = new Map<string, typeof allProducts>();
+    for (const p of allProducts) {
+      const cat = p.category || "Sin categoría";
+      if (!map.has(cat)) map.set(cat, []);
+      map.get(cat)!.push(p);
+    }
+    return map;
+  }, [allProducts]);
 
   /** Cuántas ofertas hay para el banner (el server arma el pool). */
   const heroCount = snapshot?.hero?.length ?? 0;
@@ -568,21 +576,46 @@ export function TvScreenEditor({
                   </div>
 
                   {/* Productos/platos de la franja (vacío = todos los de las categorías elegidas). */}
-                  <div className="mt-2 flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDaypartPickerIdx(i);
-                        setDaypartPickerOpen(true);
-                      }}
-                      className="flex-1 rounded border border-border bg-background px-2 py-1.5 text-xs text-left hover:bg-muted"
-                    >
-                      {d.productIds.length > 0 ? `✓ ${d.productIds.length} producto(s)` : "Elegir productos…"}
-                    </button>
-                    <span className="ml-1 text-[10px] text-muted-foreground">
-                      {d.productIds.length === 0 ? "todos" : "solo estos"}
-                    </span>
-                  </div>
+                  {(() => {
+                    const catsForD = d.categoryIds.length > 0 ? d.categoryIds : Array.from(productsByCategory.keys());
+                    return (
+                      <div className="mt-2 space-y-1">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          Productos a mostrar en esta franja
+                        </p>
+                        <div className="grid gap-1 sm:grid-cols-2">
+                          {catsForD.flatMap((cat) => {
+                            const prods = productsByCategory.get(cat) || [];
+                            return prods.map((p) => {
+                              const on = d.productIds.includes(p.id);
+                              return (
+                                <label key={p.id} className="flex items-center gap-2 rounded border border-border bg-background px-2 py-1.5 text-[11px] hover:bg-muted/50">
+                                  <input
+                                    type="checkbox"
+                                    checked={on}
+                                    onChange={(e) => {
+                                      const next = config.dayparts.map((x, j) => {
+                                        if (j !== i) return x;
+                                        const ids = e.target.checked ? [...x.productIds, p.id] : x.productIds.filter((id) => id !== p.id);
+                                        return { ...x, productIds: ids };
+                                      });
+                                      edit({ dayparts: next });
+                                    }}
+                                    className="h-4 w-4 rounded border-primary text-primary"
+                                  />
+                                  <span className="truncate min-w-0">{p.name}</span>
+                                  {p.priceLabel && <span className="text-[10px] text-muted-foreground ml-1">{p.priceLabel}</span>}
+                                </label>
+                              );
+                            });
+                          })}
+                        </div>
+                        {catsForD.length === 0 && (
+                          <p className="text-[10px] text-muted-foreground">Seleccioná categorías para ver sus productos.</p>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* Tema propio de la franja (vacío = el tema general de la pantalla). */}
                   <div className="mt-2 flex items-center gap-2">
@@ -957,19 +990,6 @@ export function TvScreenEditor({
       </div>
     </Modal>
 
-    <TvDestacadosPicker
-      open={daypartPickerOpen}
-      items={allProducts}
-      selected={daypartPickerIdx !== null ? config.dayparts[daypartPickerIdx]?.productIds ?? [] : []}
-      onClose={() => setDaypartPickerOpen(false)}
-      onSave={(ids) => {
-        const next = config.dayparts.map((x, j) =>
-          daypartPickerIdx !== null && j === daypartPickerIdx ? { ...x, productIds: ids } : x
-        );
-        edit({ dayparts: next });
-        setDaypartPickerOpen(false);
-      }}
-    />
     <TvDestacadosPicker
       open={pickerOpen}
       items={items}

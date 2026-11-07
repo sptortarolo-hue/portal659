@@ -215,7 +215,7 @@ export function RecipeManager() {
       ) : view === "platos" ? (
         <div className="grid lg:grid-cols-2 gap-4 items-start">
           {/* Carta con semáforo */}
-          <Card className="p-3">
+          <Card className="p-3 overflow-hidden">
             <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide px-1 mb-2">
               Carta · costo y food cost
             </p>
@@ -297,7 +297,7 @@ export function RecipeManager() {
       ) : (
         <div className="grid lg:grid-cols-2 gap-4 items-start">
           {/* Biblioteca de insumos */}
-          <Card className="p-3">
+          <Card className="p-3 overflow-hidden">
             <div className="flex items-center justify-between px-1 mb-2">
               <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">
                 Biblioteca · costo sin IVA

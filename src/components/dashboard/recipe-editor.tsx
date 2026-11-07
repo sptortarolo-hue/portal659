@@ -223,7 +223,7 @@ export function RecipeEditor({
   const belowCost = salePrice != null && preview !== null && preview.perPortion > salePrice;
 
   return (
-    <Card className="p-4 space-y-4">
+    <Card className="p-4 space-y-4 overflow-hidden">
       <div>
         <h3 className="font-semibold">{title}</h3>
         {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}

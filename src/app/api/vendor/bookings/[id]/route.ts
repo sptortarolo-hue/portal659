@@ -432,18 +432,42 @@ export async function PATCH(
 
   // Aviso al cliente (push si tiene cuenta con ese teléfono; si no, el vendor
   // usa el link de WhatsApp de la agenda). Best-effort, no bloquea.
-  if (status === "confirmed" || status === "cancelled" || (isOrder && status === "ready")) {
+  // Órdenes de servicio: auto-notificación por estado (ReturnMate/RepairBook:
+  // cada cambio de estado avisa para que el cliente no llame "¿está listo?").
+  if (status === "confirmed" || status === "cancelled" || (isOrder && ["ready", "repairing", "quoted", "approved", "waiting_parts"].includes(status))) {
     const phone = booking?.customer_phone as string | undefined;
     const when = `${booking?.booking_date || ""} ${booking?.booking_time || ""}`.trim();
     const orderNo = booking?.work_order_no;
+    const orderNote = `La orden N° ${Number(orderNo) || "—"}`;
     await notifyServiceClient(phone, {
-      title: isOrder && status === "ready" ? "¡Tu equipo está listo! 🛠️" : status === "confirmed" ? "Turno confirmado ✅" : "Turno cancelado",
+      title:
+        isOrder && status === "ready"
+          ? "¡Tu equipo está listo! 🛠️"
+          : isOrder && status === "quoted"
+            ? "Te enviamos el presupuesto 🧾"
+            : isOrder && status === "approved"
+              ? "Presupuesto aprobado ✅"
+              : isOrder && status === "repairing"
+                ? "Estamos trabajando en tu equipo 🛠️"
+                : isOrder && status === "waiting_parts"
+                  ? "Esperando un repuesto 📦"
+                  : status === "confirmed"
+                    ? "Turno confirmado ✅"
+                    : "Turno cancelado",
       body:
         isOrder && status === "ready"
-          ? `La orden N° ${Number(orderNo) || "—"} ya está lista para retirar.`
-          : status === "confirmed"
-            ? `Tu turno${when ? ` del ${when}` : ""} fue confirmado.`
-            : `Tu turno${when ? ` del ${when}` : ""} fue cancelado. Escribinos por WhatsApp para reprogramar.`,
+          ? `${orderNote} ya está lista para retirar.`
+          : isOrder && status === "quoted"
+            ? `${orderNote} tiene un presupuesto listo para tu aprobación. Revisalo por WhatsApp.`
+            : isOrder && status === "approved"
+              ? `${orderNote} aprobada. Ya estamos en ello.`
+              : isOrder && status === "repairing"
+                ? `${orderNote} está en reparación. Te avisamos cuando esté lista.`
+                : isOrder && status === "waiting_parts"
+                  ? `${orderNote} está en espera de un repuesto. Te avisamos cuando avance.`
+                  : status === "confirmed"
+                    ? `Tu turno${when ? ` del ${when}` : ""} fue confirmado.`
+                    : `Tu turno${when ? ` del ${when}` : ""} fue cancelado. Escribinos por WhatsApp para reprogramar.`,
     });
   }
 

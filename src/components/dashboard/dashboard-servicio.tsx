@@ -1197,6 +1197,9 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
           filter={tallerFilter}
           onFilter={setTallerFilter}
           bookingCardProps={bookingCardProps}
+          onOpenBooking={(id: string) => setSelectedBookingId(id)}
+          quotes={(quotesProp || quotes || []) as any[]}
+          staff={catalogStaff}
         />
       )}
       {(sec === "all" || sec === "hoy") && quota && quota.limit != null && (

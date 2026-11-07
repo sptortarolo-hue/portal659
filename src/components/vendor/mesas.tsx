@@ -2399,12 +2399,12 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                   <b className="tabular-nums">${mesaPayTotal.toLocaleString("es-AR")}</b>
                 </div>
                 {/* Forma de pago - chips */}
-                <div className="flex flex-wrap gap-1 pt-2 flex-shrink-0">
+                <div className="flex gap-1 pt-2 flex-shrink-0 overflow-x-auto">
                   {PAYMENT_OPTIONS.map((o) => (
                     <button
                       key={o.key}
                       onClick={() => setPayment(o.key)}
-                      className={`rounded-full px-2 py-1 text-[10px] font-medium ${payment === o.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+                      className={`flex-1 rounded-full px-1 py-1 text-[10px] font-medium ${payment === o.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
                     >
                       {o.label}
                     </button>
@@ -2460,7 +2460,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                 {/* Fiscal: fila con comprobante arriba de Agregar consumición */}
                 {!fiscalReady && (
                   <p className="text-[11px] text-muted-foreground/70 flex-shrink-0">
-                    🧾 Factura C: completá la configuración en Config → Facturación para facturar acá.
+                    
                   </p>
                 )}
                 {fiscalReady && (
@@ -2670,7 +2670,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                       <button
                         key={o.key}
                         onClick={() => setPayment(o.key)}
-                        className={`rounded-full px-2 py-1 text-[10px] font-medium ${payment === o.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+                        className={`flex-1 rounded-full px-1 py-1 text-[10px] font-medium ${payment === o.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
                       >
                         {o.label}
                       </button>
@@ -2713,7 +2713,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                   {/* Fiscal: fila con comprobante arriba de Cargar a la mesa */}
                   {!fiscalReady && (
                     <p className="text-[11px] text-muted-foreground/70">
-                      🧾 Factura C: completá la configuración en Config → Facturación para facturar acá.
+                      
                     </p>
                   )}
                   {fiscalReady && (

@@ -8,6 +8,7 @@ import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { ModifierPicker } from "@/components/offers/modifier-picker";
 import { ProductImage } from "@/components/product-image";
 import { ProductPickCard } from "@/components/vendor/product-pick-card";
+import OrderDetailModal from "@/components/dashboard/order-detail-modal";
 import { cashAppliesToItem, normalizeCashPct } from "@/lib/cash-discount";
 import { tenderState } from "@/lib/cash-tender";
 import { mirrorVolume } from "@/lib/volume-mirror";
@@ -194,6 +195,8 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
       .filter((o) => o.table_id === id && o.status !== "cancelled" && !o.closed_at)
       .reduce((s, o) => s + Number(o.total), 0);
   const [renaming, setRenaming] = useState<string | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [editingConsumicion, setEditingConsumicion] = useState<any | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [selected, setSelected] = useState<Table | null>(null);
   // Reservas (estilo Fudo): modal por mesa con datos del cliente + fecha/hora.
@@ -2006,7 +2009,55 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
             <span className="text-muted-foreground">
               {new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })} · {o.pickup_number != null ? `Nro. ${o.pickup_number}` : `#${o.id.slice(0, 6)}`}
             </span>
-            <span className="font-semibold tabular-nums">${Number(o.total).toLocaleString("es-AR")}</span>
+            <div className="flex items-center gap-2">
+              <span className="font-semibold tabular-nums">${Number(o.total).toLocaleString("es-AR")}</span>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const res = await fetch(`/api/vendor/orders/${o.id}`);
+                    const data = await res.json();
+                    if (data?.error) { setMsg(String(data.error)); return; }
+                    setEditingConsumicion(data);
+                  } catch {
+                    setMsg("No se pudo cargar la consumición");
+                  }
+                }}
+                className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-muted text-muted-foreground hover:bg-muted/80"
+                title="Modificar consumición"
+              >
+                ✏️
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!window.confirm("¿Cancelar esta consumición? Se repone el stock.")) return;
+                  setCancellingId(o.id);
+                  try {
+                    const res = await fetch(`/api/vendor/orders/${o.id}`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ status: "cancelled" }),
+                    });
+                    const data = await res.json();
+                    if (data?.error) {
+                      setMsg(String(data.error));
+                    } else {
+                      await load();
+                    }
+                  } catch {
+                    setMsg("No se pudo cancelar la consumición");
+                  } finally {
+                    setCancellingId(null);
+                  }
+                }}
+                disabled={cancellingId === o.id}
+                className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50 dark:bg-red-950 dark:text-red-400"
+                title="Cancelar consumición"
+              >
+                {cancellingId === o.id ? "…" : "✕ Cancelar"}
+              </button>
+            </div>
           </div>
           <div className="text-xs space-y-0.5">
             {(o.items || []).map((i, idx) => (
@@ -3101,6 +3152,43 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
           </div>
         </div>
       )}
+    {editingConsumicion && (
+      <OrderDetailModal
+        order={editingConsumicion}
+        vendorName={""}
+        vendorLogoUrl={null}
+        isRetail={false}
+        onClose={() => setEditingConsumicion(null)}
+        onAction={async (order, status, reason) => {
+          const res = await fetch(`/api/vendor/orders/${order.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status, cancel_reason: reason }),
+          });
+          const data = await res.json();
+          if (data?.error) setMsg(String(data.error));
+          else await load();
+          setEditingConsumicion(null);
+        }}
+        onModify={async (orderId, items, notes) => {
+          const res = await fetch(`/api/vendor/orders/${orderId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ items, modification_notes: notes }),
+          });
+          const data = await res.json();
+          if (data?.error) {
+            setMsg(String(data.error));
+            return { ok: false, error: String(data.error) };
+          }
+          await load();
+          setEditingConsumicion(null);
+          return { ok: true };
+        }}
+        offers={[]}
+        canPrint={false}
+      />
+    )}
     </div>
   );
 }

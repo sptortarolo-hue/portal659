@@ -70,6 +70,9 @@ export function TvScreenEditor({
   /** Modal para elegir productos de una franja horaria (qué índice se está editando). */
   const [daypartPickerOpen, setDaypartPickerOpen] = useState(false);
   const [daypartPickerIdx, setDaypartPickerIdx] = useState<number | null>(null);
+  /** Todos los productos del comercio (para el picker de franja, independiente del preview). */
+  const [allProducts, setAllProducts] = useState<Array<{ id: string; name: string; priceLabel: string | null; imageUrl: string | null }>>([]);
+  const [productsLoaded, setProductsLoaded] = useState(false);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -95,6 +98,29 @@ export function TvScreenEditor({
     const id = setTimeout(loadPreview, 300);
     return () => clearTimeout(id);
   }, [open, screen, config, loadPreview]);
+
+  // Cargar todos los productos del comercio para el picker de productos
+  // de cada franja horaria (no depende del preview del snapshot).
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch("/api/vendor/tv-products", { cache: "no-store" });
+        if (r.ok) {
+          const j = await r.json();
+          if (!cancelled) setAllProducts(j.products || []);
+        }
+      } catch {
+        /* best-effort: si falla, el picker de franja queda vacío */
+      } finally {
+        if (!cancelled) setProductsLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   /** Cada cambio guarda como BORRADOR (la TV no se entera hasta Publicar). */
   const edit = (patch: Partial<TvConfig>) => {
@@ -933,7 +959,7 @@ export function TvScreenEditor({
 
     <TvDestacadosPicker
       open={daypartPickerOpen}
-      items={items}
+      items={allProducts}
       selected={daypartPickerIdx !== null ? config.dayparts[daypartPickerIdx]?.productIds ?? [] : []}
       onClose={() => setDaypartPickerOpen(false)}
       onSave={(ids) => {

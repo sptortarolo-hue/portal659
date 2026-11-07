@@ -1026,7 +1026,7 @@ export function PurchasesManager({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 min-w-0 overflow-x-hidden">
       <div className="flex items-center gap-2 flex-wrap">
         <Button size="sm" onClick={() => setShowForm((v) => !v)}>
           {showForm ? "Cerrar" : "+ Nueva compra"}

@@ -257,7 +257,7 @@ export function RecipeEditor({
             ing && l.qty_net && toBaseUnit(Number(l.qty_net), l.unit, ing.base_unit) === null;
           return (
             <div key={l.key} className="flex flex-col gap-1.5 rounded-xl border border-border p-2">
-              <div className="flex gap-1.5">
+              <div className="flex flex-wrap gap-1.5">
                 <select
                   value={l.ingredient_id}
                   onChange={(e) => pickIngredient(l.key, e.target.value)}
@@ -282,7 +282,7 @@ export function RecipeEditor({
                   ✕
                 </Button>
               </div>
-              <div className="flex gap-1.5">
+              <div className="flex flex-wrap gap-1.5">
                 <Input
                   type="number"
                   min={0}
@@ -295,7 +295,7 @@ export function RecipeEditor({
                 <select
                   value={l.unit}
                   onChange={(e) => patchLine(l.key, { unit: e.target.value })}
-                  className="w-20 sm:w-24 rounded-lg border border-input bg-background px-2 py-2 text-sm"
+                  className="w-20 sm:w-24 flex-shrink-0 rounded-lg border border-input bg-background px-2 py-2 text-sm"
                 >
                   {units.map((u) => (
                     <option key={u} value={u}>{u}</option>
@@ -525,7 +525,7 @@ function RecipePresentations({
         </div>
       ))}
       {eligible.length > 0 ? (
-        <div className="flex gap-1.5">
+        <div className="flex flex-wrap gap-1.5">
           <select
             value={selProduct}
             onChange={(e) => setSelProduct(e.target.value)}
@@ -542,7 +542,7 @@ function RecipePresentations({
             step="any"
             value={servings}
             onChange={(e) => setServings(e.target.value)}
-            className="w-16 sm:w-20"
+            className="w-16 sm:w-20 flex-shrink-0"
             title="Porciones del batch que representa"
             placeholder="Porc."
           />

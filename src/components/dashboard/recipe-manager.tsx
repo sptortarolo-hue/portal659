@@ -172,7 +172,7 @@ export function RecipeManager() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 min-w-0 overflow-x-hidden">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <h2 className="font-display text-xl font-semibold">Preparación y Costo</h2>
         <div className="flex rounded-xl border border-border overflow-hidden text-sm font-medium flex-wrap w-full sm:w-auto">

@@ -24,6 +24,8 @@ export type TvDaypart = {
   days: number[];
   /** Categorías que se muestran en la franja (vacío = todas las visibles). */
   categoryIds: string[];
+  /** Productos/platos que se muestran en la franja (vacío = todos los de las categorías elegidas). */
+  productIds: string[];
   /** Tema propio de la franja (vacío = el tema general de la pantalla). */
   theme: TvTheme | "";
 };
@@ -276,6 +278,9 @@ export function normalizeTvConfig(input: unknown): TvConfig {
           const ids = Array.isArray(dr.categoryIds)
             ? (dr.categoryIds.filter((x: unknown) => typeof x === "string" && x) as string[])
             : [];
+          const pids = Array.isArray(dr.productIds)
+            ? (dr.productIds.filter((x: unknown) => typeof x === "string" && x) as string[])
+            : [];
           const dt: TvDaypart = {
             id: str(dr.id, Math.random().toString(36).slice(2, 9)),
             label: str(dr.label, "Franja").slice(0, 40),
@@ -283,6 +288,7 @@ export function normalizeTvConfig(input: unknown): TvConfig {
             to: normClock(dr.to) || "23:59",
             days,
             categoryIds: ids,
+            productIds: pids,
             theme: TV_THEMES.includes(dr.theme as TvTheme) ? (dr.theme as TvTheme) : "",
           };
           return dt;

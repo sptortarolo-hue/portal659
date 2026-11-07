@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { TV_THEME_LABELS, TV_THEME_SWATCH, type TvThemeTokens } from "@/components/tv/tv-themes";
 import { TvPlayer } from "@/components/tv/tv-player";
-import { TV_THEMES, normalizeTvConfig, TV_LAYOUT_CHOICES, TV_DESIGN_CHOICES, detectMediaOrientation, type TvConfig } from "@/lib/tv-config";
+import { TV_THEMES, normalizeTvConfig, TV_LAYOUT_CHOICES, TV_DESIGN_CHOICES, detectMediaOrientation, type TvConfig, type TvTheme } from "@/lib/tv-config";
 import type { TvSnapshot } from "@/lib/tv-snapshot";
 import { TvDestacadosPicker } from "./tv-destacados-picker";
 
@@ -67,6 +67,9 @@ export function TvScreenEditor({
   const [msg, setMsg] = useState<string | null>(null);
   /** Modal para elegir los destacados a mano (modo manual). */
   const [pickerOpen, setPickerOpen] = useState(false);
+  /** Modal para elegir productos de una franja horaria (qué índice se está editando). */
+  const [daypartPickerOpen, setDaypartPickerOpen] = useState(false);
+  const [daypartPickerIdx, setDaypartPickerIdx] = useState<number | null>(null);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -503,6 +506,79 @@ export function TvScreenEditor({
                       todos marcados = todos los días
                     </span>
                   </div>
+
+                  {/* Categorías de la franja (chips). Vacío = todas las visibles. */}
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {categories.map((cat) => {
+                      const on = d.categoryIds.length === 0 || d.categoryIds.includes(cat);
+                      return (
+                        <button
+                          key={cat}
+                          type="button"
+                          onClick={() => {
+                            const next = config.dayparts.map((x, j) => {
+                              if (j !== i) return x;
+                              const has = x.categoryIds.includes(cat);
+                              const ids = has ? x.categoryIds.filter((c) => c !== cat) : [...x.categoryIds, cat];
+                              return { ...x, categoryIds: ids };
+                            });
+                            edit({ dayparts: next });
+                          }}
+                          className={`rounded border px-2 py-1 text-[10px] font-semibold transition-colors ${
+                            on
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border text-muted-foreground hover:bg-muted"
+                          }`}
+                        >
+                          {cat}
+                        </button>
+                      );
+                    })}
+                    {categories.length > 0 && (
+                      <span className="ml-1 text-[10px] text-muted-foreground">
+                        {d.categoryIds.length === 0 ? "todas las categorías" : `${d.categoryIds.length} categoría(es)`}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Productos/platos de la franja (vacío = todos los de las categorías elegidas). */}
+                  <div className="mt-2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDaypartPickerIdx(i);
+                        setDaypartPickerOpen(true);
+                      }}
+                      className="flex-1 rounded border border-border bg-background px-2 py-1.5 text-xs text-left hover:bg-muted"
+                    >
+                      {d.productIds.length > 0 ? `✓ ${d.productIds.length} producto(s)` : "Elegir productos…"}
+                    </button>
+                    <span className="ml-1 text-[10px] text-muted-foreground">
+                      {d.productIds.length === 0 ? "todos" : "solo estos"}
+                    </span>
+                  </div>
+
+                  {/* Tema propio de la franja (vacío = el tema general de la pantalla). */}
+                  <div className="mt-2 flex items-center gap-2">
+                    <label className="text-[10px] text-muted-foreground">Tema</label>
+                    <select
+                      className="rounded border border-border bg-background px-2 py-1 text-xs"
+                      value={d.theme}
+                      onChange={(e) => {
+                        const next = config.dayparts.map((x, j) =>
+                          j === i ? { ...x, theme: (e.target.value as TvTheme) } : x
+                        );
+                        edit({ dayparts: next });
+                      }}
+                    >
+                      <option value="">General de la pantalla</option>
+                      {TV_THEMES.map((t) => (
+                        <option key={t} value={t}>
+                          {TV_THEME_LABELS[t]}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               ))}
               <Button
@@ -511,7 +587,7 @@ export function TvScreenEditor({
                   edit({
                     dayparts: [
                       ...config.dayparts,
-                      { id: Math.random().toString(36).slice(2, 8), label: "Almuerzo", from: "11:30", to: "15:00", days: [], categoryIds: [], theme: "" },
+                      { id: Math.random().toString(36).slice(2, 8), label: "Almuerzo", from: "11:30", to: "15:00", days: [], categoryIds: [], productIds: [], theme: "" },
                     ],
                   })
                 }
@@ -855,6 +931,19 @@ export function TvScreenEditor({
       </div>
     </Modal>
 
+    <TvDestacadosPicker
+      open={daypartPickerOpen}
+      items={items}
+      selected={daypartPickerIdx !== null ? config.dayparts[daypartPickerIdx]?.productIds ?? [] : []}
+      onClose={() => setDaypartPickerOpen(false)}
+      onSave={(ids) => {
+        const next = config.dayparts.map((x, j) =>
+          daypartPickerIdx !== null && j === daypartPickerIdx ? { ...x, productIds: ids } : x
+        );
+        edit({ dayparts: next });
+        setDaypartPickerOpen(false);
+      }}
+    />
     <TvDestacadosPicker
       open={pickerOpen}
       items={items}

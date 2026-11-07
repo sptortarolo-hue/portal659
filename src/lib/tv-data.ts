@@ -476,6 +476,11 @@ export async function buildTvSnapshot(
   const resolved = resolveDaypart(merged, now);
   let config = resolved.config;
 
+  // Productos/platos que se muestran en la franja activa (si elige algunos,
+  // solo esos aparecen; si no, todos los de las categorías de la franja).
+  const activeDp = merged.dayparts.find((dp) => dp.id === resolved.daypartId);
+  const dpProductIds = activeDp?.productIds?.length ? new Set(activeDp.productIds) : null;
+
   // Categorías apagadas en el panel salen del snapshot.
   const hidden = new Set(config.categories.filter((c) => !c.visible).map((c) => norm(c.id)));
   const sections: TvSection[] = catalog.sections
@@ -483,6 +488,7 @@ export async function buildTvSnapshot(
     .map((s) => {
       const items = s.items
         .filter((o: any) => (config.hideSoldOut ? !soldOut(o) : true))
+        .filter((o: any) => dpProductIds ? dpProductIds.has(String(o.id)) : true)
         .map((o: any) => toItem(o, !config.showPrices));
       return { id: s.id, name: s.name, items };
     })

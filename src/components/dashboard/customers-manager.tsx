@@ -103,6 +103,7 @@ type Equipment = {
   rodado: string | null;
   color: string | null;
   customer_name: string | null;
+  photo_url?: string | null;
   jobs: number;
   last_job_at: string | null;
 };
@@ -156,18 +157,23 @@ function CustomerEquipmentSection({ phone, customerName }: { phone: string; cust
           : null;
         const reminder = `Hola ${customerName?.split(/\s+/)[0] || ""}! Te recordamos que tu ${label}${eq.rodado ? ` (rodado ${eq.rodado})` : ""}${monthsAgo && monthsAgo >= 6 ? ` tuvo su último service hace ${monthsAgo} meses` : " tuvo su último service hace tiempo"}. ¿Le toca una revisión? Escribinos y te anotamos.`;
         return (
-          <div key={eq.id} className="flex items-center justify-between gap-2 rounded-xl border border-border bg-card px-2.5 py-2">
-            <div className="min-w-0">
-              <p className="text-sm truncate">
-                🚲 {label}
-                {eq.rodado && <span className="text-muted-foreground"> · rodado {eq.rodado}</span>}
-                {eq.identifier && <span className="text-muted-foreground"> · N° {eq.identifier}</span>}
-              </p>
-              <p className="text-[11px] text-muted-foreground">
-                {eq.jobs > 0
-                  ? `${eq.jobs} trabajo${eq.jobs === 1 ? "" : "s"}${eq.last_job_at ? ` · último ${new Date(eq.last_job_at).toLocaleDateString("es-AR")}` : ""}`
-                  : "Sin trabajos registrados"}
-              </p>
+          <div key={eq.id} className="flex items-start justify-between gap-2 rounded-xl border border-border bg-card px-2.5 py-2">
+            <div className="min-w-0 flex-1 flex items-start gap-2">
+              {(eq as any).photo_url && (
+                <img src={String((eq as any).photo_url)} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
+              )}
+              <div className="min-w-0">
+                <p className="text-sm truncate">
+                  🚲 {label}
+                  {eq.rodado && <span className="text-muted-foreground"> · rodado {eq.rodado}</span>}
+                  {eq.identifier && <span className="text-muted-foreground"> · N° {eq.identifier}</span>}
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  {eq.jobs > 0
+                    ? `${eq.jobs} trabajo${eq.jobs === 1 ? "" : "s"}${eq.last_job_at ? ` · último ${new Date(eq.last_job_at).toLocaleDateString("es-AR")}` : ""}`
+                    : "Sin trabajos registrados"}
+                </p>
+              </div>
             </div>
             <a
               href={`https://wa.me/${waDigits}?text=${encodeURIComponent(reminder)}`}

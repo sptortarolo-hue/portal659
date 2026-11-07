@@ -33,6 +33,36 @@ export function EquipmentPicker({ phone, customerName, value, onChange }: Props)
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoMsg, setPhotoMsg] = useState("");
+
+  async function uploadPhoto(file: File) {
+    if (!value) return;
+    setPhotoBusy(true);
+    setPhotoMsg("");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const up = await fetch("/api/vendor/upload", { method: "POST", body: fd });
+      const upData = await up.json().catch(() => ({}));
+      if (!up.ok || upData.error) throw new Error(upData.error || "No se pudo subir la foto");
+      const url = String(upData.url || "").trim();
+      const patch = await fetch(`/api/vendor/equipment/${value.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photo_url: url }),
+      });
+      const patchData = await patch.json().catch(() => ({}));
+      if (!patch.ok || patchData.error) throw new Error(patchData.error || "No se pudo guardar la foto");
+      onChange({ ...value, photo_url: url });
+      setItems((prev) => prev.map((i) => (i.id === value.id ? { ...i, photo_url: url } : i)));
+      setPhotoMsg("Foto guardada ✅");
+    } catch (e) {
+      setPhotoMsg(e instanceof Error ? e.message : "No se pudo subir la foto");
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
 
   useEffect(() => {
     const digits = phone.replace(/\D/g, "");
@@ -91,11 +121,38 @@ export function EquipmentPicker({ phone, customerName, value, onChange }: Props)
 
   if (value) {
     return (
-      <div className="rounded-xl border border-border p-2.5 flex items-center gap-2 bg-muted/30">
-        <span className="text-sm flex-1 min-w-0 truncate">🚲 {equipmentLabel(value)}</span>
-        <button type="button" className="text-xs text-muted-foreground hover:text-foreground underline" onClick={() => onChange(null)}>
-          Quitar
-        </button>
+      <div className="rounded-xl border border-border p-2.5 space-y-2 bg-muted/30">
+        <div className="flex items-center gap-2">
+          <span className="text-sm flex-1 min-w-0 truncate">🚲 {equipmentLabel(value)}</span>
+          <button type="button" className="text-xs text-muted-foreground hover:text-foreground underline" onClick={() => onChange(null)}>
+            Quitar
+          </button>
+        </div>
+        {value.photo_url && (
+          <img
+            src={value.photo_url}
+            alt="Foto de recepción del equipo"
+            className="max-h-32 w-full rounded-lg object-cover"
+          />
+        )}
+        <div className="flex items-center gap-2">
+          <label className="cursor-pointer rounded-md border border-border bg-card px-2 py-1 text-[11px] font-medium hover:bg-muted">
+            {photoBusy ? "Subiendo..." : value.photo_url ? "📷 Cambiar foto" : "📷 Agregar foto"}
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              disabled={photoBusy}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void uploadPhoto(f);
+              }}
+            />
+          </label>
+          <span className="text-[10px] text-muted-foreground">Condición al ingreso</span>
+          {photoMsg && <span className="text-[10px] text-muted-foreground">{photoMsg}</span>}
+        </div>
       </div>
     );
   }

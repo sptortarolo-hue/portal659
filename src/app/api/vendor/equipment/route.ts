@@ -39,8 +39,14 @@ export async function GET(request: Request) {
     return NextResponse.json({ equipment: [], migrationMissing: true });
   }
 
+  const hasPhoto = await queryOne<{ e: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'equipment' AND column_name = 'photo_url'
+     ) AS e`
+  ).catch(() => ({ e: false }));
   const cols = `id::text AS id, vendor_id, kind, brand, model, identifier, rodado, color, notes,
-                customer_name, customer_phone, created_at, updated_at`;
+                customer_name, customer_phone, created_at, updated_at${hasPhoto?.e ? ", photo_url" : ", NULL::text AS photo_url"}`;
   const jobs = `COALESCE((SELECT COUNT(*)::int FROM bookings b WHERE b.equipment_id = e.id), 0) +
                 COALESCE((SELECT COUNT(*)::int FROM quotes q WHERE q.equipment_id = e.id), 0) AS jobs,
                 GREATEST((SELECT MAX(b.created_at) FROM bookings b WHERE b.equipment_id = e.id),

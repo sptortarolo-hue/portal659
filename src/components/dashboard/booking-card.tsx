@@ -152,7 +152,7 @@ export function BookingCard({
     ? (orderQuotes || []).find((q: any) => String(q?.id) === String(booking.quote_id || "")) ?? null
     : null;
   const actionStatuses = isOrder
-    ? ["pending", "diagnosed", "quoted", "approved", "repairing", "ready", "completed"]
+    ? ["pending", "diagnosed", "quoted", "approved", "repairing", "waiting_parts", "ready", "completed"]
     : ["pending", "confirmed", "completed"];
 
   const servicePrice = Number((booking as any).service_price || 0);
@@ -244,6 +244,28 @@ export function BookingCard({
         <p className="text-xs text-muted-foreground mb-2 italic">
           &quot;{notesText}&quot;
         </p>
+      )}
+      {isOrder && (booking as any).equipment_photo_url && (
+        <div className="mb-2 overflow-hidden rounded-lg border border-border">
+          <img
+            src={String((booking as any).equipment_photo_url)}
+            alt="Foto de recepción del equipo"
+            className="max-h-40 w-full object-cover"
+          />
+          <p className="bg-card px-2 py-1 text-[10px] text-muted-foreground">📷 Foto de recepción</p>
+        </div>
+      )}
+      {isOrder && (booking as any).signature_data && (
+        <div className="mb-2 rounded-lg border border-border bg-white p-2">
+          <p className="text-[10px] text-muted-foreground mb-1">
+            ✍️ Firma del cliente{(booking as any).signature_name ? ` · ${(booking as any).signature_name}` : ""}{(booking as any).signature_at ? ` · ${String((booking as any).signature_at).slice(0, 10)}` : ""}
+          </p>
+          <img
+            src={String((booking as any).signature_data)}
+            alt="Firma del cliente"
+            className="max-h-24 w-full object-contain"
+          />
+        </div>
       )}
       {(() => {
         const alerts = (booking.customer_phone && formAlerts[String(booking.customer_phone)]) || [];

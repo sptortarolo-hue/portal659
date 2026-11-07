@@ -47,6 +47,11 @@ export function BookingCobroModal({
   const [receptorCond, setReceptorCond] = useState("6");
   const [err, setErr] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [useSignature, setUseSignature] = useState(false);
+  const [signatureName, setSignatureName] = useState("");
+  const [signatureData, setSignatureData] = useState<string | null>(null);
+  const sigRef = useRef<HTMLCanvasElement>(null);
+  const sigDrawing = useRef(false);
   const firstInput = useRef<HTMLInputElement>(null);
 
   const total = fromPricing && Number(finalPrice) > 0 ? Number(finalPrice) : snapshotTotal;
@@ -66,8 +71,60 @@ export function BookingCobroModal({
     setReceptorNro("");
     setReceptorNombre("");
     setReceptorCond("6");
+    setUseSignature(false);
+    setSignatureName("");
+    setSignatureData(null);
     if (firstInput.current) firstInput.current.focus();
   }, [open, snapshotTotal, depositPaid]);
+
+  function sigPos(e: React.PointerEvent<HTMLCanvasElement>) {
+    const canvas = sigRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+  function sigStart(e: React.PointerEvent<HTMLCanvasElement>) {
+    if (!useSignature) return;
+    const canvas = sigRef.current;
+    canvas?.setPointerCapture(e.pointerId);
+    sigDrawing.current = true;
+    const ctx = canvas?.getContext("2d");
+    if (ctx) {
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas!.width, canvas!.height);
+      ctx.lineCap = "round";
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = "#101623";
+      const p = sigPos(e);
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+    }
+  }
+  function sigMove(e: React.PointerEvent<HTMLCanvasElement>) {
+    if (!sigDrawing.current) return;
+    const ctx = sigRef.current?.getContext("2d");
+    if (!ctx) return;
+    const p = sigPos(e);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+  }
+  function sigEnd() {
+    sigDrawing.current = false;
+    const canvas = sigRef.current;
+    if (canvas && useSignature) setSignatureData(canvas.toDataURL("image/jpeg", 0.7));
+  }
+  function sigClear() {
+    const canvas = sigRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (canvas && ctx) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    setSignatureData(null);
+  }
 
   if (!open) return null;
 
@@ -93,6 +150,10 @@ export function BookingCobroModal({
       amount_paid: amount,
     };
     if (fromPricing) body.final_price = Number(finalPrice);
+    if (useSignature && signatureData) {
+      body.signature_data = signatureData;
+      body.signature_name = signatureName.trim() || undefined;
+    }
     if (wantFiscal) {
       body.wantFiscal = true;
       body.receptorNombre = receptorNombre.trim() || undefined;
@@ -200,6 +261,7 @@ export function BookingCobroModal({
           {paymentMethod === "efectivo" && (
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">Monto a cobrar</Label>
+
               <Input
                 value={amountToCharge}
                 onChange={(e) => setAmountToCharge(e.target.value)}
@@ -228,6 +290,47 @@ export function BookingCobroModal({
               )}
             </div>
           )}
+          <div className="rounded-lg border border-border p-2.5 space-y-2">
+            <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+              <input
+                type="checkbox"
+                checked={useSignature}
+                onChange={(e) => setUseSignature(e.target.checked)}
+                className="h-3.5 w-3.5"
+              />
+              ✍️ Pedir firma del cliente al entregar
+            </label>
+            {useSignature && (
+              <div className="space-y-1.5">
+                <div className="overflow-hidden rounded-lg border border-border bg-white">
+                  <canvas
+                    ref={sigRef}
+                    width={560}
+                    height={180}
+                    className="h-28 w-full touch-none"
+                    onPointerDown={sigStart}
+                    onPointerMove={sigMove}
+                    onPointerUp={sigEnd}
+                    onPointerLeave={sigEnd}
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={signatureName}
+                    onChange={(e) => setSignatureName(e.target.value)}
+                    placeholder="Nombre del cliente (firma)"
+                    className="h-7 text-xs flex-1"
+                  />
+                  <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={sigClear}>
+                    Limpiar
+                  </Button>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  El cliente firma en la pantalla. Queda guardada en la ficha de la orden.
+                </p>
+              </div>
+            )}
+          </div>
 
           {paymentMethod === "fiado" && (
             <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">

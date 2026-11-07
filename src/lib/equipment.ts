@@ -23,6 +23,8 @@ export type Equipment = {
   notes: string | null;
   customer_name?: string | null;
   customer_phone?: string | null;
+  /** Foto de recepción (condición al ingreso). */
+  photo_url?: string | null;
   created_at?: string;
   updated_at?: string;
   /** Agregadas por el server al listar (historial por equipo). */

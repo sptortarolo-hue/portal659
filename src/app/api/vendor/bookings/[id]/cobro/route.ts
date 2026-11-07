@@ -52,6 +52,19 @@ export async function POST(
     return NextResponse.json({ error: "El precio final debe ser mayor a 0" }, { status: 400 });
   }
 
+  // Firma digital del cliente (canvas → dataURL jpeg): opcional al cobrar/
+  // entregar. Se valida tamaño y formato antes de guardar.
+  const signatureData = typeof body.signature_data === "string" ? body.signature_data : null;
+  const signatureName = typeof body.signature_name === "string" ? body.signature_name.trim().slice(0, 120) || null : null;
+  if (signatureData !== null) {
+    if (!signatureData.startsWith("data:image/")) {
+      return NextResponse.json({ error: "Firma inválida" }, { status: 400 });
+    }
+    if (signatureData.length > 200_000) {
+      return NextResponse.json({ error: "La firma es muy grande (máx ~150 KB)" }, { status: 400 });
+    }
+  }
+
   const validMethods = ["efectivo", "transferencia", "tarjeta", "mixto", "whatsapp", "fiado"];
   if (!validMethods.includes(paymentMethod)) {
     return NextResponse.json({ error: "Medio de pago inválido" }, { status: 400 });
@@ -63,6 +76,7 @@ export async function POST(
   const booking = await queryOne<{
     id: string;
     vendor_id: string;
+    kind: string | null;
     status: string | null;
     deposit_amount: number | null;
     deposit_status: string | null;
@@ -73,7 +87,7 @@ export async function POST(
     booking_time: string;
     is_preview: boolean | null;
   }>(
-    `SELECT id, vendor_id, status, deposit_amount, deposit_status, service_price::numeric AS service_price,
+    `SELECT id, vendor_id, kind, status, deposit_amount, deposit_status, service_price::numeric AS service_price,
             customer_name, customer_phone, booking_date::text AS booking_date, booking_time::text AS booking_time,
             is_preview
      FROM bookings WHERE id = $1 LIMIT 1`,
@@ -89,8 +103,15 @@ export async function POST(
   if (booking.status === "completed") {
     return NextResponse.json({ error: "Este turno ya está atendido y cobrado" }, { status: 400 });
   }
-  if (booking.status !== "confirmed") {
-    return NextResponse.json({ error: "Solo se puede cobrar un turno confirmado" }, { status: 400 });
+  const isOrder = booking.kind === "orden";
+  // Órdenes: se cobra desde cualquier estado previo a entregar (recibida,
+  // diagnosticada, presupuestada, aprobada, en reparación, esperando repuesto,
+  // lista o turno confirmado). Turnos: solo desde "confirmed".
+  const cobrable = isOrder
+    ? ["pending", "diagnosed", "quoted", "approved", "repairing", "waiting_parts", "ready", "confirmed"].includes(booking.status || "")
+    : booking.status === "confirmed";
+  if (!cobrable) {
+    return NextResponse.json({ error: isOrder ? "Solo se puede cobrar una orden en curso" : "Solo se puede cobrar un turno confirmado" }, { status: 400 });
   }
 
   const total = finalPrice != null ? finalPrice : Math.round((Number(booking.service_price) || 0) * 100) / 100;
@@ -184,6 +205,21 @@ export async function POST(
          WHERE id = $3 AND vendor_id = $4 AND status <> 'completed'`,
         [paymentMethod, amountPaid, id, gate.vendor.id]
       );
+      // Firma digital del cliente (opcional, tolerante a migración pendiente).
+      if (signatureData) {
+        const colRows = await tx.query<{ column_name: string }>(
+          `SELECT column_name FROM information_schema.columns
+           WHERE table_schema = 'public' AND table_name = 'bookings'`,
+          []
+        );
+        const has = new Set((colRows || []).map((r) => String(r.column_name)));
+        if (has.has("signature_data")) {
+          await tx.queryVoid(
+            `UPDATE bookings SET signature_data = $1, signature_at = now(), signature_name = $2 WHERE id = $3 AND vendor_id = $4`,
+            [signatureData, signatureName, id, gate.vendor.id]
+          );
+        }
+      }
       // Precio final ("desde"): el snapshot del turno pasa a ser lo realmente
       // cobrado (comisiones y analytics lo siguen). Tolerante si la columna
       // de comisiones no está migrada.

@@ -101,6 +101,28 @@ export function AlertTestButton() {
 export function PushAlertCard() {
   const [status, setStatus] = useState<Status>("unknown");
   const [busy, setBusy] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem("portal659-sound-enabled");
+      if (v === "false") setSoundEnabled(false);
+    } catch {
+      /* noop */
+    }
+  }, []);
+
+  const toggleSound = useCallback(() => {
+    setSoundEnabled((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("portal659-sound-enabled", String(next));
+      } catch {
+        /* noop */
+      }
+      return next;
+    });
+  }, []);
 
   const refresh = useCallback(() => {
     if (!detectSupport()) {
@@ -139,6 +161,16 @@ export function PushAlertCard() {
                 ? "⚠️ Este navegador no soporta push"
                 : "🔔 Activá las alertas de pedidos"}
         </span>
+        <button
+          type="button"
+          onClick={toggleSound}
+          className={`text-xs px-2 py-1.5 rounded-lg font-medium transition-colors ${
+            soundEnabled ? "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400" : "bg-muted text-muted-foreground"
+          }`}
+          title={soundEnabled ? "Sonido activado (tocá para silenciar)" : "Sonido silenciado (tocá para activar)"}
+        >
+          {soundEnabled ? "🔊 Sonido on" : "🔇 Sonido off"}
+        </button>
         <button
           type="button"
           onClick={onTest}

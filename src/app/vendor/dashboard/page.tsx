@@ -911,7 +911,9 @@ function VendorDashboardInner() {
             );
             if (hasFreshNew) {
               resumeAudioContext();
-              playNewOrderAlert();
+              let soundOn = true;
+              try { soundOn = localStorage.getItem("portal659-sound-enabled") !== "false"; } catch { /* noop */ }
+              if (soundOn) playNewOrderAlert();
               startTitleFlash();
             }
             setOrders((prev) => {

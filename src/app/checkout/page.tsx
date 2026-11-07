@@ -521,8 +521,14 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
   }
 
   const v = vendor;
-  // Retail (moda/comercio): textos de "productos", sin referencias a cocina.
-  const esRetail = v.vertical === "moda" || v.vertical === "comercio";
+  // Retail = venta de productos (no cocina): moda, comercio y los híbridos
+  // (estética, salud, taller). Textos de "productos", sin ejemplos de comida.
+  const esRetail =
+    v.vertical === "moda" ||
+    v.vertical === "comercio" ||
+    v.vertical === "estetica" ||
+    v.vertical === "salud" ||
+    v.vertical === "taller";
   // Métodos de entrega que habilitó el comercio ("ambos" | "retiro" | "domicilio").
   const deliveryOpts = v.deliveryOptions || "ambos";
   const allowDelivery = deliveryOpts !== "retiro";
@@ -1195,7 +1201,7 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
             id="notes"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder={esRetail ? "Ej: preferencia de color, timbre roto, alergias..." : "Sin cebolla, extra picante, acceso por el costado..."}
+            placeholder={esRetail ? "Ej: aclaraciones del pedido, referencias de entrega, alergias..." : "Sin cebolla, extra picante, acceso por el costado..."}
             className="h-16 text-sm resize-none"
             maxLength={200}
           />

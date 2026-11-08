@@ -315,7 +315,7 @@ export default function VendorSidebar({
     // sube a 2do lugar; Pedidos/Mostrador/Catálogo quedan en el menú
     // desplegable. Estética mantiene su orden actual.
     if (isTaller) {
-      railItems.push({ tab: "taller" as any, label: "Taller", title: "🛠️ Taller (tablero de órdenes)", icon: Wrench, badge: pendingBookingsCount });
+      railItems.push({ tab: "taller" as any, label: "Taller", title: "Taller", icon: Wrench, badge: pendingBookingsCount });
       railItems.push({ tab: "pos", label: "Turnos", title: "Turnos", icon: CalendarDays, badge: pendingBookingsCount });
       railItems.push({
         tab: "orders",

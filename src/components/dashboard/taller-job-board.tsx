@@ -67,7 +67,7 @@ export function TallerJobBoard({
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOverCol, setDragOverCol] = useState<WorkOrderState | null>(null);
   const [techFilter, setTechFilter] = useState<string>("all");
-  const [view, setView] = useState<ViewMode>("board");
+  const [view, setView] = useState<ViewMode>("list");
   const [search, setSearch] = useState("");
 
   /** Orden del rubro: por fecha de entrega (vencida primero), "a convenir" al final. */

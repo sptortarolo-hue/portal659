@@ -1704,7 +1704,7 @@ function VendorDashboardInner() {
   const tabTitle =
     isService && tab === "orders" ? (isEstetica ? "Consultas" : "Presupuestos")
     : isService && tab === "pos" ? "Turnos"
-    : isService && tab === "taller" ? "🛠️ Taller"
+    : isService && tab === "taller" ? "Taller"
     : isService && tab === "caja" ? "Caja"
     : isService && tab === "config" ? "Configuración"
     : isService && tab === "history" ? "Historial"

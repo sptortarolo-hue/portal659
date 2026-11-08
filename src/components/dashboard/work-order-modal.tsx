@@ -23,16 +23,31 @@ import type { Equipment } from "@/lib/equipment";
  * Todo lo demás (diagnóstico, repuestos, precio final, checklist, notas,
  * firma) se hace después desde la ficha de la orden.
  */
+/**
+ * Intake ultra-simplificado (estilo RepairBook): recibe el equipo en
+ * menos de un minuto. Solo lo indispensable:
+ *   1. Cliente (nombre + teléfono)
+ *   2. Equipo (elegir o crear al vuelo)
+ *   3. Falla (chips por rubro + texto libre)
+ *   4. Fecha de entrega estimada
+ *   5. Seña (opcional)
+ *
+ * Todo lo demás (diagnóstico, repuestos, precio final, checklist, notas,
+ * firma) se hace después desde la ficha de la orden.
+ *
+ * Si se pasa `convertQuoteId`, al guardar se convierte la consulta aceptada
+ * en una orden de servicio vinculada en lugar de crear una orden nueva.
+ */
 export function WorkOrderModal({
   onClose,
   onCreated,
   serviceOptions,
   vendorCategory,
-  /** Si se pasa, al guardar se llama al endpoint de convertir consulta en orden
-   *  en lugar de crear una orden nueva desde cero. */
-  convertQuoteId?: string | null,
-  /** Fecha de entrega precargada (al convertir una consulta). */
-  initialDeliveryDate?: string | null,
+  convertQuoteId,
+  initialDeliveryDate,
+  initialCustomerName = "",
+  initialCustomerPhone = "",
+  initialDeclaredIssue = "",
 }: {
   onClose: () => void;
   onCreated: (data: { booking: any; work_order_no: number | null }) => void;
@@ -45,11 +60,17 @@ export function WorkOrderModal({
   convertQuoteId?: string | null;
   /** Fecha de entrega precargada (opcional). */
   initialDeliveryDate?: string | null;
+  /** Nombre del cliente precargado (al convertir una consulta). */
+  initialCustomerName?: string;
+  /** Teléfono del cliente precargado (al convertir una consulta). */
+  initialCustomerPhone?: string;
+  /** Falla declarada precargada (al convertir una consulta). */
+  initialDeclaredIssue?: string;
 }) {
-  const [customerName, setCustomerName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
+  const [customerName, setCustomerName] = useState(initialCustomerName);
+  const [customerPhone, setCustomerPhone] = useState(initialCustomerPhone);
   const [equipment, setEquipment] = useState<Equipment | null>(null);
-  const [declaredIssue, setDeclaredIssue] = useState("");
+  const [declaredIssue, setDeclaredIssue] = useState(initialDeclaredIssue);
   const [deliveryDate, setDeliveryDate] = useState(initialDeliveryDate || defaultDeliveryISO());
   const [depositAmount, setDepositAmount] = useState("");
   const [saving, setSaving] = useState(false);

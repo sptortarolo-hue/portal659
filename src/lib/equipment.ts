@@ -37,7 +37,8 @@ export function equipmentLabel(e: Equipment | null | undefined): string {
   if (!e) return "";
   const head = [e.brand, e.model].filter(Boolean).join(" ");
   const bits = [head || null, e.rodado ? `Rodado ${e.rodado}` : null, e.identifier ? `N° ${e.identifier}` : null, e.color].filter(Boolean);
-  return bits.join(" · ");
+  const label = bits.join(" · ");
+  return label || (e.id ? "Equipo sin ficha de datos" : "");
 }
 
 /** ¿Hay algo que valga para crear/asociar un equipo? (marca/modelo o serie). */

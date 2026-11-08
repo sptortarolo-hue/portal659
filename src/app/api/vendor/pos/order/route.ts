@@ -502,50 +502,50 @@ export async function POST(request: Request) {
     } catch {
       hasPayStatus = false;
     }
-    const cols = [
-      "vendor_id", "customer_name", "customer_phone", "customer_address",
-      "method", "payment_method", "items", "total", "status", "channel",
-      "paid_at", "notes", "pickup_number", "is_preview", "cash_pct",
-      "cash_discount",
-      ...(hasVolumeCol ? ["volume_discount"] : []),
-      ...(hasManualCol ? ["manual_discount", "manual_discount_kind", "manual_discount_reason", "manual_discount_value"] : []),
-      ...(direct && !deferPayment && hasClosedAt ? ["closed_at"] : []),
-      ...(direct && !deferPayment && hasDirectCol ? ["is_direct"] : []),
-      ...(hasPayStatus ? ["payment_status"] : []),
-      ...syncCols,
-      ...(hasZoneCols ? ["delivery_zone_id", "delivery_zone_name", "delivery_out_of_area", "delivery_fee"] : []),
-      ...(hasGiftcardCols ? ["giftcard_code", "giftcard_discount"] : []),
-      ...(hasCashAmountCol ? ["cash_amount"] : []),
+const entries: Array<[string, unknown]> = [
+      ["vendor_id", gate.vendor.id],
+      ["customer_name", customerName?.trim() || "Mostrador"],
+      ["customer_phone", customerPhoneClean],
+      ["customer_address", isDelivery ? (customerAddress?.trim() || null) : null],
+      ["method", isDelivery ? "delivery" : "pickup"],
+      ["payment_method", paymentMethodDb],
+      ["items", JSON.stringify(finalItems)],
+      ["total", finalTotal],
+      ["status", status],
+      ["channel", "mostrador"],
+      ["paid_at", (deferPayment === true || payment === "fiado") ? null : now],
+      ["notes", notes || null],
+      ["pickup_number", pickupNumber],
+      ["is_preview", previewOrder],
+      ["cash_pct", cashPct],
+      ["cash_discount", cashDiscount],
     ];
-    const vals: unknown[] = [
-      gate.vendor.id,
-      customerName?.trim() || "Mostrador",
-      customerPhoneClean,
-      isDelivery ? (customerAddress?.trim() || null) : null,
-      isDelivery ? "delivery" : "pickup",
-      paymentMethodDb,
-      JSON.stringify(finalItems),
-      finalTotal,
-      status,
-      "mostrador",
-      // Fiado: impago (no entra al Z hasta cubrirse).
-      (deferPayment === true || payment === "fiado") ? null : now,
-      notes || null,
-      pickupNumber,
-      previewOrder,
-      cashPct,
-      cashDiscount,
-      ...(hasVolumeCol ? [volumeDiscount] : []),
-      ...(hasManualCol ? [manualDiscountAmount, manualIn ? manualIn.kind : null, manualIn ? manualIn.reason : null, manualIn ? manualIn.value : null] : []),
-      ...(direct && !deferPayment && hasClosedAt ? [now] : []),
-      ...(direct && !deferPayment && hasDirectCol ? [true] : []),
-      ...(hasPayStatus ? [deferPayment === true ? "pending" : (payment === "fiado" ? "pending" : "paid")] : []),
-      ...(caps.ordersClientKey ? [clientKey] : []),
-      ...(caps.ordersOccurredAt ? [occurredAt] : []),
-      ...(hasZoneCols ? [deliveryResolved.zoneId, deliveryResolved.zoneName, deliveryResolved.outOfArea, deliveryResolved.fee] : []),
-      ...(hasGiftcardCols ? [giftcardCodeFinal, giftcardApplied] : []),
-      ...(hasCashAmountCol ? [cashAmountFinal] : []),
-    ];
+    if (hasVolumeCol) entries.push(["volume_discount", volumeDiscount]);
+    if (hasManualCol) {
+      entries.push(["manual_discount", manualDiscountAmount]);
+      entries.push(["manual_discount_kind", manualIn ? manualIn.kind : null]);
+      entries.push(["manual_discount_reason", manualIn ? manualIn.reason : null]);
+      entries.push(["manual_discount_value", manualIn ? manualIn.value : null]);
+    }
+    if (direct && !deferPayment && hasClosedAt) entries.push(["closed_at", now]);
+    if (direct && !deferPayment && hasDirectCol) entries.push(["is_direct", true]);
+    if (hasPayStatus) entries.push(["payment_status", deferPayment === true ? "pending" : (payment === "fiado" ? "pending" : "paid")]);
+    if (caps.ordersClientKey) entries.push(["client_key", clientKey]);
+    if (caps.ordersOccurredAt) entries.push(["occurred_at", occurredAt]);
+    if (hasZoneCols) {
+      entries.push(["delivery_zone_id", deliveryResolved.zoneId]);
+      entries.push(["delivery_zone_name", deliveryResolved.zoneName]);
+      entries.push(["delivery_out_of_area", deliveryResolved.outOfArea]);
+      entries.push(["delivery_fee", deliveryResolved.fee]);
+    }
+    if (hasGiftcardCols) {
+      entries.push(["giftcard_code", giftcardCodeFinal]);
+      entries.push(["giftcard_discount", giftcardApplied]);
+    }
+    if (hasCashAmountCol) entries.push(["cash_amount", cashAmountFinal]);
+
+    const cols = entries.map(([c]) => c);
+    const vals = entries.map(([, v]) => v);
     const placeholders = vals.map((_, i) => `$${i + 1}`).join(", ");
     const order = await tx.queryOne<Record<string, any>>(
       `INSERT INTO orders (${cols.join(", ")}) VALUES (${placeholders}) RETURNING *`,

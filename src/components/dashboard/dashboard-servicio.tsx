@@ -849,6 +849,23 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
     }
   }
 
+  // Purga de órdenes de prueba del taller (kind='orden', is_preview=true).
+  async function purgePreviewOrdens() {
+    const rows = bookings.filter((b: any) => b?.is_preview === true && b.kind === "orden");
+    const ids = rows.map((r) => r.id);
+    if (ids.length === 0) return;
+    if (!window.confirm(`¿Borrar ${ids.length} orden(es) de prueba del taller?`)) return;
+    setPurgingPreview(true);
+    try {
+      for (const id of ids) {
+        await fetch(`/api/vendor/bookings/${id}`, { method: "DELETE" });
+      }
+      reload();
+    } finally {
+      setPurgingPreview(false);
+    }
+  }
+
   async function handlePrintQuote(id: string) {
     setMsg("");
     try {
@@ -1213,6 +1230,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
           quotes={(quotesProp || quotes || []) as any[]}
           staff={catalogStaff}
           partsCatalog={offers as any[]}
+          onPurgePreview={purgePreviewOrdens}
         />
       )}
       {(sec === "all" || sec === "hoy") && quota && quota.limit != null && (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
 import type { Booking } from "@/types/database";
 import { isOrderBooking } from "@/lib/agenda";
 import {
@@ -50,6 +51,7 @@ export function TallerJobBoard({
   quotes,
   staff,
   partsCatalog,
+  onPurgePreview,
 }: {
   bookings: Booking[];
   filter: WorkOrderBoardFilter;
@@ -62,6 +64,8 @@ export function TallerJobBoard({
   staff?: { id: string; name: string }[];
   /** Catálogo de productos para repuestos en la ficha expandida. */
   partsCatalog?: { id: string; name: string; price?: number | null; promo_price?: number | null; stock?: number | null; stock_control?: boolean | null }[];
+  /** Borrar órdenes de prueba (is_preview=true). */
+  onPurgePreview?: () => void;
 }) {
   const today = isoTodayAR();
   const [dragId, setDragId] = useState<string | null>(null);
@@ -224,6 +228,7 @@ export function TallerJobBoard({
   };
 
   const showTechFilter = (staff || []).length > 1;
+  const previewOrdens = bookings.filter((b: any) => b?.is_preview === true && b.kind === "orden");
 
   return (
     <div className="space-y-3">
@@ -236,6 +241,23 @@ export function TallerJobBoard({
         <StatChip label="Por cobrar" value={stats.porCobrar} active={filter === "pending"} onClick={() => onFilter("pending")} />
         <StatChip label="Recibidas hoy" value={stats.recibidasHoy} active={filter === "today"} onClick={() => onFilter("today")} />
       </div>
+
+      {/* Borrar órdenes de prueba */}
+      {previewOrdens.length > 0 && onPurgePreview && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 space-y-1.5">
+          <p className="text-[11px] font-semibold text-amber-800 mb-1">
+            ⚠️ {previewOrdens.length} orden(es) de prueba
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full h-8 text-xs text-amber-700"
+            onClick={onPurgePreview}
+          >
+            Borrar órdenes de prueba
+          </Button>
+        </div>
+      )}
 
       {/* Barra: vistas + buscador + técnico */}
       <div className="flex flex-wrap items-center gap-1.5">

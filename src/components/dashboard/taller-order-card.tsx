@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { equipmentLabel } from "@/lib/equipment";
+import { equipmentLabel, type Equipment } from "@/lib/equipment";
 import {
   checklistSummaryLabel,
   hasChecklistContent,
@@ -78,7 +78,18 @@ export function TallerOrderCard({
   const orderDeclared = booking.declared_issue || "";
   const orderDiagnosis = booking.diagnosis || "";
   const orderDue = workOrderDeliveryDue(booking.delivery_date, booking.status);
-  const equipment = equipmentLabel(booking) || "Sin equipo";
+  // La API devuelve los campos de equipo con prefijo equipment_* (LEFT JOIN en bookings/route.ts).
+  // equipmentLabel espera brand, model, rodado, identifier, color sin prefijo.
+  const equipmentData: Equipment = {
+    id: booking.equipment_id,
+    brand: booking.equipment_brand,
+    model: booking.equipment_model,
+    rodado: booking.equipment_rodado,
+    identifier: booking.equipment_identifier,
+    color: booking.equipment_color,
+    notes: booking.equipment_notes,
+  };
+  const equipment = equipmentLabel(equipmentData) || "Sin equipo";
   const servicePrice = Number(booking.service_price || 0);
   const depositPaid = booking.deposit_status === "paid" ? Number(booking.deposit_amount || 0) : 0;
   const balance = Math.max(0, servicePrice - depositPaid);

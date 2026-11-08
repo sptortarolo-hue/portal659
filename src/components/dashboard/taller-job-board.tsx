@@ -6,11 +6,14 @@ import { isOrderBooking } from "@/lib/agenda";
 import {
   WORK_ORDER_BOARD_COLUMNS,
   isoTodayAR,
+  workOrderNextState,
   workOrderStateLabel,
   workOrderStateTone,
+  workOrderDeliveryDue,
   type WorkOrderBoardFilter,
   type WorkOrderState,
 } from "@/lib/work-order";
+import { equipmentLabel } from "@/lib/equipment";
 import { BookingCard, type BookingCardProps } from "@/components/dashboard/booking-card";
 
 type TimelineItem = {
@@ -22,17 +25,20 @@ type TimelineItem = {
   tone: "green" | "amber" | "sky" | "red" | "muted";
 };
 
+type ViewMode = "board" | "list";
+
 /**
- * Job board "🛠️ Taller": todas las órdenes de servicio abiertas agrupadas
- * por estado (kanban horizontal de columnas).
+ * Job board "🛠️ Taller": pantalla principal del taller (patrón del rubro —
+ * RepairDesk/SpokeHub/Orderry). Todas las órdenes abiertas agrupadas por
+ * estado, CADA COLUMNA ORDENADA POR FECHA DE ENTREGA (vencidas primero).
  *
- * Dinámico:
- * - Drag & drop de tarjetas entre columnas → cambia el estado (PATCH).
- *   En mobile, los botones de avance de cada tarjeta cumplen la misma función.
- * - Stats clickeables arriba (En taller / Vencidas / Listas / Por cobrar / Recibidas hoy).
- * - Timeline de actividad reciente (últimos eventos del taller).
- * - Filtro "Mi día" por técnico (cuando hay más de un profesional).
- * - Click en la cabecera de una tarjeta → abre el detalle (modal existente).
+ * - Vistas Tablero (kanban con drag & drop) y Lista (tabla densa).
+ * - Buscador: N°, cliente, teléfono, equipo (marca/modelo/serie) o falla.
+ * - Stats clickeables: En taller / Vencidas / Esperando aprobación /
+ *   Listas p/ retirar / Por cobrar / Recibidas hoy.
+ * - Filtro por técnico ("mi día") y timeline de actividad.
+ * - En mobile, los botones de avance de cada tarjeta cumplen lo mismo que
+ *   el drag & drop.
  */
 export function TallerJobBoard({
   bookings,
@@ -50,46 +56,101 @@ export function TallerJobBoard({
   onOpenBooking?: (id: string) => void;
   /** Presupuestos del comercio (para la timeline de actividad). */
   quotes?: Record<string, unknown>[];
-  /** Profesionales del local (filtro "Mi día"). */
+  /** Profesionales del local (filtro "mi día"). */
   staff?: { id: string; name: string }[];
 }) {
   const today = isoTodayAR();
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOverCol, setDragOverCol] = useState<WorkOrderState | null>(null);
   const [techFilter, setTechFilter] = useState<string>("all");
+  const [view, setView] = useState<ViewMode>("board");
+  const [search, setSearch] = useState("");
+
+  /** Orden del rubro: por fecha de entrega (vencida primero), "a convenir" al final. */
+  function byDelivery(a: any, z: any): number {
+    const ad = String(a.delivery_date || "").slice(0, 10);
+    const zd = String(z.delivery_date || "").slice(0, 10);
+    const av = ad ? (ad < today ? 0 : ad === today ? 1 : 2) : 3;
+    const zv = zd ? (zd < today ? 0 : zd === today ? 1 : 2) : 3;
+    if (av !== zv) return av - zv;
+    if (ad !== zd) return ad < zd ? -1 : 1;
+    return String(a.created_at || "") < String(z.created_at || "") ? -1 : 1;
+  }
+
+  const matchesSearch = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return null;
+    return (b: any) => {
+      const hay = [
+        b.work_order_no != null ? `n° ${b.work_order_no}` : "",
+        `#${b.work_order_no ?? ""}`,
+        b.customer_name,
+        b.customer_phone,
+        equipmentLabel(b),
+        b.declared_issue,
+        b.diagnosis,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    };
+  }, [search]);
 
   const openOrders = useMemo(() => {
     const base = (bookings || []).filter(
       (b: any) =>
         isOrderBooking(b) && b.status !== "completed" && b.status !== "cancelled"
     );
-    if (techFilter === "all") return base;
-    if (techFilter === "unassigned") return base.filter((b: any) => !b.staff_id);
-    return base.filter((b: any) => String(b.staff_id || "") === techFilter);
-  }, [bookings, techFilter]);
+    let list = base;
+    if (techFilter !== "all") {
+      list = techFilter === "unassigned" ? list.filter((b: any) => !b.staff_id) : list.filter((b: any) => String(b.staff_id || "") === techFilter);
+    }
+    if (filter === "overdue") {
+      list = list.filter((b: any) => {
+        const d = String(b.delivery_date || "").slice(0, 10);
+        return d !== "" && d <= today;
+      });
+    } else if (filter === "ready") {
+      list = list.filter((b: any) => b.status === "ready");
+    } else if (filter === "quoted") {
+      list = list.filter((b: any) => b.status === "quoted");
+    } else if (filter === "today") {
+      list = list.filter((b: any) => String(b.booking_date || "").slice(0, 10) === today);
+    } else if (filter === "pending") {
+      list = list.filter(
+        (b: any) =>
+          Number((b as any).service_price || 0) > 0 && (b as any).payment_status !== "paid"
+      );
+    }
+    if (matchesSearch) list = list.filter(matchesSearch);
+    return list.slice().sort(byDelivery);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookings, techFilter, filter, matchesSearch, today]);
 
   const stats = useMemo(() => {
-    const inWorkshop = openOrders.length;
-    const overdue = openOrders.filter((b: any) => {
-      const d = String(b.delivery_date || "").slice(0, 10);
-      return d !== "" && d <= today;
-    }).length;
-    const ready = openOrders.filter((b: any) => b.status === "ready").length;
-    const porCobrar = openOrders.filter(
-      (b: any) =>
-        Number((b as any).service_price || 0) > 0 &&
-        (b as any).payment_status !== "paid"
-    ).length;
-    const recibidasHoy = openOrders.filter(
-      (b: any) => String(b.booking_date || "").slice(0, 10) === today
-    ).length;
-    return { inWorkshop, overdue, ready, porCobrar, recibidasHoy };
-  }, [openOrders, today]);
+    const all = (bookings || []).filter(
+      (b: any) => isOrderBooking(b) && b.status !== "completed" && b.status !== "cancelled"
+    );
+    return {
+      inWorkshop: all.length,
+      overdue: all.filter((b: any) => {
+        const d = String(b.delivery_date || "").slice(0, 10);
+        return d !== "" && d <= today;
+      }).length,
+      quoted: all.filter((b: any) => b.status === "quoted").length,
+      ready: all.filter((b: any) => b.status === "ready").length,
+      porCobrar: all.filter(
+        (b: any) =>
+          Number((b as any).service_price || 0) > 0 && (b as any).payment_status !== "paid"
+      ).length,
+      recibidasHoy: all.filter((b: any) => String(b.booking_date || "").slice(0, 10) === today).length,
+    };
+  }, [bookings, today]);
 
   const timeline = useMemo<TimelineItem[]>(() => {
     const items: TimelineItem[] = [];
     const all = bookings || [];
-    // Eventos de órdenes: creadas (hoy) y listas recientes.
     for (const b of all as any[]) {
       if (!isOrderBooking(b)) continue;
       const created = String(b.created_at || "");
@@ -110,7 +171,7 @@ export function TallerJobBoard({
             id: `r-${b.id}`,
             at: upd,
             time: upd.slice(11, 16),
-            text: `Orden N° ${Number(b.work_order_no) || "—"} lista para retirar → WA enviado al cliente`,
+            text: `Orden N° ${Number(b.work_order_no) || "—"} lista para retirar → aviso enviado al cliente`,
             bookingId: b.id,
             tone: "green",
           });
@@ -122,13 +183,12 @@ export function TallerJobBoard({
           id: `o-${b.id}`,
           at: String(b.created_at || ""),
           time: "",
-          text: `Orden N° ${Number(b.work_order_no) || "—"} vencida (${due.slice(8, 10)}/${due.slice(5, 7)}) — chasar al cliente`,
+          text: `Orden N° ${Number(b.work_order_no) || "—"} vencida (${due.slice(8, 10)}/${due.slice(5, 7)}) — avisar al cliente`,
           bookingId: b.id,
           tone: "red",
         });
       }
     }
-    // Presupuestos aceptados hoy (auto-avance de la orden).
     for (const q of quotes || []) {
       const qq = q as any;
       if (qq.status !== "accepted") continue;
@@ -164,51 +224,44 @@ export function TallerJobBoard({
   return (
     <div className="space-y-3">
       {/* Stats clickeables (filtros rápidos) */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-        <StatChip
-          label="En el taller"
-          value={stats.inWorkshop}
-          active={filter === "all"}
-          onClick={() => onFilter("all")}
-        />
-        <StatChip
-          label="Vencidas"
-          value={stats.overdue}
-          active={filter === "overdue"}
-          onClick={() => onFilter("overdue")}
-          alert={stats.overdue > 0}
-        />
-        <StatChip
-          label="Listas"
-          value={stats.ready}
-          active={filter === "ready"}
-          onClick={() => onFilter("ready")}
-        />
-        <StatChip
-          label="Por cobrar"
-          value={stats.porCobrar}
-          active={filter === "pending"}
-          onClick={() => onFilter("pending")}
-        />
-        <StatChip
-          label="Recibidas hoy"
-          value={stats.recibidasHoy}
-          active={filter === "pending"}
-          onClick={() => onFilter("pending")}
-        />
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+        <StatChip label="En taller" value={stats.inWorkshop} active={filter === "all"} onClick={() => onFilter("all")} />
+        <StatChip label="Vencidas" value={stats.overdue} active={filter === "overdue"} onClick={() => onFilter("overdue")} alert={stats.overdue > 0} />
+        <StatChip label="Esperando aprobación" value={stats.quoted} active={filter === "quoted"} onClick={() => onFilter("quoted")} warn={stats.quoted > 0} />
+        <StatChip label="Listas" value={stats.ready} active={filter === "ready"} onClick={() => onFilter("ready")} />
+        <StatChip label="Por cobrar" value={stats.porCobrar} active={filter === "pending"} onClick={() => onFilter("pending")} />
+        <StatChip label="Recibidas hoy" value={stats.recibidasHoy} active={filter === "today"} onClick={() => onFilter("today")} />
       </div>
 
-      {/* Barra de filtros + técnico */}
+      {/* Barra: vistas + buscador + técnico */}
       <div className="flex flex-wrap items-center gap-1.5">
-        <FilterChip label="Todas" active={filter === "all"} onClick={() => onFilter("all")} />
-        <FilterChip label="Recibidas" active={filter === "pending"} onClick={() => onFilter("pending")} />
-        <FilterChip label="Listas para retirar" active={filter === "ready"} onClick={() => onFilter("ready")} />
-        <FilterChip label="Vencidas / vencen hoy" active={filter === "overdue"} onClick={() => onFilter("overdue")} />
+        <div className="inline-flex rounded-lg border border-border overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setView("board")}
+            className={`px-2.5 py-1 text-xs font-medium ${view === "board" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:bg-muted"}`}
+          >
+            ▦ Tablero
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("list")}
+            className={`px-2.5 py-1 text-xs font-medium ${view === "list" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:bg-muted"}`}
+          >
+            ☰ Lista
+          </button>
+        </div>
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar N°, cliente, teléfono, equipo o falla..."
+          className="h-7 min-w-0 flex-1 max-w-[280px] rounded-full border border-border bg-card px-3 text-xs"
+        />
         {showTechFilter && (
           <select
             value={techFilter}
             onChange={(e) => setTechFilter(e.target.value)}
-            className="ml-auto h-7 rounded-full border border-border bg-card px-2 text-xs"
+            className="h-7 rounded-full border border-border bg-card px-2 text-xs"
             title="Filtrar por técnico"
           >
             <option value="all">Todos los técnicos</option>
@@ -262,34 +315,46 @@ export function TallerJobBoard({
         </details>
       )}
 
-      {/* Kanban: columnas por estado, scroll horizontal en mobile */}
-      <div className="flex gap-2 overflow-x-auto pb-2 snap-x">
-        {WORK_ORDER_BOARD_COLUMNS.map((col) => (
-          <Column
-            key={col}
-            state={col}
-            items={openOrders.filter((b: any) => b.status === col)}
-            filter={filter}
-            today={today}
-            bookingCardProps={bookingCardProps}
-            isDragOver={dragOverCol === col}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragOverCol(col);
-            }}
-            onDragLeave={() => setDragOverCol(null)}
-            onDrop={(e) => {
-              e.preventDefault();
-              handleDrop(col);
-            }}
-            onDragStart={(e, id) => {
-              e.dataTransfer.setData("text/plain", id);
-              setDragId(id);
-            }}
-            onOpenBooking={onOpenBooking}
-          />
-        ))}
-      </div>
+      {view === "board" ? (
+        /* Kanban: columnas por estado, scroll horizontal en mobile */
+        <div className="flex gap-2 overflow-x-auto pb-2 snap-x">
+          {WORK_ORDER_BOARD_COLUMNS.map((col) => {
+            const items = openOrders.filter((b: any) => b.status === col);
+            return (
+              <Column
+                key={col}
+                state={col}
+                items={items}
+                bookingCardProps={bookingCardProps}
+                isDragOver={dragOverCol === col}
+                highlighted={filter === col}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOverCol(col);
+                }}
+                onDragLeave={() => setDragOverCol(null)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  handleDrop(col);
+                }}
+                onDragStart={(e, id) => {
+                  e.dataTransfer.setData("text/plain", id);
+                  setDragId(id);
+                }}
+                onOpenBooking={onOpenBooking}
+              />
+            );
+          })}
+        </div>
+      ) : (
+        /* Lista: tabla densa (RepairDesk), ideal para recepcionar de frente */
+        <OrderList
+          items={openOrders}
+          today={today}
+          bookingCardProps={bookingCardProps}
+          onOpenBooking={onOpenBooking}
+        />
+      )}
     </div>
   );
 }
@@ -297,11 +362,15 @@ export function TallerJobBoard({
 function filterLabel(f: WorkOrderBoardFilter): string {
   switch (f) {
     case "pending":
-      return "Recibidas";
+      return "Por cobrar";
     case "ready":
       return "Listas para retirar";
     case "overdue":
       return "Vencidas / vencen hoy";
+    case "quoted":
+      return "Esperando aprobación";
+    case "today":
+      return "Recibidas hoy";
     default:
       return "";
   }
@@ -329,40 +398,137 @@ function FilterChip({
   );
 }
 
+void FilterChip;
+
 function StatChip({
   label,
   value,
   active,
   onClick,
   alert,
+  warn,
 }: {
   label: string;
   value: number;
   active: boolean;
   onClick: () => void;
   alert?: boolean;
+  warn?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={`rounded-xl border p-2 text-center transition-colors ${
-        active ? "border-primary bg-primary/10" : alert && value > 0 ? "border-red-200 bg-red-50/50" : "border-border bg-card hover:bg-muted/50"
+        active
+          ? "border-primary bg-primary/10"
+          : alert && value > 0
+            ? "border-red-200 bg-red-50/50"
+            : warn && value > 0
+              ? "border-amber-200 bg-amber-50/50"
+              : "border-border bg-card hover:bg-muted/50"
       }`}
     >
-      <p className={`font-display text-lg font-bold ${alert && value > 0 ? "text-red-600" : ""}`}>{value}</p>
+      <p className={`font-display text-lg font-bold ${alert && value > 0 ? "text-red-600" : warn && value > 0 ? "text-amber-600" : ""}`}>{value}</p>
       <p className="text-[10px] leading-tight text-muted-foreground">{label}</p>
     </button>
   );
 }
 
+function OrderList({
+  items,
+  today,
+  bookingCardProps,
+  onOpenBooking,
+}: {
+  items: Booking[];
+  today: string;
+  bookingCardProps: Omit<BookingCardProps, "booking">;
+  onOpenBooking?: (id: string) => void;
+}) {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-border bg-card">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b border-border text-left text-muted-foreground">
+            <th className="px-2.5 py-2 font-medium">N°</th>
+            <th className="px-2.5 py-2 font-medium">Cliente</th>
+            <th className="px-2.5 py-2 font-medium">Equipo / falla</th>
+            <th className="px-2.5 py-2 font-medium">Estado</th>
+            <th className="px-2.5 py-2 font-medium">Entrega</th>
+            <th className="px-2.5 py-2 font-medium text-right">Total</th>
+            <th className="px-2.5 py-2"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.length === 0 ? (
+            <tr>
+              <td colSpan={7} className="px-2.5 py-6 text-center text-muted-foreground">
+                Sin órdenes que coincidan.
+              </td>
+            </tr>
+          ) : (
+            items.map((b: any) => {
+              const due = workOrderDeliveryDue(b.delivery_date, b.status);
+              const next = workOrderNextState(b.status);
+              const total = Number(b.service_price || 0);
+              return (
+                <tr
+                  key={b.id}
+                  className="border-b border-border/60 last:border-0 hover:bg-muted/40 cursor-pointer"
+                  onClick={() => onOpenBooking?.(b.id)}
+                >
+                  <td className="px-2.5 py-2 font-semibold tabular-nums">N° {Number(b.work_order_no) || "—"}</td>
+                  <td className="px-2.5 py-2">
+                    <span className="block max-w-[140px] truncate font-medium">{b.customer_name || "Sin nombre"}</span>
+                    {b.customer_phone && <span className="block text-[10px] text-muted-foreground">{b.customer_phone}</span>}
+                  </td>
+                  <td className="px-2.5 py-2">
+                    <span className="block max-w-[220px] truncate">{equipmentLabel(b) || "Sin ficha"}</span>
+                    {b.declared_issue && <span className="block max-w-[220px] truncate text-[10px] text-muted-foreground">{String(b.declared_issue)}</span>}
+                  </td>
+                  <td className="px-2.5 py-2">
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap ${workOrderStateTone(b.status)}`}>
+                      {workOrderStateLabel(b.status)}
+                    </span>
+                  </td>
+                  <td className={`px-2.5 py-2 whitespace-nowrap ${due?.tone || "text-muted-foreground"}`}>
+                    {due?.text || (b.delivery_date ? String(b.delivery_date).slice(8, 10) + "/" + String(b.delivery_date).slice(5, 7) : "a convenir")}
+                  </td>
+                  <td className="px-2.5 py-2 text-right tabular-nums whitespace-nowrap">
+                    {total > 0 ? `$${total.toLocaleString("es-AR")}` : "—"}
+                    {b.payment_status === "paid" && <span className="block text-[10px] text-green-600">cobrado</span>}
+                  </td>
+                  <td className="px-2.5 py-2 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                    {next && (
+                      <button
+                        type="button"
+                        onClick={() => bookingCardProps.handleUpdateBookingStatus(b.id, next)}
+                        className="rounded-md border border-border bg-background px-2 py-1 text-[10px] font-medium hover:bg-muted"
+                        title={`Avanzar a ${workOrderStateLabel(next)}`}
+                      >
+                        → {workOrderStateLabel(next)}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+void FilterChip;
+
 function Column({
   state,
   items,
-  filter,
-  today,
   bookingCardProps,
   isDragOver,
+  highlighted,
   onDragOver,
   onDragLeave,
   onDrop,
@@ -371,29 +537,15 @@ function Column({
 }: {
   state: WorkOrderState;
   items: Booking[];
-  filter: WorkOrderBoardFilter;
-  today: string;
   bookingCardProps: Omit<BookingCardProps, "booking">;
   isDragOver: boolean;
+  highlighted: boolean;
   onDragOver: (e: React.DragEvent) => void;
   onDragLeave: () => void;
   onDrop: (e: React.DragEvent) => void;
   onDragStart: (e: React.DragEvent, id: string) => void;
   onOpenBooking?: (id: string) => void;
 }) {
-  const visible =
-    filter === "overdue"
-      ? items.filter((b: any) => {
-          const d = String(b.delivery_date || "").slice(0, 10);
-          return d !== "" && d <= today;
-        })
-      : items;
-
-  const highlighted =
-    (filter === "pending" && state === "pending") ||
-    (filter === "ready" && state === "ready") ||
-    (filter === "overdue" && visible.length > 0);
-
   return (
     <div
       onDragOver={onDragOver}
@@ -411,30 +563,27 @@ function Column({
         <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${workOrderStateTone(state)}`}>
           {workOrderStateLabel(state)}
         </span>
-        <span className="text-[11px] text-muted-foreground tabular-nums">({visible.length})</span>
+        <span className="text-[11px] text-muted-foreground tabular-nums">({items.length})</span>
       </div>
       <p className="px-1 text-[10px] text-muted-foreground">↕ Arrastrá tarjetas a otra columna para cambiar el estado</p>
-      {visible.length === 0 ? (
+      {items.length === 0 ? (
         <p className="text-[11px] text-muted-foreground text-center py-3">Sin órdenes</p>
       ) : (
-        visible
-          .slice()
-          .sort((a: any, b: any) => String(a.booking_date || "") < String(b.booking_date || "") ? -1 : 1)
-          .map((b: any) => (
-            <div
-              key={b.id}
-              draggable
-              onDragStart={(e) => onDragStart(e, b.id)}
-              onClick={(e) => {
-                // No abrir el detalle si el click vino de un botón/interactivo.
-                if ((e.target as HTMLElement).closest("button, a, input, select, textarea")) return;
-                onOpenBooking?.(b.id);
-              }}
-              className="cursor-pointer"
-            >
-              <BookingCard booking={b} {...bookingCardProps} />
-            </div>
-          ))
+        items.map((b: any) => (
+          <div
+            key={b.id}
+            draggable
+            onDragStart={(e) => onDragStart(e, b.id)}
+            onClick={(e) => {
+              // No abrir el detalle si el click vino de un botón/interactivo.
+              if ((e.target as HTMLElement).closest("button, a, input, select, textarea")) return;
+              onOpenBooking?.(b.id);
+            }}
+            className="cursor-pointer"
+          >
+            <BookingCard booking={b} {...bookingCardProps} />
+          </div>
+        ))
       )}
     </div>
   );

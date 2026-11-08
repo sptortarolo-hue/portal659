@@ -29,7 +29,7 @@ import { StaffManager } from "@/components/vendor/staff-manager";
 import { arToday } from "@/lib/booking-schedule";
 import { bookingReminderMessage, bookingWhenLabel } from "@/lib/booking-message";
 import { isOrderBooking } from "@/lib/agenda";
-import { isoTodayAR, workOrderExtensionText, type WorkOrderBoardFilter } from "@/lib/work-order";
+import { isoTodayAR, quoteFollowUpText, quoteNeedsFollowUp, workOrderExtensionText, type WorkOrderBoardFilter } from "@/lib/work-order";
 import { loadDraft, saveDraft } from "@/lib/draft";
 import { AgendaView, type AgendaViewMode } from "@/components/dashboard/agenda-view";
 import { EsteticaWeekPlanner } from "@/components/dashboard/estetica-week-planner";
@@ -37,8 +37,8 @@ import { BookingCard, type BookingCardProps } from "@/components/dashboard/booki
 import { BookingCobroModal } from "@/components/dashboard/booking-cobro-modal";
 import { BookingFichaModal } from "@/components/dashboard/booking-ficha-modal";
 import { TallerHoyPanel } from "@/components/dashboard/taller-hoy-panel";
-import { TallerOpenOrdersStrip } from "@/components/dashboard/taller-open-orders-strip";
 import { TallerJobBoard } from "@/components/dashboard/taller-job-board";
+import { TallerOrderDetail } from "@/components/dashboard/taller-order-detail";
 import { Modal } from "@/components/ui/modal";
 import type { Vendor, Product, ProductModifier, Booking, VendorGallery } from "@/types/database";
 
@@ -76,6 +76,8 @@ type Props = {
   onQuotesChanged?: () => void;
   configSectionId?: string;
   onConfigSectionId?: (id: string) => void;
+  /** Filtro inicial del tablero taller (deep-link desde Hoy). */
+  initialTallerFilter?: string | null;
 };
 
 const BOOKING_STATUS_COLORS: Record<string, string> = {
@@ -334,6 +336,8 @@ export default function DashboardServicio({
   orders: ordersProp = [],
   configSectionId,
   onConfigSectionId,
+  /** Filtro inicial del tablero taller (deep-link desde Hoy). */
+  initialTallerFilter = null,
 }: Props) {
   const [saving, setSaving] = useState(false);
   // Sin section se muestra todo (legacy); con section, solo esa sub-vista.
@@ -473,7 +477,12 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
   // Cotizar una orden: modal de presupuesto con la orden precargada.
   const [orderQuoteFor, setOrderQuoteFor] = useState<any | null>(null);
   // Tab "🛠️ Taller": filtro del job board (todas / recibidas / listas / vencidas).
-  const [tallerFilter, setTallerFilter] = useState<WorkOrderBoardFilter>("all");
+  const [tallerFilter, setTallerFilter] = useState<WorkOrderBoardFilter>(() => {
+    const f = String(initialTallerFilter || "");
+    return (["all", "overdue", "quoted", "ready", "pending", "today"] as const).includes(f as any)
+      ? (f as WorkOrderBoardFilter)
+      : "all";
+  });
 
   // Atajos desde los contadores del Hoy (mismo patrón que portal:go-caja):
   // "portal:go-taller" + filter, "portal:go-turnos" → día de hoy.
@@ -1706,13 +1715,6 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
               ) : undefined
             }
           />
-
-          {isTaller && (
-            <TallerOpenOrdersStrip
-              bookings={bookings}
-              onOpenBooking={(id) => setSelectedBookingId(id)}
-            />
-          )}
         </div>
       </CollapsibleSection>
       </>
@@ -1822,6 +1824,30 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                         >
                           📲 {q.customer_phone}
                         </a>
+                      )}
+                      {/* Seguimiento 48h (Orderry): presupuesto enviado sin
+                          respuesta → badge + WA precargado. Solo taller. */}
+                      {isTaller && quoteNeedsFollowUp(q) && (
+                        <>
+                          <span className="self-center rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap">
+                            ⏰ Sin respuesta +48h
+                          </span>
+                          <a
+                            href={`https://wa.me/${String(q.customer_phone || "").replace(/\D/g, "")}?text=${encodeURIComponent(
+                              quoteFollowUpText({
+                                storeName: vendor?.store_name || storeName,
+                                customerName: q.customer_name,
+                                serviceName: q.service_name,
+                                price: q.quoted_price,
+                              })
+                            )}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="self-center rounded-md bg-amber-500 px-2 py-1 text-[10px] font-semibold text-white hover:bg-amber-600"
+                          >
+                            💬 Seguir
+                          </a>
+                        </>
                       )}
                       {(q.status === "pending" || q.status === "responded") && (
                         <>
@@ -2046,7 +2072,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
         <div className="grid grid-cols-3 gap-2 text-center">
           <button
             type="button"
-            onClick={() => window.dispatchEvent(new CustomEvent("portal:go-taller", { detail: { filter: "pending" } }))}
+            onClick={() => window.dispatchEvent(new CustomEvent("portal:go-taller", { detail: { filter: "today" } }))}
             className="rounded-xl border border-orange-200 bg-orange-50/50 p-3 hover:bg-orange-50 transition-colors text-center"
             title="Ver órdenes recibidas hoy"
           >
@@ -2143,6 +2169,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
             highlightPhone={highlightClientPhone}
             estetica={!isTaller}
             taller={isTaller}
+            onOrderCreated={() => reload()}
           />
         ) : (
           <PlanLock
@@ -2240,6 +2267,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
       {orderModalOpen && (
         <WorkOrderModal
           onClose={() => setOrderModalOpen(false)}
+          vendorCategory={vendor?.category || ""}
           serviceOptions={isHybrid ? catalogServices : undefined}
           onCreated={(data: { booking: any; work_order_no: number | null }) => {
             setOrderModalOpen(false);
@@ -2258,15 +2286,18 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
         />
       )}
 
-      {selectedBooking && (
+      {selectedBooking && isOrderBooking(selectedBooking) ? (
+        <TallerOrderDetail
+          booking={selectedBooking}
+          bookingCardProps={bookingCardProps}
+          partsCatalog={(offers as unknown as { id: string; name: string; price?: number | null; promo_price?: number | null; stock?: number | null; stock_control?: boolean | null }[]) || []}
+          onClose={() => setSelectedBookingId(null)}
+        />
+      ) : selectedBooking && (
         <Modal
           open={!!selectedBooking}
           onClose={() => setSelectedBookingId(null)}
-          title={
-            isOrderBooking(selectedBooking)
-              ? `Orden de servicio · ${selectedBooking.customer_name || "Sin nombre"}`
-              : `Turno · ${selectedBooking.customer_name || "Sin nombre"}`
-          }
+          title={`Turno · ${selectedBooking.customer_name || "Sin nombre"}`}
         >
           <BookingCard booking={selectedBooking} {...bookingCardProps} />
         </Modal>

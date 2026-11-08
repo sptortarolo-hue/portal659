@@ -2,10 +2,12 @@ import { getVendorByRequest } from "@/lib/vendor-utils";
 import { notifyServiceClient } from "@/lib/service-notify";
 import { addServiceJob, decrementCustomerFromOrder, ensureServiceCustomer } from "@/lib/customers";
 import { isPreviewRow } from "@/lib/preview-flag";
-import { queryOne, query, withTransaction } from "@/lib/db";
+import { hasTable, queryMany, queryOne, query, withTransaction } from "@/lib/db";
 import { toE164 } from "@/lib/phone";
 import { resolveEquipmentForWorkTx, hasEquipmentColumnTx } from "@/lib/equipment-server";
 import { computeBookingWarnings, computeStartsEnds, isISODate, resolveBookingRefs, toMinutes } from "@/lib/vendor-booking";
+import { addBookingEventTx } from "@/lib/booking-events";
+import { normalizeChecklist, workOrderStateLabel } from "@/lib/work-order";
 import { NextResponse } from "next/server";
 
 const VALID_STATUS = [
@@ -45,6 +47,56 @@ function todayAR(): string {
     month: "2-digit",
     day: "2-digit",
   }).format(new Date());
+}
+
+/**
+ * GET: detalle de la orden/turno para la ficha completa (taller):
+ * booking + event feed (booking_events) + repuestos (work_order_parts).
+ * Tolerante a migración sin aplicar: eventos/repuestos vuelven vacíos.
+ */
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { vendor } = await getVendorByRequest(request);
+  if (!vendor) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+
+  const { id } = await params;
+  if (!/^[0-9a-f-]{36}$/i.test(id)) {
+    return NextResponse.json({ error: "ID inválido" }, { status: 400 });
+  }
+
+  const booking = await queryOne<Record<string, unknown>>(
+    `SELECT * FROM bookings WHERE id = $1 LIMIT 1`,
+    [id]
+  ).catch(() => undefined);
+  if (!booking) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
+  if ((booking as { vendor_id?: string }).vendor_id !== vendor.id) {
+    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  }
+
+  const querier = { query: <T extends { [k: string]: unknown }>(sql: string, p?: unknown[]) => queryMany<T>(sql, p) };
+
+  let events: Record<string, unknown>[] = [];
+  if (await hasTable(querier, "booking_events").catch(() => false)) {
+    events = await queryMany<Record<string, unknown>>(
+      `SELECT e.id::text AS id, e.kind, e.message, e.created_at, p.full_name AS actor_name
+       FROM booking_events e LEFT JOIN profiles p ON p.id = e.actor
+       WHERE e.booking_id = $1 ORDER BY e.created_at DESC LIMIT 100`,
+      [id]
+    ).catch(() => []);
+  }
+
+  let parts: Record<string, unknown>[] = [];
+  if (await hasTable(querier, "work_order_parts").catch(() => false)) {
+    parts = await queryMany<Record<string, unknown>>(
+      `SELECT id::text AS id, product_id, variant_id, name, qty, unit_cost, unit_price, created_at
+       FROM work_order_parts WHERE booking_id = $1 ORDER BY created_at ASC`,
+      [id]
+    ).catch(() => []);
+  }
+
+  return NextResponse.json({ booking, events, parts });
 }
 
 /** Normaliza un valor de fecha (string o Date de pg) a "YYYY-MM-DD". */
@@ -134,10 +186,19 @@ export async function PATCH(
     [id]
   ).catch(() => null);
   const isOrder = orderRow?.kind === "orden";
-  // Campos propios de la orden: entrega, falla declarada y diagnóstico.
+  // Campos propios de la orden: entrega, falla declarada, diagnóstico,
+  // checklist de ingreso y mano de obra.
   const wantOrderFields =
     isOrder &&
-    (body?.delivery_date !== undefined || body?.declared_issue !== undefined || body?.diagnosis !== undefined);
+    (body?.delivery_date !== undefined || body?.declared_issue !== undefined || body?.diagnosis !== undefined ||
+      body?.intake_checklist !== undefined || body?.labor_amount !== undefined);
+  // Mano de obra (taller): null o número ≥ 0.
+  const laborAmount =
+    body?.labor_amount === undefined
+      ? undefined
+      : body?.labor_amount == null || body?.labor_amount === ""
+        ? null
+        : Math.max(0, Math.round(Number(body.labor_amount) * 100) / 100 || 0);
   const deliveryDateInput =
     body?.delivery_date === "" || body?.delivery_date == null
       ? null
@@ -304,6 +365,20 @@ export async function PATCH(
             [String(body.diagnosis || "").trim().slice(0, 1000) || null, id]
           );
         }
+        // Checklist de ingreso (taller v3): jsonb normalizado. Sin la columna
+        // (migración pendiente) se ignora: la orden se guarda igual.
+        if (body?.intake_checklist !== undefined && has.has("intake_checklist")) {
+          const cl = normalizeChecklist(body.intake_checklist);
+          const hasContent =
+            (cl.accessories?.length || 0) > 0 || cl.other || cl.unlock || cl.condition;
+          await tx.queryVoid(
+            `UPDATE bookings SET intake_checklist = $1 WHERE id = $2`,
+            [hasContent ? JSON.stringify(cl) : null, id]
+          );
+        }
+        if (laborAmount !== undefined && has.has("labor_amount")) {
+          await tx.queryVoid(`UPDATE bookings SET labor_amount = $1 WHERE id = $2`, [laborAmount, id]);
+        }
       }
       // Vínculo con el presupuesto (orden de servicio cotizada): se guarda
       // aparte porque no es un campo del form de turno.
@@ -346,6 +421,73 @@ export async function PATCH(
         } catch {
           throw new Error("Falta aplicar la migración migrate-estetica-products-used.sql en la base");
         }
+      }
+      // Event feed (taller v3): estado, diagnóstico, checklist, mano de obra
+      // y vínculo de presupuesto. Tolerante (addBookingEventTx chequea tabla).
+      const commonStatusLabels: Record<string, string> = {
+        pending: "Pendiente",
+        confirmed: "Confirmado",
+        completed: "Completado",
+        cancelled: "Cancelado",
+        noshow: "Ausente",
+      };
+      const stLabel = (s: string) => (isOrder ? workOrderStateLabel(s) : commonStatusLabels[s] || s);
+      if (hasStatus && existing.status !== status) {
+        await addBookingEventTx(tx, {
+          vendorId: vendor.id,
+          bookingId: id,
+          kind: "status",
+          message: `${stLabel(existing.status)} → ${stLabel(status)}`,
+          actor: (vendor as { user_id?: string }).user_id || null,
+        });
+      }
+      if (body?.diagnosis !== undefined) {
+        const d = String(body.diagnosis || "").trim().slice(0, 300);
+        await addBookingEventTx(tx, {
+          vendorId: vendor.id,
+          bookingId: id,
+          kind: "diagnosis",
+          message: d ? `Diagnóstico: ${d}` : "Diagnóstico borrado",
+          actor: (vendor as { user_id?: string }).user_id || null,
+        });
+      }
+      if (body?.intake_checklist !== undefined) {
+        await addBookingEventTx(tx, {
+          vendorId: vendor.id,
+          bookingId: id,
+          kind: "note",
+          message: "Checklist de ingreso actualizado",
+          actor: (vendor as { user_id?: string }).user_id || null,
+        });
+      }
+      if (laborAmount !== undefined) {
+        await addBookingEventTx(tx, {
+          vendorId: vendor.id,
+          bookingId: id,
+          kind: "note",
+          message: laborAmount ? `Mano de obra: $${laborAmount.toLocaleString("es-AR")}` : "Mano de obra quitada",
+          actor: (vendor as { user_id?: string }).user_id || null,
+        });
+      }
+      if (body?.quote_id !== undefined) {
+        await addBookingEventTx(tx, {
+          vendorId: vendor.id,
+          bookingId: id,
+          kind: "quote_linked",
+          message: body.quote_id ? "Presupuesto vinculado a la orden" : "Presupuesto desvinculado",
+          actor: (vendor as { user_id?: string }).user_id || null,
+        });
+      }
+      if (body?.delivery_date !== undefined) {
+        await addBookingEventTx(tx, {
+          vendorId: vendor.id,
+          bookingId: id,
+          kind: "extended",
+          message: deliveryDateInput
+            ? `Entrega estimada: ${deliveryDateInput.slice(8, 10)}/${deliveryDateInput.slice(5, 7)}`
+            : "Entrega a convenir",
+          actor: (vendor as { user_id?: string }).user_id || null,
+        });
       }
       if (edit) {
         // Campos base (siempre existen).

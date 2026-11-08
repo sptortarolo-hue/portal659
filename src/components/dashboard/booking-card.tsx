@@ -9,7 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import type { Vendor } from "@/types/database";
 import { bookingReminderMessage, bookingWhenLabel } from "@/lib/booking-message";
 import { isOrderBooking } from "@/lib/agenda";
+import { equipmentLabel } from "@/lib/equipment";
 import {
+  checklistSummaryLabel,
+  hasChecklistContent,
   workOrderDatesLabel,
   workOrderDeliveryDue,
   workOrderNextLabel,
@@ -173,6 +176,9 @@ export function BookingCard({
               <p className="text-xs font-semibold text-orange-700">
                 {workOrderTitle(orderNo)} · {orderDates || "sin fecha de entrega"}
               </p>
+              {equipmentLabel(booking as any) && (
+                <p className="text-xs text-foreground/90 mt-0.5">🛠️ {equipmentLabel(booking as any)}</p>
+              )}
               {orderDeclared && (
                 <p className="text-xs text-foreground/90 mt-0.5">
                   <span className="text-muted-foreground">Falla: </span>
@@ -185,8 +191,21 @@ export function BookingCard({
                   {orderDiagnosis}
                 </p>
               )}
-              {productLabel && <p className="text-xs text-muted-foreground mt-0.5">{productLabel}</p>}
-              {(booking as any).service_price != null && Number((booking as any).service_price) > 0 && (
+              {hasChecklistContent((booking as any).intake_checklist) && (
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  📋 {checklistSummaryLabel((booking as any).intake_checklist)}
+                </p>
+              )}
+              {linkedQuote && (
+                <p className={`text-xs mt-0.5 font-medium ${linkedQuote.status === "accepted" ? "text-green-700" : linkedQuote.status === "responded" ? "text-violet-700" : "text-amber-700"}`}>
+                  {linkedQuote.status === "accepted"
+                    ? `✅ Presupuesto aprobado · $${Number(linkedQuote.quoted_price || 0).toLocaleString("es-AR")}`
+                    : linkedQuote.status === "responded"
+                      ? `🧾 Presupuesto enviado · $${Number(linkedQuote.quoted_price || 0).toLocaleString("es-AR")}`
+                      : "🧾 Presupuesto borrador"}
+                </p>
+              )}
+              {!linkedQuote && (booking as any).service_price != null && Number((booking as any).service_price) > 0 && (
                 <p className="text-xs text-muted-foreground mt-0.5">
                   💲 Precio estimado: ${Number((booking as any).service_price).toLocaleString("es-AR")}
                 </p>

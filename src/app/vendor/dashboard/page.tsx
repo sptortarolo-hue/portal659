@@ -284,6 +284,8 @@ function VendorDashboardInner() {
   // Sección activa de Config (sidebar única): se persiste por vertical con
   // la misma key que usa el shell (ConfigSections) en cada dashboard.
   const [configSection, setConfigSection] = useState<string>("perfil");
+  // Filtro inicial del tablero taller (deep-link desde los contadores de Hoy).
+  const [goTallerFilter, setGoTallerFilter] = useState<string | null>(null);
   useEffect(() => {
     try {
       const saved = localStorage.getItem(`portal659-config-${vendor?.vertical || "gastro"}`);
@@ -498,7 +500,11 @@ function VendorDashboardInner() {
   }, [handleTabChange]);
   // Contadores del Hoy (taller) → tab 🛠️ Taller con filtro, o tab Turnos día.
   useEffect(() => {
-    const hTaller = () => handleTabChange("taller");
+    const hTaller = (e: Event) => {
+      const detail = (e as CustomEvent<{ filter?: string }>).detail || {};
+      setGoTallerFilter((detail.filter as any) || null);
+      handleTabChange("taller");
+    };
     const hTurnos = () => handleTabChange("pos");
     window.addEventListener("portal:go-taller", hTaller);
     window.addEventListener("portal:go-turnos", hTurnos);
@@ -2114,6 +2120,7 @@ function VendorDashboardInner() {
                 onQuotesChanged={loadServiceData}
                 configSectionId={configSection}
                 onConfigSectionId={handleConfigSection}
+                initialTallerFilter={goTallerFilter}
                 section={
                   tab === "orders" ? "presupuestos"
                   : tab === "pos" ? "turnos"
@@ -2415,26 +2422,43 @@ function VendorDashboardInner() {
               {isService && (pendingQuotesCount + pendingBookingsCount + (isHybrid ? activeOrderCount : 0)) > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{pendingQuotesCount + pendingBookingsCount + (isHybrid ? activeOrderCount : 0)}</span>}
             </button>
             {isService ? (
-              <>
-                <button onClick={() => setTab("orders")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "orders" ? "text-primary" : "text-muted-foreground"}`}>
-                  <MessageSquare className="h-5 w-5" />{isEstetica ? "Consultas" : "Presupuestos"}
-                  {pendingQuotesCount > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{pendingQuotesCount}</span>}
-                </button>
-                <button onClick={() => setTab("pos")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "pos" ? "text-primary" : "text-muted-foreground"}`}>
-                  <CalendarDays className="h-5 w-5" />Turnos
-                  {pendingBookingsCount > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{pendingBookingsCount}</span>}
-                </button>
-                {isTaller && (
+              isTaller ? (
+                // Taller: el tablero primero (operación principal), luego
+                // agenda, presupuestos y caja.
+                <>
                   <button onClick={() => setTab("taller")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "taller" ? "text-primary" : "text-muted-foreground"}`}>
                     <Wrench className="h-5 w-5" />Taller
                     {openOrdersCount > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{openOrdersCount}</span>}
                   </button>
-                )}
-                <button onClick={() => setTab("caja")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "caja" ? "text-primary" : "text-muted-foreground"}`}>
-                  <DollarSign className="h-5 w-5" />Cobros
-                  {pendingDepositsCount > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{pendingDepositsCount}</span>}
-                </button>
-              </>
+                  <button onClick={() => setTab("pos")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "pos" ? "text-primary" : "text-muted-foreground"}`}>
+                    <CalendarDays className="h-5 w-5" />Turnos
+                    {pendingBookingsCount > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{pendingBookingsCount}</span>}
+                  </button>
+                  <button onClick={() => setTab("orders")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "orders" ? "text-primary" : "text-muted-foreground"}`}>
+                    <MessageSquare className="h-5 w-5" />Presup.
+                    {pendingQuotesCount > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{pendingQuotesCount}</span>}
+                  </button>
+                  <button onClick={() => setTab("caja")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "caja" ? "text-primary" : "text-muted-foreground"}`}>
+                    <DollarSign className="h-5 w-5" />Cobros
+                    {pendingDepositsCount > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{pendingDepositsCount}</span>}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => setTab("orders")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "orders" ? "text-primary" : "text-muted-foreground"}`}>
+                    <MessageSquare className="h-5 w-5" />{isEstetica ? "Consultas" : "Presupuestos"}
+                    {pendingQuotesCount > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{pendingQuotesCount}</span>}
+                  </button>
+                  <button onClick={() => setTab("pos")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "pos" ? "text-primary" : "text-muted-foreground"}`}>
+                    <CalendarDays className="h-5 w-5" />Turnos
+                    {pendingBookingsCount > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{pendingBookingsCount}</span>}
+                  </button>
+                  <button onClick={() => setTab("caja")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "caja" ? "text-primary" : "text-muted-foreground"}`}>
+                    <DollarSign className="h-5 w-5" />Cobros
+                    {pendingDepositsCount > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{pendingDepositsCount}</span>}
+                  </button>
+                </>
+              )
             ) : (
               <>
             <button onClick={() => setTab("orders")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "orders" ? "text-primary" : "text-muted-foreground"}`}>
@@ -2536,6 +2560,12 @@ function VendorDashboardInner() {
                   <button onClick={() => { setTab("reviews"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "reviews" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                     <Star className="h-5 w-5" />Reseñas
                   </button>
+                  )}
+                  {/* Clientes (CRM): taller/estética/servicio con el plan que lo trae. */}
+                  {canFeature("crm") && (
+                    <button onClick={() => { setTab("clientes"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "clientes" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                      <Users className="h-5 w-5" />Clientes
+                    </button>
                   )}
                   <button onClick={() => { setTab("history"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "history" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                     <History className="h-5 w-5" />Historial

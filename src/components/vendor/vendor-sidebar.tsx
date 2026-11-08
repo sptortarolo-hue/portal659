@@ -311,18 +311,31 @@ export default function VendorSidebar({
   }[] = [{ tab: "hoy", label: "Hoy", title: "Hoy", icon: Home }];
 
   if (isService) {
-    railItems.push({
-      tab: "orders",
-      label: isEstetica && !isTaller ? "Consultas" : "Presup.",
-      title: isEstetica && !isTaller ? "Consultas" : "Presupuestos",
-      icon: MessageSquare,
-      badge: pendingQuotesCount,
-    });
-    railItems.push({ tab: "pos", label: "Turnos", title: "Turnos", icon: CalendarDays, badge: pendingBookingsCount });
+    // Taller: el tablero es la operación principal (patrón del rubro) —
+    // sube a 2do lugar; Pedidos/Mostrador/Catálogo quedan en el menú
+    // desplegable. Estética mantiene su orden actual.
     if (isTaller) {
-      railItems.push({ tab: "taller" as any, label: "🛠️ Taller", title: "Taller", icon: Wrench, badge: pendingBookingsCount });
+      railItems.push({ tab: "taller" as any, label: "Taller", title: "🛠️ Taller (tablero de órdenes)", icon: Wrench, badge: pendingBookingsCount });
+      railItems.push({ tab: "pos", label: "Turnos", title: "Turnos", icon: CalendarDays, badge: pendingBookingsCount });
+      railItems.push({
+        tab: "orders",
+        label: "Presup.",
+        title: "Presupuestos",
+        icon: MessageSquare,
+        badge: pendingQuotesCount,
+      });
+      railItems.push({ tab: "caja", label: "Caja", title: "Caja", icon: DollarSign });
+    } else {
+      railItems.push({
+        tab: "orders",
+        label: isEstetica ? "Consultas" : "Presup.",
+        title: isEstetica ? "Consultas" : "Presupuestos",
+        icon: MessageSquare,
+        badge: pendingQuotesCount,
+      });
+      railItems.push({ tab: "pos", label: "Turnos", title: "Turnos", icon: CalendarDays, badge: pendingBookingsCount });
+      railItems.push({ tab: "caja", label: "Caja", title: "Caja", icon: DollarSign });
     }
-    railItems.push({ tab: "caja", label: "Caja", title: "Caja", icon: DollarSign });
     if (isEstetica) {
       railItems.push({ tab: "pedidos", label: "Pedidos", title: "Pedidos", icon: Package, badge: orderCount });
       railItems.push({ tab: "mostrador", label: "Mostr.", title: "Mostrador", icon: ShoppingBag });
@@ -370,13 +383,17 @@ export default function VendorSidebar({
       <div className="space-y-0.5">
         {isService ? (
           <>
-            <NavButton
-              active={currentTab === "orders"}
-              onClick={() => handleTab("orders")}
-              icon={MessageSquare}
-              label={isEstetica && !isTaller ? "Consultas" : "Presupuestos"}
-              badge={pendingQuotesCount}
-            />
+            {/* Taller: el tablero primero; luego agenda, presupuestos y caja.
+                Estética mantiene su orden actual. */}
+            {isTaller && (
+              <NavButton
+                active={currentTab === "taller" as any}
+                onClick={() => handleTab("taller" as any)}
+                icon={Wrench}
+                label="🛠️ Taller (tablero)"
+                badge={pendingBookingsCount}
+              />
+            )}
             <NavButton
               active={currentTab === "pos"}
               onClick={() => handleTab("pos")}
@@ -384,12 +401,22 @@ export default function VendorSidebar({
               label="Turnos"
               badge={pendingBookingsCount}
             />
+            {!isTaller && (
+              <NavButton
+                active={currentTab === "orders"}
+                onClick={() => handleTab("orders")}
+                icon={MessageSquare}
+                label={isEstetica ? "Consultas" : "Presupuestos"}
+                badge={pendingQuotesCount}
+              />
+            )}
             {isTaller && (
               <NavButton
-                active={currentTab === "taller" as any}
-                onClick={() => handleTab("taller" as any)}
-                icon={Wrench}
-                label="🛠️ Taller"
+                active={currentTab === "orders"}
+                onClick={() => handleTab("orders")}
+                icon={MessageSquare}
+                label="Presupuestos"
+                badge={pendingQuotesCount}
               />
             )}
             <NavButton

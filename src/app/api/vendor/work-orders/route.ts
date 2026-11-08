@@ -3,7 +3,8 @@ import { queryMany, queryOne, withTransaction } from "@/lib/db";
 import { ensureServiceCustomer } from "@/lib/customers";
 import { toE164 } from "@/lib/phone";
 import { resolveEquipmentForWorkTx } from "@/lib/equipment-server";
-import { isoTodayAR } from "@/lib/work-order";
+import { isoTodayAR, normalizeChecklist } from "@/lib/work-order";
+import { addBookingEventTx } from "@/lib/booking-events";
 import { isPreviewRow } from "@/lib/preview-flag";
 import { NextResponse } from "next/server";
 import crypto from "crypto";
@@ -112,6 +113,13 @@ export async function POST(request: Request) {
       // si existen, para que la orden se cree igual en bases parciales.
       if (cols.has("notes")) values.notes = String(body.notes || "").trim().slice(0, 2000) || null;
       if (cols.has("diagnosis")) values.diagnosis = String(body.diagnosis || "").trim().slice(0, 1000) || null;
+      // Checklist de ingreso (taller v3): opcional y genérico.
+      if (cols.has("intake_checklist") && body.intake_checklist != null) {
+        const cl = normalizeChecklist(body.intake_checklist);
+        const hasContent =
+          (cl.accessories?.length || 0) > 0 || cl.other || cl.unlock || cl.condition;
+        if (hasContent) values.intake_checklist = JSON.stringify(cl);
+      }
       if (cols.has("confirm_token")) values.confirm_token = confirmToken;
       if (cols.has("is_preview")) values.is_preview = isPreview;
       if (cols.has("deposit_amount")) values.deposit_amount = depositAmount;
@@ -139,6 +147,16 @@ export async function POST(request: Request) {
              RETURNING id, work_order_no`,
             insertVals
           );
+          if (rows[0]) {
+            // Event feed: nacimiento de la orden (tolerante a migración).
+            await addBookingEventTx(tx, {
+              vendorId: gate.vendor.id,
+              bookingId: rows[0].id,
+              kind: "created",
+              message: `Orden recibida${Number(rows[0].work_order_no) ? ` (N° ${rows[0].work_order_no})` : ""}: ${declaredIssue.slice(0, 120)}`,
+              actor: (gate.vendor as { user_id?: string }).user_id || null,
+            });
+          }
           return rows[0];
         } catch (e) {
           const msg = (e as Error)?.message || "";

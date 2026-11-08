@@ -1,8 +1,9 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CustomerFormTimeline } from "@/components/dashboard/customer-form-timeline";
+import { WorkOrderModal } from "@/components/dashboard/work-order-modal";
 import { customerMatches } from "@/lib/search-match";
 import { cn } from "@/lib/utils";
 import { TONE_CHIP, type PanelTone } from "@/components/panel-ui/tones";
@@ -376,7 +377,7 @@ function waLink(phone: string): string {
   return `https://wa.me/${d}`;
 }
 
-export function CustomersManager({ serviceMode = false, vendorId = null, loyaltyEvery = null, loyaltyPct = null, highlightPhone = null, estetica = true, taller = false }: { serviceMode?: boolean; vendorId?: string | null; loyaltyEvery?: number | null; loyaltyPct?: number | null; highlightPhone?: string | null; /** Fichas dinámicas (customer-form-timeline): solo estética; taller y oficios no las usan. */ estetica?: boolean; /** Vertical taller: oculta bloques de estética (cumpleaños). */ taller?: boolean } = {}) {
+export function CustomersManager({ serviceMode = false, vendorId = null, loyaltyEvery = null, loyaltyPct = null, highlightPhone = null, estetica = true, taller = false, onOrderCreated }: { serviceMode?: boolean; vendorId?: string | null; loyaltyEvery?: number | null; loyaltyPct?: number | null; highlightPhone?: string | null; /** Fichas dinámicas (customer-form-timeline): solo estética; taller y oficios no las usan. */ estetica?: boolean; /** Vertical taller: oculta bloques de estética (cumpleaños). */ taller?: boolean; /** Se dispara cuando se crea una orden desde el cliente (para recargar datos). */ onOrderCreated?: () => void } = {}) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -384,6 +385,8 @@ export function CustomersManager({ serviceMode = false, vendorId = null, loyalty
   const [query, setQuery] = useState("");
   const [segment, setSegment] = useState<"all" | Segment>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [orderModalOpen, setOrderModalOpen] = useState(false);
+  const [orderForPhone, setOrderForPhone] = useState<{ phone: string; name: string | null } | null>(null);
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   // Auto-expandir y scrollear al cliente indicado por highlightPhone.
   useEffect(() => {
@@ -843,6 +846,18 @@ export function CustomersManager({ serviceMode = false, vendorId = null, loyalty
                       customerName={c.name}
                     />
                   )}
+                  {taller && serviceMode && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOrderForPhone({ phone: c.phone, name: c.name });
+                        setOrderModalOpen(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-2.5 py-2 text-xs font-medium hover:bg-muted"
+                    >
+                      🛠️ Nueva orden de servicio para este cliente
+                    </button>
+                  )}
 
                   {serviceMode && estetica && (
                     <CustomerFormTimeline vendorId={vendorId} phone={c.phone} />
@@ -917,6 +932,20 @@ export function CustomersManager({ serviceMode = false, vendorId = null, loyalty
             </div>
           ))}
         </div>
+      )}
+      {orderModalOpen && orderForPhone && (
+        <WorkOrderModal
+          onClose={() => {
+            setOrderModalOpen(false);
+            setOrderForPhone(null);
+          }}
+          onCreated={() => {
+            setOrderModalOpen(false);
+            setOrderForPhone(null);
+            void onOrderCreated?.();
+          }}
+          vendorCategory={undefined}
+        />
       )}
     </div>
   );

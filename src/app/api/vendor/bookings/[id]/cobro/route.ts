@@ -1,5 +1,6 @@
 import { gateRequest } from "@/lib/subscription-gate";
 import { query, queryOne, withTransaction } from "@/lib/db";
+import { addBookingEventTx } from "@/lib/booking-events";
 import { getSiteUrl } from "@/lib/site-url";
 import { isPreviewRow } from "@/lib/preview-flag";
 import { notifyServiceClient } from "@/lib/service-notify";
@@ -228,6 +229,23 @@ export async function POST(
           `UPDATE bookings SET service_price = $1 WHERE id = $2 AND vendor_id = $3`,
           [finalPrice, id, gate.vendor.id]
         ).catch(() => { /* sin columna: se ignora */ });
+      }
+      // Event feed (taller v3): cobro y firma quedan en la actividad.
+      await addBookingEventTx(tx, {
+        vendorId: gate.vendor.id,
+        bookingId: id,
+        kind: "payment",
+        message: `Cobrado $${Number(amountPaid).toLocaleString("es-AR")} · ${paymentMethod}`,
+        actor: (gate.vendor as { user_id?: string }).user_id || null,
+      });
+      if (signatureData) {
+        await addBookingEventTx(tx, {
+          vendorId: gate.vendor.id,
+          bookingId: id,
+          kind: "signature",
+          message: `Firma del cliente${signatureName ? ` (${signatureName})` : ""}`,
+          actor: (gate.vendor as { user_id?: string }).user_id || null,
+        });
       }
       // El cobro del turno se registra en la Caja a través de `bookings.paid_at`
       // (computeCashClosing suma bookings por payment_method), igual que

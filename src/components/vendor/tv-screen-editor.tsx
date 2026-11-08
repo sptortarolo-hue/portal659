@@ -70,6 +70,8 @@ export function TvScreenEditor({
   /** Todos los productos del comercio (para elegir cuáles se muestran en cada franja). */
   const [allProducts, setAllProducts] = useState<Array<{ id: string; name: string; priceLabel: string | null; imageUrl: string | null; category: string | null }>>([]);
   const [productsLoaded, setProductsLoaded] = useState(false);
+  /** Índices de franjas horarias colapsadas en el editor. */
+  const [collapsedDayparts, setCollapsedDayparts] = useState<Set<number>>(new Set());
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -185,6 +187,14 @@ export function TvScreenEditor({
     const nextIds = [...allPids].filter((pid) => !current.has(pid));
     const next = config.dayparts.map((x, j) => (j !== idx ? x : { ...x, productIds: nextIds }));
     edit({ dayparts: next });
+  };
+
+  /** Colapsa/expande una franja horaria en el editor. */
+  const toggleCollapseDaypart = (idx: number) => {
+    const next = new Set(collapsedDayparts);
+    if (next.has(idx)) next.delete(idx);
+    else next.add(idx);
+    setCollapsedDayparts(next);
   };
 
   if (!screen) return null;
@@ -541,6 +551,13 @@ export function TvScreenEditor({
                     >
                       ✕
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => toggleCollapseDaypart(i)}
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      {collapsedDayparts.has(i) ? "▸" : "▾"}
+                    </button>
                   </div>
                   <div className="flex gap-1">
                     {DAYS.map((lbl, day) => {
@@ -598,69 +615,78 @@ export function TvScreenEditor({
                   </div>
 
                   {/* Productos/platos de la franja (vacío = todos los de las categorías elegidas). */}
-                  {(() => {
-                    const catsForD = d.categoryIds.length > 0 ? d.categoryIds : Array.from(productsByCategory.keys());
-                    return (
-                      <div className="mt-2 space-y-1">
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                          Productos a mostrar en esta franja
-                        </p>
-                        <div className="flex flex-wrap gap-2 mb-1">
-                          <button
-                            type="button"
-                            onClick={() => selectAllDaypartProducts(i, catsForD)}
-                            className="text-xs border border-border rounded px-2 py-1 hover:bg-muted transition-colors"
-                          >
-                            Seleccionar todos
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => clearAllDaypartProducts(i)}
-                            className="text-xs border border-border rounded px-2 py-1 hover:bg-muted transition-colors"
-                          >
-                            Deseleccionar todos
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => invertDaypartProducts(i, catsForD)}
-                            className="text-xs border border-border rounded px-2 py-1 hover:bg-muted transition-colors"
-                          >
-                            Invertir selección
-                          </button>
-                        </div>
-                        <div className="grid gap-1 sm:grid-cols-2">
-                          {catsForD.flatMap((cat) => {
-                            const prods = productsByCategory.get(cat) || [];
-                            return prods.map((p) => {
-                              const on = d.productIds.includes(p.id);
-                              return (
-                                <label key={p.id} className="flex items-center gap-2 rounded border border-border bg-background px-2 py-1.5 text-[11px] hover:bg-muted/50">
-                                  <input
-                                    type="checkbox"
-                                    checked={on}
-                                    onChange={(e) => {
-                                      const next = config.dayparts.map((x, j) => {
-                                        if (j !== i) return x;
-                                        const ids = e.target.checked ? [...x.productIds, p.id] : x.productIds.filter((id) => id !== p.id);
-                                        return { ...x, productIds: ids };
-                                      });
-                                      edit({ dayparts: next });
-                                    }}
-                                    className="h-4 w-4 rounded border-primary text-primary"
-                                  />
-                                  <span className="truncate min-w-0">{p.name}</span>
-                                  {p.priceLabel && <span className="text-[10px] text-muted-foreground ml-1">{p.priceLabel}</span>}
-                                </label>
-                              );
-                            });
-                          })}
-                        </div>
-                        {catsForD.length === 0 && (
-                          <p className="text-[10px] text-muted-foreground">Seleccioná categorías para ver sus productos.</p>
-                        )}
-                      </div>
-                    );
-                  })()}
+                  {!collapsedDayparts.has(i) && (
+                    <>
+                      {(() => {
+                        const catsForD = d.categoryIds.length > 0 ? d.categoryIds : Array.from(productsByCategory.keys());
+                        return (
+                          <div className="mt-2 space-y-1">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                              Productos a mostrar en esta franja
+                            </p>
+                            <div className="flex flex-wrap gap-2 mb-1">
+                              <button
+                                type="button"
+                                onClick={() => selectAllDaypartProducts(i, catsForD)}
+                                className="text-xs border border-border rounded px-2 py-1 hover:bg-muted transition-colors"
+                              >
+                                Seleccionar todos
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => clearAllDaypartProducts(i)}
+                                className="text-xs border border-border rounded px-2 py-1 hover:bg-muted transition-colors"
+                              >
+                                Deseleccionar todos
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => invertDaypartProducts(i, catsForD)}
+                                className="text-xs border border-border rounded px-2 py-1 hover:bg-muted transition-colors"
+                              >
+                                Invertir selección
+                              </button>
+                            </div>
+                            <div className="grid gap-1 sm:grid-cols-2">
+                              {catsForD.flatMap((cat) => {
+                                const prods = productsByCategory.get(cat) || [];
+                                return prods.map((p) => {
+                                  const on = d.productIds.includes(p.id);
+                                  return (
+                                    <label key={p.id} className="flex items-center gap-2 rounded border border-border bg-background px-2 py-1.5 text-[11px] hover:bg-muted/50">
+                                      <input
+                                        type="checkbox"
+                                        checked={on}
+                                        onChange={(e) => {
+                                          const next = config.dayparts.map((x, j) => {
+                                            if (j !== i) return x;
+                                            const ids = e.target.checked ? [...x.productIds, p.id] : x.productIds.filter((id) => id !== p.id);
+                                            return { ...x, productIds: ids };
+                                          });
+                                          edit({ dayparts: next });
+                                        }}
+                                        className="h-4 w-4 rounded border-primary text-primary"
+                                      />
+                                      <span className="truncate min-w-0">{p.name}</span>
+                                      {p.priceLabel && <span className="text-[10px] text-muted-foreground ml-1">{p.priceLabel}</span>}
+                                    </label>
+                                  );
+                                });
+                              })}
+                            </div>
+                            {catsForD.length === 0 && (
+                              <p className="text-[10px] text-muted-foreground">Seleccioná categorías para ver sus productos.</p>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </>
+                  )}
+                  {collapsedDayparts.has(i) && (
+                    <p className="mt-2 text-[10px] text-muted-foreground">
+                      Franja colapsada · {d.productIds.length} producto(s) seleccionado(s)
+                    </p>
+                  )}
 
                   {/* Tema propio de la franja (vacío = el tema general de la pantalla). */}
                   <div className="mt-2 flex items-center gap-2">
@@ -1037,7 +1063,7 @@ export function TvScreenEditor({
 
     <TvDestacadosPicker
       open={pickerOpen}
-      items={items}
+      items={allProducts}
       selected={config.hero.productIds}
       onClose={() => setPickerOpen(false)}
       onSave={(ids) => {

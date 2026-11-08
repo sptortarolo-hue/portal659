@@ -279,7 +279,7 @@ export function normalizeTvConfig(input: unknown): TvConfig {
             ? (dr.categoryIds.filter((x: unknown) => typeof x === "string" && x) as string[])
             : [];
           const pids = Array.isArray(dr.productIds)
-            ? (dr.productIds.filter((x: unknown) => typeof x === "string" && x) as string[])
+            ? (dr.productIds.filter((x: unknown) => typeof x === "string" && x) as string[]).slice(0, 4)
             : [];
           const dt: TvDaypart = {
             id: str(dr.id, Math.random().toString(36).slice(2, 9)),

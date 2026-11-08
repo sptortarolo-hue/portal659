@@ -8,16 +8,20 @@ import { Textarea } from "@/components/ui/textarea";
 import { CustomerPicker } from "@/components/dashboard/quote-manual-modal";
 import { EquipmentPicker } from "@/components/dashboard/equipment-picker";
 import { defaultDeliveryISO } from "@/lib/work-order";
-import { ACCESORIO_PRESETS, faultPresetsFor, type IntakeChecklist } from "@/lib/work-order";
+import { faultPresetsFor } from "@/lib/work-order";
 import type { Equipment } from "@/lib/equipment";
 
 /**
- * Intake < 60s (RepairBook/SpokeHub): recepción de taller en 3 toques —
- * cliente (autocompleta + sus equipos) → equipo (elegir/crear con foto) →
- * falla (chips por rubro + texto) y entrega/seña/precio estimado.
- * Checklist de ingreso OPCIONAL y genérico (colapsado por defecto):
- * accesorios, contraseña/patrón y estado al recibir — sirve igual para
- * bicicletería, electrónica, electrodomésticos, hogar, etc.
+ * Intake ultra-simplificado (estilo RepairBook): recibe el equipo en
+ * menos de un minuto. Solo lo indispensable:
+ *   1. Cliente (nombre + teléfono)
+ *   2. Equipo (elegir o crear al vuelo)
+ *   3. Falla (chips por rubro + texto libre)
+ *   4. Fecha de entrega estimada
+ *   5. Seña (opcional)
+ *
+ * Todo lo demás (diagnóstico, repuestos, precio final, checklist, notas,
+ * firma) se hace después desde la ficha de la orden.
  */
 export function WorkOrderModal({
   onClose,
@@ -27,7 +31,8 @@ export function WorkOrderModal({
 }: {
   onClose: () => void;
   onCreated: (data: { booking: any; work_order_no: number | null }) => void;
-  /** Catálogo de servicios (opcional): etiqueta rápida del trabajo. */
+  /** Catálogo de servicios (opcional): no se usa en el intake rápido,
+      se vincula después desde el detalle de la orden. */
   serviceOptions?: { id: string; name: string }[];
   /** Rubro del comercio (para las chips de falla). */
   vendorCategory?: string;
@@ -38,14 +43,8 @@ export function WorkOrderModal({
   const [declaredIssue, setDeclaredIssue] = useState("");
   const [deliveryDate, setDeliveryDate] = useState(defaultDeliveryISO());
   const [depositAmount, setDepositAmount] = useState("");
-  const [estimatedPrice, setEstimatedPrice] = useState("");
-  const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-
-  // Checklist de ingreso (opcional): colapsado por defecto — intake rápido.
-  const [showChecklist, setShowChecklist] = useState(false);
-  const [checklist, setChecklist] = useState<IntakeChecklist>({ accessories: [] });
 
   const presets = useMemo(() => faultPresetsFor(vendorCategory), [vendorCategory]);
 
@@ -57,12 +56,6 @@ export function WorkOrderModal({
       return parts.join(", ");
     });
   }
-
-  const checklistHasContent =
-    (checklist.accessories?.length || 0) > 0 ||
-    !!(checklist.other && checklist.other.trim()) ||
-    !!(checklist.unlock && checklist.unlock.trim()) ||
-    !!(checklist.condition && checklist.condition.trim());
 
   async function submit() {
     setError("");
@@ -80,11 +73,8 @@ export function WorkOrderModal({
           customer_phone: customerPhone.trim(),
           declared_issue: declaredIssue.trim(),
           delivery_date: deliveryDate || null,
-          notes: notes.trim() || null,
           deposit_amount: depositAmount.trim() ? Number(depositAmount) : null,
-          service_price: estimatedPrice.trim() ? Number(estimatedPrice) : null,
           equipment_id: equipment?.id || null,
-          intake_checklist: checklistHasContent ? checklist : undefined,
         }),
       });
       const data = await res.json();
@@ -106,22 +96,15 @@ export function WorkOrderModal({
         <div className="p-5 pb-3 shrink-0">
           <h3 className="font-display text-lg font-semibold">🛠️ Nueva orden de servicio</h3>
           <p className="text-xs text-muted-foreground">
-            Ingresá el equipo hoy (sin horario) y estimá una fecha de entrega. Con precio estimado nace aprobada.
+            Ingresá el equipo hoy (sin horario) y estimá una fecha de entrega.
           </p>
         </div>
 
         <div className="overflow-y-auto px-5 pb-3 space-y-3 flex-1 min-h-0">
-          <CustomerPicker
-            name={customerName}
-            phone={customerPhone}
-            onPick={(n, p) => {
-              setCustomerName(n);
-              setCustomerPhone(p);
-            }}
-          />
+          {/* 1. Cliente */}
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <Label className="text-xs">Cliente *</Label>
+              <Label className="text-xs font-medium">Cliente *</Label>
               <Input
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
@@ -130,7 +113,7 @@ export function WorkOrderModal({
               />
             </div>
             <div>
-              <Label className="text-xs">Teléfono *</Label>
+              <Label className="text-xs font-medium">Teléfono *</Label>
               <Input
                 value={customerPhone}
                 onChange={(e) => setCustomerPhone(e.target.value)}
@@ -139,7 +122,16 @@ export function WorkOrderModal({
               />
             </div>
           </div>
+          <CustomerPicker
+            name={customerName}
+            phone={customerPhone}
+            onPick={(n, p) => {
+              setCustomerName(n);
+              setCustomerPhone(p);
+            }}
+          />
 
+          {/* 2. Equipo */}
           <EquipmentPicker
             phone={customerPhone}
             customerName={customerName}
@@ -147,10 +139,13 @@ export function WorkOrderModal({
             onChange={setEquipment}
           />
 
-          <div>
-            <Label className="text-xs">Falla declarada / trabajo a realizar *</Label>
-            {/* Chips por rubro: un toque arma la falla (editable después) */}
-            <div className="flex flex-wrap gap-1 mt-1.5">
+          {/* 3. Falla declarada */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-medium">Falla declarada *</Label>
+              <span className="text-[10px] text-muted-foreground">toca los chips o escribí</span>
+            </div>
+            <div className="flex flex-wrap gap-1 mb-1">
               {presets.items.map((item) => {
                 const parts = declaredIssue.split(/,\s*/).filter(Boolean);
                 const on = parts.includes(item);
@@ -159,7 +154,7 @@ export function WorkOrderModal({
                     key={item}
                     type="button"
                     onClick={() => togglePreset(item)}
-                    className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${on ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-muted-foreground hover:bg-muted"}`}
+                    className={`rounded-full border px-2 py-1 text-[11px] font-medium whitespace-nowrap ${on ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-muted-foreground hover:bg-muted"}`}
                   >
                     {item}
                   </button>
@@ -171,23 +166,24 @@ export function WorkOrderModal({
               onChange={(e) => setDeclaredIssue(e.target.value)}
               placeholder="Ej: rueda trasera descentrada, cambio de cubierta y revisión de frenos"
               rows={2}
-              className="mt-1.5 text-sm"
+              className="mt-0.5 text-sm"
             />
           </div>
 
+          {/* 4. Entrega estimada */}
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <Label className="text-xs">Entrega estimada</Label>
+              <Label className="text-xs font-medium">Entrega estimada</Label>
               <Input
                 type="date"
                 value={deliveryDate}
                 onChange={(e) => setDeliveryDate(e.target.value)}
                 className="mt-1 h-9 text-sm"
               />
-              <p className="text-[10px] text-muted-foreground mt-0.5">Vacío = a convenir con el cliente.</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Vacío = a convenir.</p>
             </div>
             <div>
-              <Label className="text-xs">Seña (opcional)</Label>
+              <Label className="text-xs font-medium">Seña (opcional)</Label>
               <Input
                 type="number"
                 min={0}
@@ -196,102 +192,9 @@ export function WorkOrderModal({
                 placeholder="$"
                 className="mt-1 h-9 text-sm"
               />
-              <p className="text-[10px] text-muted-foreground mt-0.5">Después generás el link de cobro.</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Se cobra después.</p>
             </div>
           </div>
-
-          <div>
-            <Label className="text-xs">Precio estimado (opcional)</Label>
-            <Input
-              type="number"
-              min={0}
-              value={estimatedPrice}
-              onChange={(e) => setEstimatedPrice(e.target.value)}
-              placeholder="$ (si lo sabés al ingreso)"
-              className="mt-1 h-9 text-sm"
-            />
-            <p className="text-[10px] text-muted-foreground mt-0.5">
-              Si lo cargás, la orden nace "Aprobada" (sin presupuesto). Si el costo cambia después, cotizá con partidas.
-            </p>
-          </div>
-
-          {/* Checklist de ingreso — OPCIONAL, colapsado por defecto */}
-          {!showChecklist ? (
-            <button
-              type="button"
-              className="text-xs text-primary font-medium hover:underline"
-              onClick={() => setShowChecklist(true)}
-            >
-              ＋ Checklist de ingreso (opcional: accesorios, contraseña, estado)
-            </button>
-          ) : (
-            <div className="rounded-xl border border-border p-2.5 space-y-2">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Checklist de ingreso — tildá lo que entrega el cliente
-              </p>
-              <div className="flex flex-wrap gap-1">
-                {ACCESORIO_PRESETS.map((a) => {
-                  const on = (checklist.accessories || []).includes(a);
-                  return (
-                    <button
-                      key={a}
-                      type="button"
-                      onClick={() => {
-                        const cur = checklist.accessories || [];
-                        setChecklist({
-                          ...checklist,
-                          accessories: on ? cur.filter((x) => x !== a) : [...cur, a],
-                        });
-                      }}
-                      className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${on ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-muted-foreground hover:bg-muted"}`}
-                    >
-                      {a}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <Input
-                  value={checklist.other || ""}
-                  onChange={(e) => setChecklist({ ...checklist, other: e.target.value })}
-                  placeholder="Otros accesorios (libre)"
-                  className="h-8 text-xs"
-                />
-                <Input
-                  value={checklist.unlock || ""}
-                  onChange={(e) => setChecklist({ ...checklist, unlock: e.target.value })}
-                  placeholder="🔑 Contraseña / patrón"
-                  className="h-8 text-xs"
-                />
-              </div>
-              <Input
-                value={checklist.condition || ""}
-                onChange={(e) => setChecklist({ ...checklist, condition: e.target.value })}
-                placeholder="Estado al recibir (rayones, golpes, falta algo...)"
-                className="h-8 text-xs"
-              />
-              <p className="text-[10px] text-muted-foreground">
-                Solo lo ve tu taller (nunca el cliente). Sirve para cualquier rubro.
-              </p>
-            </div>
-          )}
-
-          <div>
-            <Label className="text-xs">Notas internas</Label>
-            <Textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Detalles para el taller (no se imprime en el comprobante)"
-              rows={2}
-              className="mt-1 text-sm"
-            />
-          </div>
-
-          {serviceOptions && serviceOptions.length > 0 && (
-            <p className="text-[11px] text-muted-foreground">
-              Si el trabajo coincide con un servicio del catálogo, podés vincularlo después desde el detalle de la orden.
-            </p>
-          )}
 
           {error && <p className="text-sm text-red-600">{error}</p>}
         </div>

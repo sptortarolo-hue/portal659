@@ -53,21 +53,23 @@ export async function logStockMovement(
       .catch(() => ({ e: false }) as { e: boolean } | undefined);
     hasBookingRef = col?.e === true;
   }
+  const vals = [
+    move.vendorId,
+    move.product_id || null,
+    move.variant_id || null,
+    move.ingredient_id || null,
+    Number(move.qty_delta),
+    move.reason,
+    move.ref_order || null,
+    move.ref_purchase || null,
+    move.ref_count || null,
+    ...(hasBookingRef ? [move.ref_booking || null] : []),
+    move.created_by || null,
+  ];
+  const placeholders = vals.map((_, i) => `$${i + 1}`).join(", ");
   await tx.queryVoid(
     `INSERT INTO stock_ledger (vendor_id, product_id, variant_id, ingredient_id, qty_delta, reason, ref_order, ref_purchase, ref_count${hasBookingRef ? ", ref_booking" : ""}, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9${hasBookingRef ? ", $10" : ""}${hasBookingRef ? ", $11" : ""})`,
-    [
-      move.vendorId,
-      move.product_id || null,
-      move.variant_id || null,
-      move.ingredient_id || null,
-      Number(move.qty_delta),
-      move.reason,
-      move.ref_order || null,
-      move.ref_purchase || null,
-      move.ref_count || null,
-      ...(hasBookingRef ? [move.ref_booking || null] : []),
-      move.created_by || null,
-    ]
+     VALUES (${placeholders})`,
+    vals
   );
 }

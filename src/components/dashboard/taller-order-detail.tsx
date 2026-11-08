@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { BookingCardProps } from "@/components/dashboard/booking-card";
 import { isOrderBooking } from "@/lib/agenda";
-import { equipmentLabel } from "@/lib/equipment";
+import { equipmentLabel, type Equipment } from "@/lib/equipment";
 import {
   ACCESORIO_PRESETS,
   hasChecklistContent,
@@ -104,6 +104,17 @@ export function TallerOrderDetail({
 
   const isOrder = isOrderBooking(booking);
   const due = workOrderDeliveryDue(booking.delivery_date, booking.status);
+  // La API devuelve los campos de equipo con prefijo equipment_* (LEFT JOIN en bookings/route.ts).
+  // equipmentLabel espera brand, model, rodado, identifier, color sin prefijo.
+  const equipmentData: Equipment = {
+    id: booking.equipment_id,
+    brand: booking.equipment_brand,
+    model: booking.equipment_model,
+    rodado: booking.equipment_rodado,
+    identifier: booking.equipment_identifier,
+    color: booking.equipment_color,
+    notes: booking.equipment_notes,
+  };
 
   async function loadDetail() {
     try {
@@ -310,7 +321,7 @@ export function TallerOrderDetail({
             </div>
             <div className="rounded-xl border border-border bg-muted/30 p-2.5">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Equipo</p>
-              <p className="font-medium truncate">{equipmentLabel(booking) || "Sin ficha de equipo"}</p>
+              <p className="font-medium truncate">{equipmentLabel(equipmentData) || "Sin ficha de equipo"}</p>
               {eqJobs && (
                 <p className="text-[11px] text-muted-foreground">
                   {eqJobs.jobs} trabajo{eqJobs.jobs === 1 ? "" : "s"}

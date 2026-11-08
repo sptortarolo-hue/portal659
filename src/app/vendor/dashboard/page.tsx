@@ -1691,7 +1691,10 @@ function VendorDashboardInner() {
   const menuCount = offers.length;
   // Badges de servicios (independientes de los contadores de pedidos).
   const pendingQuotesCount = quotes.filter((q) => q.status === "pending" || q.status === "responded").length;
-  const pendingBookingsCount = bookings.filter((b: any) => b.status === "pending").length;
+  // Turnos pendientes (citas con hora) — sin contar órdenes de servicio.
+  const pendingBookingsCount = bookings.filter(
+    (b: any) => (b.kind === "turno" || b.kind == null) && b.status === "pending"
+  ).length;
   const pendingDepositsCount = quotes.filter((q) => q.deposit_status === "pending").length;
   // Badge del tab "🛠️ Taller": órdenes de servicio abiertas (no completadas).
   const openOrdersCount = bookings.filter(

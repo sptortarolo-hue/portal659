@@ -668,10 +668,11 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
   const storePreviewUrl = storePreview || vendor?.image_url || null;
   const logoPreviewUrl = logoPreview || vendor?.logo_url || null;
 
+  const turnos = bookings.filter((b: any) => !isOrderBooking(b));
   const filteredBookings =
     bookingFilter === "all"
-      ? bookings
-      : bookings.filter((b: any) => b.status === bookingFilter);
+      ? turnos
+      : turnos.filter((b: any) => b.status === bookingFilter);
 
   const groupedBookings: Record<string, any[]> = {};
   for (const b of filteredBookings) {
@@ -1553,7 +1554,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
 
       {(sec === "all" || sec === "turnos") && (
       <>
-      <CollapsibleSection icon="📅" title={`Agenda de turnos (${bookings.length})`} defaultOpen>
+      <CollapsibleSection icon="📅" title={`Agenda de turnos (${turnos.length})`} defaultOpen>
         <div className="space-y-3">
           {bookings.some((b: any) => b?.is_preview === true) && (
             <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 flex items-center gap-2 flex-wrap">
@@ -1652,8 +1653,8 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                 className="h-7 text-xs"
               >
                 {status === "all"
-                  ? `Todos (${bookings.length})`
-                  : `${status === "noshow" ? "Ausentes" : BOOKING_STATUS_LABELS[status]} (${bookings.filter((b: any) => b.status === status).length})`}
+                  ? `Todos (${turnos.length})`
+                  : `${status === "noshow" ? "Ausentes" : BOOKING_STATUS_LABELS[status]} (${turnos.filter((b: any) => b.status === status).length})`}
               </Button>
             ))}
           </div>

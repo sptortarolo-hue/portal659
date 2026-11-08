@@ -15,6 +15,7 @@ import {
 } from "@/lib/work-order";
 import { equipmentLabel } from "@/lib/equipment";
 import { BookingCard, type BookingCardProps } from "@/components/dashboard/booking-card";
+import { TallerOrderCard } from "@/components/dashboard/taller-order-card";
 
 type TimelineItem = {
   id: string;
@@ -48,6 +49,7 @@ export function TallerJobBoard({
   onOpenBooking,
   quotes,
   staff,
+  partsCatalog,
 }: {
   bookings: Booking[];
   filter: WorkOrderBoardFilter;
@@ -58,6 +60,8 @@ export function TallerJobBoard({
   quotes?: Record<string, unknown>[];
   /** Profesionales del local (filtro "mi día"). */
   staff?: { id: string; name: string }[];
+  /** Catálogo de productos para repuestos en la ficha expandida. */
+  partsCatalog?: { id: string; name: string; price?: number | null; promo_price?: number | null; stock?: number | null; stock_control?: boolean | null }[];
 }) {
   const today = isoTodayAR();
   const [dragId, setDragId] = useState<string | null>(null);
@@ -326,6 +330,7 @@ export function TallerJobBoard({
                 state={col}
                 items={items}
                 bookingCardProps={bookingCardProps}
+                partsCatalog={partsCatalog}
                 isDragOver={dragOverCol === col}
                 highlighted={filter === col}
                 onDragOver={(e) => {
@@ -527,6 +532,7 @@ function Column({
   state,
   items,
   bookingCardProps,
+  partsCatalog,
   isDragOver,
   highlighted,
   onDragOver,
@@ -538,6 +544,7 @@ function Column({
   state: WorkOrderState;
   items: Booking[];
   bookingCardProps: Omit<BookingCardProps, "booking">;
+  partsCatalog?: { id: string; name: string; price?: number | null; promo_price?: number | null; stock?: number | null; stock_control?: boolean | null }[];
   isDragOver: boolean;
   highlighted: boolean;
   onDragOver: (e: React.DragEvent) => void;
@@ -574,14 +581,14 @@ function Column({
             key={b.id}
             draggable
             onDragStart={(e) => onDragStart(e, b.id)}
-            onClick={(e) => {
-              // No abrir el detalle si el click vino de un botón/interactivo.
-              if ((e.target as HTMLElement).closest("button, a, input, select, textarea")) return;
-              onOpenBooking?.(b.id);
-            }}
             className="cursor-pointer"
           >
-            <BookingCard booking={b} {...bookingCardProps} />
+            <TallerOrderCard
+              booking={b}
+              bookingCardProps={bookingCardProps}
+              partsCatalog={partsCatalog}
+              onOpenBooking={onOpenBooking}
+            />
           </div>
         ))
       )}

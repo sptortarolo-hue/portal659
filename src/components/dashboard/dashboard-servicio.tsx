@@ -1210,6 +1210,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
           onOpenBooking={(id: string) => setSelectedBookingId(id)}
           quotes={(quotesProp || quotes || []) as any[]}
           staff={catalogStaff}
+          partsCatalog={offers as any[]}
         />
       )}
       {(sec === "all" || sec === "hoy") && quota && quota.limit != null && (

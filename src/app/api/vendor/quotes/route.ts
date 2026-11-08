@@ -1,5 +1,5 @@
 import { gateRequest } from "@/lib/subscription-gate";
-import { queryMany, withTransaction } from "@/lib/db";
+import { queryMany, withTransaction, hasColumn } from "@/lib/db";
 import { ensureServiceCustomer } from "@/lib/customers";
 import { toE164 } from "@/lib/phone";
 import { resolveEquipmentForWorkTx, hasEquipmentColumnTx } from "@/lib/equipment-server";
@@ -28,6 +28,7 @@ export async function GET(request: Request) {
     `SELECT q.id, q.customer_name, q.customer_phone, q.service_name, q.description,
             q.preferred_date, q.preferred_time, q.status, q.vendor_notes, q.quoted_price,
             q.deposit_amount, q.deposit_pct, q.deposit_status, q.photo_urls, q.is_preview, q.created_at,
+            q.booking_id, q.quote_type,
             e.kind AS equipment_kind, e.brand AS equipment_brand, e.model AS equipment_model,
             e.identifier AS equipment_identifier, e.rodado AS equipment_rodado, e.color AS equipment_color
      FROM quotes q LEFT JOIN equipment e ON e.id = q.equipment_id
@@ -105,6 +106,10 @@ export async function POST(request: Request) {
   if (!customerName || !customerPhone || !description) {
     return NextResponse.json({ error: "Faltan cliente, teléfono o descripción" }, { status: 400 });
   }
+  const quoteType = body.quote_type === "orden" ? "orden" : "consulta";
+  const bookingId = typeof body.booking_id === "string" && /^[0-9a-f-]{36}$/i.test(body.booking_id)
+    ? body.booking_id
+    : null;
 
   const rawItems: ManualItem[] = Array.isArray(body.items) ? body.items : [];
   const items = rawItems
@@ -121,49 +126,57 @@ export async function POST(request: Request) {
   const quotedPrice =
     items.length > 0 ? itemsTotal : Math.max(0, Number(body.quoted_price) || 0);
 
+  // Si es tipo orden sin booking_id, forzar a consulta (no puede ser orden sin orden vinculada).
+  const finalType = quoteType === "orden" && !bookingId ? "consulta" : quoteType;
+
   let quoteId: string | null = null;
   const isPreview = gate.previewSession === true;
   try {
     quoteId = await withTransaction(async (tx) => {
-      const eqId = await resolveEquipmentForWorkTx(tx, gate.vendor.id, body, {
+      const eqId = bookingId ? null : await resolveEquipmentForWorkTx(tx, gate.vendor.id, body, {
         name: customerName,
         phone: customerPhone,
       });
       const hasEqCol = eqId ? await hasEquipmentColumnTx(tx, "quotes") : false;
-      const q = hasEqCol
-        ? await tx.query<{ id: string }>(
-            `INSERT INTO quotes (vendor_id, customer_name, customer_phone, service_name, description, preferred_date, preferred_time, status, vendor_notes, quoted_price, origin, is_preview, equipment_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, 'responded', $8, $9, 'vendor', $10, $11) RETURNING id`,
-            [
-              gate.vendor.id,
-              customerName,
-              customerPhone,
-              String(body.service_name || "").trim() || null,
-              description,
-              String(body.preferred_date || "").trim() || null,
-              String(body.preferred_time || "").trim() || null,
-              String(body.vendor_notes || "").trim().slice(0, 2000) || null,
-              quotedPrice,
-              isPreview,
-              eqId,
-            ]
-          )
-        : await tx.query<{ id: string }>(
-            `INSERT INTO quotes (vendor_id, customer_name, customer_phone, service_name, description, preferred_date, preferred_time, status, vendor_notes, quoted_price, origin, is_preview)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, 'responded', $8, $9, 'vendor', $10) RETURNING id`,
-            [
-              gate.vendor.id,
-              customerName,
-              customerPhone,
-              String(body.service_name || "").trim() || null,
-              description,
-              String(body.preferred_date || "").trim() || null,
-              String(body.preferred_time || "").trim() || null,
-              String(body.vendor_notes || "").trim().slice(0, 2000) || null,
-              quotedPrice,
-              isPreview,
-            ]
-          );
+      const hasBookingCol = await hasColumn(tx, "quotes", "booking_id");
+      const hasTypeCol = await hasColumn(tx, "quotes", "quote_type");
+
+      // Construir columnas dinámicamente para tolerar migración pendiente.
+      const cols: string[] = [
+        "vendor_id", "customer_name", "customer_phone", "service_name", "description",
+        "preferred_date", "preferred_time", "status", "vendor_notes", "quoted_price",
+        "origin", "is_preview",
+      ];
+      const vals: unknown[] = [
+        gate.vendor.id, customerName, customerPhone,
+        String(body.service_name || "").trim() || null,
+        description,
+        String(body.preferred_date || "").trim() || null,
+        String(body.preferred_time || "").trim() || null,
+        "responded",
+        String(body.vendor_notes || "").trim().slice(0, 2000) || null,
+        quotedPrice,
+        "vendor",
+        isPreview,
+      ];
+      if (hasBookingCol) {
+        cols.push("booking_id");
+        vals.push(bookingId);
+      }
+      if (hasTypeCol) {
+        cols.push("quote_type");
+        vals.push(finalType);
+      }
+      if (hasEqCol && eqId) {
+        cols.push("equipment_id");
+        vals.push(eqId);
+      }
+
+      const placeholders = cols.map((_, i) => `$${i + 1}`).join(", ");
+      const q = await tx.query<{ id: string }>(
+        `INSERT INTO quotes (${cols.join(", ")}) VALUES (${placeholders}) RETURNING id`,
+        vals
+      );
       const id = q[0]?.id;
       if (!id) throw new Error("No se pudo crear el presupuesto");
       for (const it of items) {

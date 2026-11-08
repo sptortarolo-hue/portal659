@@ -28,6 +28,11 @@ export function WorkOrderModal({
   onCreated,
   serviceOptions,
   vendorCategory,
+  /** Si se pasa, al guardar se llama al endpoint de convertir consulta en orden
+   *  en lugar de crear una orden nueva desde cero. */
+  convertQuoteId?: string | null,
+  /** Fecha de entrega precargada (al convertir una consulta). */
+  initialDeliveryDate?: string | null,
 }: {
   onClose: () => void;
   onCreated: (data: { booking: any; work_order_no: number | null }) => void;
@@ -36,12 +41,16 @@ export function WorkOrderModal({
   serviceOptions?: { id: string; name: string }[];
   /** Rubro del comercio (para las chips de falla). */
   vendorCategory?: string;
+  /** ID de consulta a convertir en orden (opcional). */
+  convertQuoteId?: string | null;
+  /** Fecha de entrega precargada (opcional). */
+  initialDeliveryDate?: string | null;
 }) {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [equipment, setEquipment] = useState<Equipment | null>(null);
   const [declaredIssue, setDeclaredIssue] = useState("");
-  const [deliveryDate, setDeliveryDate] = useState(defaultDeliveryISO());
+  const [deliveryDate, setDeliveryDate] = useState(initialDeliveryDate || defaultDeliveryISO());
   const [depositAmount, setDepositAmount] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -65,21 +74,39 @@ export function WorkOrderModal({
     }
     setSaving(true);
     try {
-      const res = await fetch("/api/vendor/work-orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customer_name: customerName.trim(),
-          customer_phone: customerPhone.trim(),
-          declared_issue: declaredIssue.trim(),
-          delivery_date: deliveryDate || null,
-          deposit_amount: depositAmount.trim() ? Number(depositAmount) : null,
-          equipment_id: equipment?.id || null,
-        }),
-      });
+      let res: Response;
+      if (convertQuoteId) {
+        // Convertir consulta aceptada en orden de servicio vinculada.
+        res = await fetch(`/api/vendor/quotes/${convertQuoteId}/convert-to-order`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            booking_date: new Date().toISOString().slice(0, 10),
+            delivery_date: deliveryDate || null,
+            notes: declaredIssue.trim() || null,
+            deposit_amount: depositAmount.trim() ? Number(depositAmount) : null,
+            equipment_id: equipment?.id || null,
+          }),
+        });
+      } else {
+        res = await fetch("/api/vendor/work-orders", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            customer_name: customerName.trim(),
+            customer_phone: customerPhone.trim(),
+            declared_issue: declaredIssue.trim(),
+            delivery_date: deliveryDate || null,
+            deposit_amount: depositAmount.trim() ? Number(depositAmount) : null,
+            equipment_id: equipment?.id || null,
+          }),
+        });
+      }
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || "No se pudo crear la orden");
-      onCreated(data);
+      // Normalizar: el endpoint de conversión devuelve { order }, el de creación devuelve { booking }.
+      const booking = data.booking || data.order || data;
+      onCreated({ booking, work_order_no: booking.work_order_no ?? null });
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo crear la orden");
     } finally {

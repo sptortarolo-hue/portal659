@@ -476,6 +476,8 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
   const [extendOrder, setExtendOrder] = useState<any | null>(null);
   // Cotizar una orden: modal de presupuesto con la orden precargada.
   const [orderQuoteFor, setOrderQuoteFor] = useState<any | null>(null);
+  // Convertir una consulta aceptada en orden de servicio.
+  const [convertQuoteFor, setConvertQuoteFor] = useState<{ id: string; customer_name: string | null; customer_phone: string | null; description: string } | null>(null);
   // Tab "🛠️ Taller": filtro del job board (todas / recibidas / listas / vencidas).
   const [tallerFilter, setTallerFilter] = useState<WorkOrderBoardFilter>(() => {
     const f = String(initialTallerFilter || "");
@@ -1788,6 +1790,12 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                         </span>
                       )}
                       <Badge className="flex-shrink-0">{QUOTE_STATUS_LABELS[q.status] || q.status}</Badge>
+                      {/* Badge distintivo: consulta vs orden vinculada */}
+                      <span className={`flex-shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                        (q as any).booking_id ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700"
+                      }`}>
+                        {(q as any).booking_id ? "🛠️ Orden" : "📋 Consulta"}
+                      </span>
                     </div>
                     <p className="text-xs text-muted-foreground mb-2 break-words">{q.description}</p>
                     {Array.isArray(q.photo_urls) && q.photo_urls.length > 0 && (
@@ -1900,6 +1908,23 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                                 Descartar
                               </Button>
                             </>
+                          )}
+                          {/* Convertir consulta aceptada en orden de servicio */}
+                          {isTaller && q.status === "accepted" && !q.booking_id && (
+                            <Button
+                              size="sm"
+                              className="h-7 text-xs border-orange-300 text-orange-700"
+                              onClick={() => {
+                                setConvertQuoteFor({
+                                  id: q.id,
+                                  customer_name: q.customer_name || null,
+                                  customer_phone: q.customer_phone || null,
+                                  description: q.description || "",
+                                });
+                              }}
+                            >
+                              🛠️ Crear orden
+                            </Button>
                           )}
                         </>
                       )}
@@ -2275,6 +2300,25 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
             setOrderModalOpen(false);
             const no = Number(data.work_order_no) || 0;
             setMsg(no ? `Orden N° ${no} creada (no cuenta para el tope mensual)` : "Orden creada (no cuenta para el tope mensual)");
+            reload();
+          }}
+        />
+      )}
+
+      {/* Convertir consulta aceptada en orden de servicio */}
+      {convertQuoteFor && (
+        <WorkOrderModal
+          onClose={() => setConvertQuoteFor(null)}
+          vendorCategory={vendor?.category || ""}
+          serviceOptions={isHybrid ? catalogServices : undefined}
+          convertQuoteId={convertQuoteFor.id}
+          initialCustomerName={convertQuoteFor.customer_name || ""}
+          initialCustomerPhone={convertQuoteFor.customer_phone || ""}
+          initialDeclaredIssue={convertQuoteFor.description}
+          onCreated={(data: { booking: any; work_order_no: number | null }) => {
+            setConvertQuoteFor(null);
+            const no = Number(data.work_order_no) || 0;
+            setMsg(no ? `Orden N° ${no} creada desde la consulta` : "Orden creada desde la consulta");
             reload();
           }}
         />

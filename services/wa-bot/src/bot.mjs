@@ -154,13 +154,13 @@ function isPortalVendor(vendor) {
   return ["portal659-bot", "portal-central", "admin-portal659"].includes(slug);
 }
 
-export async function handleInbound({ vendor, waId, body, waPhone }) {
+export async function handleInbound({ vendor, waId, body, waPhone, timestamp }) {
   // Modo portal SOLO para el relay del número central de Portal 659: se
   // identifica por slug del vendor (infraestructura del bot), NO por env
   // global — así el número de un comercio con su propio APK nunca cae en el
   // flujo multi-comercio y sigue el flujo por-comercio de siempre.
   if (isPortalVendor(vendor)) {
-    return await handlePortalInbound({ vendor, waId, body, waPhone });
+    return await handlePortalInbound({ vendor, waId, body, waPhone, timestamp });
   }
   const text = String(body || "").trim();
   const state = (await getState(vendor.id, waId)) || { ...DEFAULT_STATE };
@@ -185,6 +185,8 @@ export async function handleInbound({ vendor, waId, body, waPhone }) {
     // Hora de la última actividad del cliente: la usa el sweep de inactividad
     // (pregunta pendiente sin contestar → "va a ser atendido por una persona").
     state.touchedAt = Date.now();
+    // Timestamp del mensaje entrante (anti-mensajes-viejos tras reconexión del relay).
+    if (timestamp) state.lastMsgTs = timestamp;
 
     // Cancelación global (siempre disponible, incluso durante la pausa de
     // handoff — antes el check de pausa la bloqueaba y el bot callaba hasta
@@ -1500,7 +1502,7 @@ async function fetchPortalMenu(q = "") {
   }
 }
 
-async function handlePortalInbound({ vendor, waId, body, waPhone }) {
+async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
   const text = String(body || "").trim();
   let state = (await getState(vendor.id, waId)) || { ...DEFAULT_STATE };
   if (!Array.isArray(state.history)) state.history = [];
@@ -1510,6 +1512,8 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
   }
   if (!state.items || !Array.isArray(state.items) || state.items === DEFAULT_STATE.items) state.items = [];
   if (!Array.isArray(state.history) || state.history === DEFAULT_STATE.history) state.history = [];
+  // timestamp del mensaje entrante (para debug / anti-mensajes-viejos)
+  if (timestamp) state.lastMsgTs = timestamp;
   if (!state.zone) state.zone = "sicardi-garibaldi";
   if (!state.portalVendorList) state.portalVendorList = [];
 

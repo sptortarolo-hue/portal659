@@ -185,6 +185,7 @@ type inboundMsg struct {
 	waPhone string // teléfono real (SenderAlt) cuando el chat es LID, si hay
 	body    string
 	msgID   string // ID del mensaje en WhatsApp (para idempotencia: evita duplicados por retry)
+	ts      int64  // timestamp Unix del mensaje (edad: filtra re-envíos tras reconexión larga)
 }
 
 // mediaMsg es una imagen/PDF descargada (ej. comprobante de transferencia)
@@ -196,6 +197,7 @@ type mediaMsg struct {
 	name    string
 	data    []byte
 	msgID   string // ID del mensaje en WhatsApp (para idempotencia)
+	ts      int64  // timestamp Unix del mensaje
 }
 
 // qrMsg es el mensaje WS del relay → cerebro con el payload del QR (para que
@@ -380,14 +382,14 @@ func (r *relay) onMessage(m *events.Message) {
 		}
 		fmt.Printf("INBOUND_MEDIA=%s mime=%s size=%d chat=%s\n", mm.kind, mime, len(data), chatJID)
 		select {
-		case r.media <- mediaMsg{waID: chatJID, waPhone: waPhone, mime: mime, name: fileName, data: data, msgID: m.Info.ID}:
+		case r.media <- mediaMsg{waID: chatJID, waPhone: waPhone, mime: mime, name: fileName, data: data, msgID: m.Info.ID, ts: m.Info.Timestamp.Unix()}:
 		default:
 			log.Printf("media queue llena, descartando")
 		}
 		// Si la foto lleva caption, procesar también el texto (ej. "ya pagué").
 		if cap := getText(m.Message); cap != "" {
-			fmt.Printf("INBOUND=%s len=%d msgID=%s\n", chatJID, len(cap), m.Info.ID)
-			r.inbound <- inboundMsg{waID: chatJID, waPhone: waPhone, body: cap, msgID: m.Info.ID}
+			fmt.Printf("INBOUND=%s len=%d msgID=%s ts=%d\n", chatJID, len(cap), m.Info.ID, m.Info.Timestamp.Unix())
+			r.inbound <- inboundMsg{waID: chatJID, waPhone: waPhone, body: cap, msgID: m.Info.ID, ts: m.Info.Timestamp.Unix()}
 		}
 		return
 	}
@@ -400,8 +402,8 @@ func (r *relay) onMessage(m *events.Message) {
 		fmt.Printf("INBOUND_EMPTY=%s chat=%s\n", messageType(m.Message), chatJID)
 		return
 	}
-	fmt.Printf("INBOUND=%s len=%d phone=%s msgID=%s\n", chatJID, len(text), waPhone, m.Info.ID)
-	r.inbound <- inboundMsg{waID: chatJID, waPhone: waPhone, body: text, msgID: m.Info.ID}
+	fmt.Printf("INBOUND=%s len=%d phone=%s msgID=%s ts=%d\n", chatJID, len(text), waPhone, m.Info.ID, m.Info.Timestamp.Unix())
+	r.inbound <- inboundMsg{waID: chatJID, waPhone: waPhone, body: text, msgID: m.Info.ID, ts: m.Info.Timestamp.Unix()}
 }
 
 // extractMedia inspecciona el mensaje (tras unwrap) y devuelve la referencia
@@ -599,6 +601,7 @@ type wsOut struct {
 	Name    string `json:"name,omitempty"`
 	Data    string `json:"data,omitempty"` // base64 (solo type image/file)
 	MsgID   string `json:"msg_id,omitempty"` // ID del mensaje en WhatsApp (idempotencia)
+	Ts      int64  `json:"ts,omitempty"`      // timestamp Unix del mensaje (edad: filtra re-envíos tras reconexión larga)
 }
 
 type wsIn struct {
@@ -658,7 +661,7 @@ func (r *relay) writeLoop(ctx context.Context, conn *websocket.Conn) {
 		case <-ctx.Done():
 			return
 		case m := <-r.inbound:
-			out := wsOut{Type: "message", WaID: m.waID, WaPhone: m.waPhone, Body: m.body, MsgID: m.msgID}
+			out := wsOut{Type: "message", WaID: m.waID, WaPhone: m.waPhone, Body: m.body, MsgID: m.msgID, Ts: m.ts}
 			if err := r.writeMsg(conn, out); err != nil {
 				r.enqueuePending(out)
 				return
@@ -677,6 +680,7 @@ func (r *relay) writeLoop(ctx context.Context, conn *websocket.Conn) {
 				Name:    mm.name,
 				Data:    base64.StdEncoding.EncodeToString(mm.data),
 				MsgID:   mm.msgID,
+				Ts:      mm.ts,
 			}
 			if err := r.writeMsg(conn, out); err != nil {
 				r.enqueuePending(out)

@@ -363,6 +363,19 @@ async function attach(ws, token) {
 
     lastSeen.set(token, Date.now());
 
+    // Edad del mensaje: si es muy viejo (reenvío del relay tras reconexión de
+    // larga duración), descartar. Evita responder a mensajes que el admin ya
+    // atendió por otro canal mientras el relay estaba caído.
+    const MSG_MAX_AGE_MIN = 10;
+    if (msg.ts) {
+      const msgAgeMin = (Date.now() - msg.ts * 1000) / 60_000;
+      if (msgAgeMin > MSG_MAX_AGE_MIN) {
+        console.log(`[edad] mensaje demasiado viejo (${Math.round(msgAgeMin)}min) de ${msg.wa_id} — descartado`);
+        feedPush({ vendorId: vendor.id, store: vendor.store_name, kind: "system", waId: msg.wa_id, text: `mensaje viejo (${Math.round(msgAgeMin)}min) descartado` });
+        return;
+      }
+    }
+
     // Idempotencia: si Meta reintenta el webhook (o el relay reenvía tras una
     // caída), el mismo mensaje no se procesa dos veces → evita pedidos duplicados.
     if (msg.msg_id && await isDuplicate(msg.msg_id)) {
@@ -392,7 +405,7 @@ async function attach(ws, token) {
       }
     }
 
-    const result = await handleInbound({ vendor, waId: msg.wa_id, body: msg.body, waPhone: msg.wa_phone });
+    const result = await handleInbound({ vendor, waId: msg.wa_id, body: msg.body, waPhone: msg.wa_phone, timestamp: msg.ts });
     if (result.handoff) {
       feedPush({ vendorId: vendor.id, store: vendor.store_name, kind: "limit", waId: msg.wa_id, text: "bot apagado — no responde, atiende el dueño" });
       trackEvent(vendor.id, "handoff", msg.wa_id, { reason: "bot_disabled" });

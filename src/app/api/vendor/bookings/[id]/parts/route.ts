@@ -23,9 +23,18 @@ export async function POST(
   const { vendor } = await getVendorByRequest(request);
   if (!vendor) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
-  const vertical = (vendor as { vertical?: string }).vertical || "";
+  // Vertical del comercio: `getVendorByRequest` no lo incluía en algunas rutas
+  // viejas, así que se resuelve acá (nunca asumir que viene en el objeto).
+  const vendorRow = await queryOne<{ vertical: string | null }>(
+    `SELECT vertical FROM vendors WHERE id = $1 LIMIT 1`,
+    [vendor.id]
+  );
+  const vertical = vendorRow?.vertical || "";
   if (vertical !== "taller" && vertical !== "servicio" && vertical !== "estetica") {
-    return NextResponse.json({ error: "Solo disponible para talleres" }, { status: 403 });
+    return NextResponse.json(
+      { error: "Solo disponible para talleres, servicios y estética" },
+      { status: 403 }
+    );
   }
 
   const { id } = await params;

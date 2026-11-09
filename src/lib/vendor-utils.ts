@@ -46,7 +46,7 @@ export type StaffLevel = "admin" | "empleado" | null;
  */
 export async function getVendorByRequest(request: Request): Promise<{
   userId: string | null;
-  vendor: { id: string; user_id: string | null } | null;
+  vendor: { id: string; user_id: string | null; vertical?: string | null } | null;
   staffRole: StaffRole;
   staffLevel: StaffLevel;
   previewSession: boolean;
@@ -54,8 +54,8 @@ export async function getVendorByRequest(request: Request): Promise<{
   // Sesión de prueba: no requiere usuario registrado.
   const previewVendorId = await getPreviewSessionVendorId(request);
   if (previewVendorId) {
-    const vendor = await queryOne<{ id: string; user_id: string | null }>(
-      `SELECT id, user_id FROM vendors WHERE id = $1 LIMIT 1`,
+    const vendor = await queryOne<{ id: string; user_id: string | null; vertical?: string | null }>(
+      `SELECT id, user_id, vertical FROM vendors WHERE id = $1 LIMIT 1`,
       [previewVendorId]
     );
     return { userId: null, vendor: vendor ?? null, staffRole: "owner", staffLevel: null, previewSession: true };
@@ -66,8 +66,8 @@ export async function getVendorByRequest(request: Request): Promise<{
 
   const asVendorId = getCookie(request, ADMIN_AS_COOKIE);
   if (asVendorId && user.is_admin) {
-    const vendor = await queryOne<{ id: string; user_id: string | null }>(
-      `SELECT id, user_id FROM vendors WHERE id = $1 LIMIT 1`,
+    const vendor = await queryOne<{ id: string; user_id: string | null; vertical?: string | null }>(
+      `SELECT id, user_id, vertical FROM vendors WHERE id = $1 LIMIT 1`,
       [asVendorId]
     );
     return { userId: user.id, vendor: vendor ?? null, staffRole: null, staffLevel: null, previewSession: false };
@@ -82,11 +82,19 @@ export async function getVendorByRequest(request: Request): Promise<{
   );
   if (owned && owned.length > 0) {
     if (owned.length === 1) {
-      return { userId: user.id, vendor: owned[0], staffRole: null, staffLevel: null, previewSession: false };
+      const one = await queryOne<{ id: string; user_id: string | null; vertical?: string | null }>(
+        `SELECT id, user_id, vertical FROM vendors WHERE id = $1 LIMIT 1`,
+        [owned[0].id]
+      );
+      return { userId: user.id, vendor: one ?? null, staffRole: null, staffLevel: null, previewSession: false };
     }
     const wantId = getCookie(request, VENDOR_COOKIE);
     const chosen = wantId ? owned.find((v) => v.id === wantId) : null;
-    return { userId: user.id, vendor: chosen ?? owned[0], staffRole: null, staffLevel: null, previewSession: false };
+    const row = await queryOne<{ id: string; user_id: string | null; vertical?: string | null }>(
+      `SELECT id, user_id, vertical FROM vendors WHERE id = $1 LIMIT 1`,
+      [chosen?.id ?? owned[0].id]
+    );
+    return { userId: user.id, vendor: row ?? null, staffRole: null, staffLevel: null, previewSession: false };
   }
 
   // No es dueño: ¿staff vinculado y activo? (repartidor o usuario del
@@ -107,8 +115,8 @@ export async function getVendorByRequest(request: Request): Promise<{
       )) ?? null;
   }
   if (staff) {
-    const sv = await queryOne<{ id: string; user_id: string | null }>(
-      `SELECT id, user_id FROM vendors WHERE id = $1 LIMIT 1`,
+    const sv = await queryOne<{ id: string; user_id: string | null; vertical?: string | null }>(
+      `SELECT id, user_id, vertical FROM vendors WHERE id = $1 LIMIT 1`,
       [staff.vendor_id]
     );
     if (staff.role === "delivery") {

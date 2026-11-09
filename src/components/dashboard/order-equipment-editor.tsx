@@ -56,6 +56,22 @@ export function OrderEquipmentEditor({
   const empty =
     !brand.trim() && !model.trim() && !identifier.trim() && !rodado.trim() && !color.trim();
 
+  /** Mensaje legible de una respuesta fallida (con status si no trae error). */
+  async function failMessage(res: Response, fallback: string): Promise<string> {
+    let msg = "";
+    try {
+      const data = await res.json();
+      msg = String(data?.error || "");
+    } catch {
+      try {
+        msg = (await res.text()).slice(0, 200);
+      } catch {
+        /* sin cuerpo */
+      }
+    }
+    return msg || `${fallback} (error ${res.status})`;
+  }
+
   async function save() {
     if (empty) {
       setError("Cargá al menos marca/modelo o N° de serie");
@@ -72,12 +88,11 @@ export function OrderEquipmentEditor({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
-        const data = await res.json().catch(() => ({}));
         if (res.status === 503) {
-          setError(String(data?.error || "Falta aplicar la migración migrate-equipment.sql en la base"));
+          setError(await failMessage(res, "Falta aplicar la migración migrate-equipment.sql en la base"));
           return;
         }
-        if (!res.ok) throw new Error(String(data?.error || "No se pudo guardar el equipo"));
+        if (!res.ok) throw new Error(await failMessage(res, "No se pudo guardar el equipo"));
       } else {
         const res = await fetch("/api/vendor/equipment", {
           method: "POST",
@@ -88,19 +103,21 @@ export function OrderEquipmentEditor({
             customer_phone: order.customer_phone,
           }),
         });
-        const data = await res.json().catch(() => ({}));
         if (res.status === 503) {
-          setError(String(data?.error || "Falta aplicar la migración migrate-equipment.sql en la base"));
+          setError(await failMessage(res, "Falta aplicar la migración migrate-equipment.sql en la base"));
           return;
         }
-        if (!res.ok || !data?.equipment?.id) throw new Error(String(data?.error || "No se pudo crear el equipo"));
+        const data = res.ok ? await res.json().catch(() => ({})) : {};
+        if (!res.ok || !data?.equipment?.id) {
+          throw new Error(await failMessage(res, "No se pudo crear el equipo"));
+        }
         // Vincular el equipo nuevo a la orden.
         const link = await fetch(`/api/vendor/bookings/${order.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ equipment_id: String(data.equipment.id) }),
         });
-        if (!link.ok) throw new Error("El equipo se creó pero no se pudo vincular a la orden");
+        if (!link.ok) throw new Error(await failMessage(link, "El equipo se creó pero no se pudo vincular a la orden"));
       }
       await onSaved();
       onClose();

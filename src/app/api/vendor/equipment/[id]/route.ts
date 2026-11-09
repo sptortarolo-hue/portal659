@@ -1,5 +1,5 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
-import { queryOne, query, hasTable } from "@/lib/db";
+import { queryMany, queryOne, hasTable } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -41,9 +41,9 @@ export async function PATCH(
   }
 
   const present = await hasTable(
-    { query: (sql: string, p?: unknown[]) => query(sql, p) } as any,
+    { query: (sql: string, params?: unknown[]) => queryMany(sql, params) },
     "equipment"
-  );
+  ).catch(() => false);
   if (!present) {
     return NextResponse.json({ error: "Falta aplicar la migración migrate-equipment.sql en la base" }, { status: 503 });
   }
@@ -109,11 +109,24 @@ export async function PATCH(
     return NextResponse.json({ ok: true, equipment: null });
   }
 
-  const row = await queryOne<Record<string, unknown>>(
-    `UPDATE equipment SET ${sets.join(", ")}, updated_at = now()
-      WHERE vendor_id = $${values.length + 1} AND id = $${values.length + 2}
-      RETURNING id::text AS id, brand, model, identifier, rodado, color, notes, photo_url`,
-    [...values, gate.vendor.id, id]
-  ).catch(() => undefined);
-  return NextResponse.json({ ok: true, equipment: row });
+  // RETURNING tolerante: `photo_url` solo si la columna existe (migrate-taller-v2).
+  const returning = hasPhoto?.e
+    ? `id::text AS id, brand, model, identifier, rodado, color, notes, photo_url`
+    : `id::text AS id, brand, model, identifier, rodado, color, notes`;
+  let row: Record<string, unknown> | undefined;
+  try {
+    row = await queryOne<Record<string, unknown>>(
+      `UPDATE equipment SET ${sets.join(", ")}, updated_at = now()
+        WHERE vendor_id = $${values.length + 1} AND id = $${values.length + 2}
+        RETURNING ${returning}`,
+      [...values, gate.vendor.id, id]
+    );
+  } catch (e) {
+    // Falla real: NO devolver ok:true en falso (el panel diría "guardado").
+    return NextResponse.json(
+      { error: `No se pudo guardar el equipo: ${(e as Error)?.message || "error de base"}` },
+      { status: 500 }
+    );
+  }
+  return NextResponse.json({ ok: true, equipment: row ?? null });
 }

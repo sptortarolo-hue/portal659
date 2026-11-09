@@ -242,6 +242,13 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
     `SELECT weight_confirm_mode, weight_tolerance_pct FROM vendors WHERE id = $1 LIMIT 1`,
     [vendorId]
   ).catch(() => null);
+  // Permitir pedidos online aunque el local esté cerrado (migrate-accept-orders-
+  // when-closed.sql, tolerante sin aplicar).
+  const acceptClosedCfg = await queryOne<{ accept_orders_when_closed: boolean | null }>(
+    `SELECT accept_orders_when_closed FROM vendors WHERE id = $1 LIMIT 1`,
+    [vendorId]
+  ).catch(() => null);
+  const acceptOrdersWhenClosed = acceptClosedCfg?.accept_orders_when_closed === true;
   const weightConfirmMode = weightCfg?.weight_confirm_mode === "confirmar" ? "confirmar" : "estimado";
   const weightTolerancePct =
     Number.isFinite(Number(weightCfg?.weight_tolerance_pct)) && Number(weightCfg?.weight_tolerance_pct) > 0
@@ -267,7 +274,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
     }
 
     const openNow = isStoreOpen(vendorRow as any);
-    if (openNow === false && !(vendorRow as any).accept_orders_when_closed) {
+    if (openNow === false && !acceptOrdersWhenClosed) {
       throw new StoreClosedError(
         "El comercio está cerrado en este momento. Probá cuando abra o escribile por WhatsApp."
       );

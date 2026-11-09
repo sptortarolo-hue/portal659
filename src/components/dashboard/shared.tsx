@@ -1701,3 +1701,41 @@ export function PortalShipConfig({}: {
     </div>
   );
 }
+
+
+/**
+ * Switch "Aceptar pedidos aunque el local esté cerrado" (solo verticales con
+ * carrito: comercio, moda, estética, taller). El pedido se acepta igual y se
+ * prepara para el próximo turno disponible.
+ */
+export function AcceptOrdersWhenClosedConfig({
+  vendor,
+  saveVendor,
+}: {
+  vendor: any;
+  saveVendor: (data: Record<string, unknown>) => Promise<void>;
+}) {
+  const [on, setOn] = useState<boolean>(vendor?.accept_orders_when_closed === true);
+  useEffect(() => {
+    setOn(vendor?.accept_orders_when_closed === true);
+  }, [vendor?.accept_orders_when_closed]);
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2.5">
+      <div>
+        <Label className="text-sm">🕐 Aceptar pedidos aunque esté cerrado</Label>
+        <p className="text-xs text-muted-foreground">
+          {on
+            ? "Los clientes pueden pedir aunque el local esté cerrado; el pedido se prepara para el próximo turno."
+            : "Si está cerrado, no se aceptan pedidos online (comportamiento actual)."}
+        </p>
+      </div>
+      <Switch
+        checked={on}
+        onCheckedChange={async (v) => {
+          setOn(v);
+          await saveVendor({ accept_orders_when_closed: v });
+        }}
+      />
+    </div>
+  );
+}

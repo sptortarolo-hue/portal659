@@ -267,7 +267,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
     }
 
     const openNow = isStoreOpen(vendorRow as any);
-    if (openNow === false) {
+    if (openNow === false && !(vendorRow as any).accept_orders_when_closed) {
       throw new StoreClosedError(
         "El comercio está cerrado en este momento. Probá cuando abra o escribile por WhatsApp."
       );

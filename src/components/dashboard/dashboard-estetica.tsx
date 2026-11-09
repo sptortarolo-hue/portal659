@@ -16,6 +16,7 @@ import {
   LivePreview,
   TransferConfig,
   DeliveryFeeConfig,
+  AcceptOrdersWhenClosedConfig,
 } from "@/components/dashboard/shared";
 import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { StripeConnectCard } from "@/components/dashboard/stripe-connect-card";
@@ -464,6 +465,7 @@ export default function DashboardEstetica({
               <Label>Horarios</Label>
               <HoursEditor value={hours} onChange={setHours} />
             </div>
+            <AcceptOrdersWhenClosedConfig vendor={vendor} saveVendor={saveVendor} />
             <Button onClick={saveUbicacion} className="w-full" disabled={uploading}>
               {uploading ? "Guardando..." : "Guardar ubicación"}
             </Button>

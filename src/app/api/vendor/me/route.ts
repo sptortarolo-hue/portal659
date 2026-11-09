@@ -180,6 +180,7 @@ export async function POST(request: Request) {
     weight_step_kg,
     weight_min_kg,
     fiscal_auto_emit,
+    accept_orders_when_closed,
   } = body;
 
   // Limpia y valida delivery_extra_days. Devuelve el objeto podado o false
@@ -469,6 +470,11 @@ export async function POST(request: Request) {
     if (food_cost_bad !== undefined) payload.food_cost_bad = b;
   }
   if (accepts_online_orders !== undefined) payload.accepts_online_orders = accepts_online_orders === true;
+  // Permitir pedidos online aunque el local esté cerrado (solo verticales con
+  // carrito; el switch se oculta en gastronomía en la UI).
+  if (accept_orders_when_closed !== undefined) {
+    payload.accept_orders_when_closed = accept_orders_when_closed === true;
+  }
   // Visibilidad de la carta QR (/carta/[slug]): "public" o "qr_only" (default).
   if ((body as Record<string, unknown>).carta_visibility !== undefined) {
     const cv = (body as Record<string, unknown>).carta_visibility;
@@ -598,6 +604,7 @@ export async function POST(request: Request) {
         "weight_confirm_mode",
         "weight_step_kg",
         "weight_min_kg",
+        "accept_orders_when_closed",
       ].filter((k) => k in payload && msg.includes(k));
       if (droppable.length > 0) {
         for (const k of droppable) delete payload[k];

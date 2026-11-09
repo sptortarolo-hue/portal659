@@ -15,7 +15,7 @@ import { GiftcardManageButton } from "@/components/dashboard/giftcard-manage-but
 import { QuantityInput } from "@/components/ui/quantity-input";
 import { ChipToggle } from "@/components/ui/chip-toggle";
 import { RadioCards } from "@/components/ui/radio-cards";
-import { LivePreview, CategoryManager, apiJson, TransferConfig, DeliveryFeeConfig, DeliveryScheduleConfig, PortalShipConfig } from "@/components/dashboard/shared";
+import { LivePreview, CategoryManager, apiJson, TransferConfig, DeliveryFeeConfig, DeliveryScheduleConfig, PortalShipConfig, AcceptOrdersWhenClosedConfig } from "@/components/dashboard/shared";
 import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
 import { GalleryManager } from "@/components/dashboard/gallery-manager";
@@ -594,6 +594,7 @@ export default function DashboardModa({
           <div><Label>Dirección</Label><Input value={address} onChange={(e) => setAddress(e.target.value)} /></div>
           <LocationPicker lat={lat} lng={lng} onChange={(newLat, newLng) => { setLat(newLat); setLng(newLng); }} neighborhood={vendor?.neighborhood} />
           <div><Label>Horarios</Label><HoursEditor value={hours} onChange={setHours} /></div>
+          <AcceptOrdersWhenClosedConfig vendor={vendor} saveVendor={saveVendor} />
         </div>
       </ConfigSection>
 

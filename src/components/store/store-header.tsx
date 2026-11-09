@@ -229,6 +229,11 @@ export function StoreHeader({
                   {openNow ? "Abierto ahora" : "Cerrado"}
                 </span>
               )}
+              {!openNow && (v as any).accept_orders_when_closed && (
+                <span className="rounded-full bg-amber-500 text-white px-3 py-1 text-xs font-semibold">
+                  Acepta pedidos para cuando abra
+                </span>
+              )}
               {v.verified && (
                 <span className="rounded-full bg-blue-600/90 text-white px-3 py-1 text-xs font-semibold">
                   ✓ Verificado

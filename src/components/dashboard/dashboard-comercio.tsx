@@ -21,6 +21,7 @@ import {
   DeliveryFeeConfig,
   DeliveryScheduleConfig,
   PortalShipConfig,
+  AcceptOrdersWhenClosedConfig,
 } from "@/components/dashboard/shared";
 import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { PrinterConfigSection } from "@/components/dashboard/printer-config-section";
@@ -450,6 +451,7 @@ export default function DashboardComercio({
             <Label>Horarios</Label>
             <HoursEditor value={hours} onChange={setHours} />
           </div>
+          <AcceptOrdersWhenClosedConfig vendor={vendor} saveVendor={saveVendor} />
         </div>
       </ConfigSection>
 

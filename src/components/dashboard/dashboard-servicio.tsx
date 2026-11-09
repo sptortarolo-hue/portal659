@@ -117,12 +117,16 @@ function ServicioHoy({
   const presupuestosLow = isEstetica ? "consultas" : "presupuestos";
   const presupuestosLabel = isEstetica ? "Consultas" : "Presupuestos";
   const pendingQuotes = (quotes || []).filter((q) => q.status === "pending" || q.status === "responded");
-  const pendingBookings = (bookings || []).filter((b: any) => b.status === "pending");
+  // Turnos = citas reales. Las órdenes de servicio (kind='orden') NO son
+  // turnos: viven en el tablero del taller y tienen su propio bloque en Hoy.
+  const pendingBookings = (bookings || []).filter(
+    (b: any) => b.status === "pending" && !isOrderBooking(b)
+  );
   const newOrders = (orders || []).filter((o: any) =>
     ["new", "preparing", "ready", "sent"].includes(String(o.status)) && String(o.channel || "app") === "app" && !o.is_preview
   );
   const upcoming = (bookings || [])
-    .filter((b: any) => b.status === "confirmed" && b.booking_date)
+    .filter((b: any) => b.status === "confirmed" && b.booking_date && !isOrderBooking(b))
     .sort((a: any, b: any) => String(a.booking_date).localeCompare(String(b.booking_date)) || String(a.booking_time || "").localeCompare(String(b.booking_time || "")))
     .slice(0, 3);
   const paidThisMonth = (quotes || [])
@@ -256,7 +260,10 @@ function ServicioHistorial({
   isEstetica?: boolean;
 }) {
   const doneQuotes = (quotes || []).filter((q) => q.status === "accepted" || q.status === "cancelled");
+  // Las órdenes de servicio no son turnos: su historial está en el tablero
+  // del taller (y se cobran/cierran desde ahí), no en el historial de turnos.
   const doneBookings = (bookings || []).filter((b: any) => {
+    if (isOrderBooking(b)) return false;
     if (b.status === "cancelled") return true;
     if (b.status !== "confirmed" || !b.booking_date) return false;
     return String(b.booking_date).slice(0, 10) < new Date().toISOString().slice(0, 10);
@@ -832,7 +839,9 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
   // el endpoint rechaza las reales.
   const [purgingPreview, setPurgingPreview] = useState(false);
   async function purgePreview(kind: "bookings" | "quotes") {
-    const rows: any[] = kind === "bookings" ? bookings : (quotes as any[]);
+    // Turnos: solo citas de prueba (las órdenes de servicio se purgan desde el
+    // tablero del taller, no desde la agenda).
+    const rows: any[] = kind === "bookings" ? bookings.filter((b: any) => !isOrderBooking(b)) : (quotes as any[]);
     const ids = rows.filter((r) => r?.is_preview === true).map((r) => r.id);
     if (ids.length === 0) return;
     const what = kind === "bookings" ? "turno(s)" : presupuestosLow;
@@ -1577,10 +1586,10 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
       <>
       <CollapsibleSection icon="📅" title={`Agenda de turnos (${turnos.length})`} defaultOpen>
         <div className="space-y-3">
-          {bookings.some((b: any) => b?.is_preview === true) && (
+          {bookings.some((b: any) => b?.is_preview === true && !isOrderBooking(b)) && (
             <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 flex items-center gap-2 flex-wrap">
               <p className="text-xs text-violet-800 flex-1 min-w-0">
-                🧪 Tenés {bookings.filter((b: any) => b?.is_preview === true).length} turno(s) de prueba
+                🧪 Tenés {bookings.filter((b: any) => b?.is_preview === true && !isOrderBooking(b)).length} turno(s) de prueba
               </p>
               <Button size="sm" variant="outline" className="h-7 text-xs" disabled={purgingPreview} onClick={() => purgePreview("bookings")}>
                 {purgingPreview ? "Borrando..." : "Borrar pruebas"}
@@ -1617,7 +1626,9 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
           )}
           {(() => {
             const tomorrow = arToday(1);
-            const tmr = bookings.filter((b: any) => b.status === "confirmed" && b.booking_date === tomorrow);
+            const tmr = bookings.filter(
+              (b: any) => b.status === "confirmed" && b.booking_date === tomorrow && !isOrderBooking(b)
+            );
             if (tmr.length === 0) return null;
             return (
               <Card className="p-3 space-y-2 border-primary/30">

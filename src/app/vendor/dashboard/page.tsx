@@ -1765,6 +1765,7 @@ function VendorDashboardInner() {
         isTaller={isTaller}
         pendingQuotesCount={pendingQuotesCount}
         pendingBookingsCount={pendingBookingsCount}
+        openOrdersCount={openOrdersCount}
         pendingPosCount={pendingPosCount}
         pendingMesasCount={pendingMesasCount}
         planName={effectivePlan.plan?.name ?? null}

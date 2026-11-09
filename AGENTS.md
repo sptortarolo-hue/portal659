@@ -31,6 +31,7 @@ Portal 659: "El centro comercial de tu barrio". Hub multicommerce hiperlocal (Si
 
 ## Reglas operativas (aprendidas)
 
+- **Inicializar datos de prueba (hand-over "llave en mano")**: `/admin/comercios/[id]` → panel rojo. `POST /api/admin/comercios/[id]` con `{ action: "reset_all" }` (alias legacy `reset_orders`) borra **toda la operación** y **conserva la configuración** (catálogo, servicios, staff, sedes, plan). Borra: pedidos + `order_payments` + `sync_idempotency`, **turnos y órdenes de servicio** (`bookings`; cascada de `booking_events`/`work_order_parts`/`invoices`/`service_reminder_log`/`service_review_log`, y `quotes.booking_id` → NULL), presupuestos/consultas (`quotes`), equipos (`equipment` + `equipment_reminder_log`), clientes (`customers`), lista de espera, créditos de packs, giftcards, caja (`cash_movements`/`cash_shifts`/`cash_closings`) y gastos; y deja las mesas en `libre`. Tolerante a migraciones sin aplicar: cada tabla se borra solo si existe (`hasTable`/`to_regclass`, nunca aborta la tx). **Antes solo borraba pedidos** → las pruebas de taller quedaban en la base.
 - **Migraciones**: escribirlas como `.sql` nuevo y avisar al usuario para que las corra en el contenedor (ver arriba). No aplicar desde acá.
 - **Auth/guard**: `getAuthUser(request)` en `src/lib/auth.ts` devuelve `{ id, email, full_name, role, verified, is_admin }`. Guard de rutas server.
 - **isAdmin**: usa `profiles.is_admin` (no `vendors.is_admin`): el admin no necesita tener un comercio. Helper `isAdmin(request)` en `src/lib/admin-utils.ts`.

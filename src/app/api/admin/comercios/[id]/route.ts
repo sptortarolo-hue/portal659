@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isAdmin } from "@/lib/admin-utils";
-import { queryOne, queryMany, query, withTransaction } from "@/lib/db";
+import { queryOne, queryMany, query, withTransaction, hasTable, type Tx } from "@/lib/db";
 
 export async function GET(
   request: Request,
@@ -57,7 +57,17 @@ export async function POST(
   const body = await request.json();
   const action = body?.action;
 
-  if (action === "reset_orders") {
+  // Inicializar datos de prueba (hand-over "llave en mano").
+  //
+  // El reset original solo borraba PEDIDOS, así que las pruebas de los
+  // verticales de servicio (turnos, órdenes de taller, presupuestos, equipos,
+  // clientes, caja...) quedaban en la base. Ahora borra toda la operación del
+  // comercio y conserva la configuración: catálogo (productos/categorías/
+  // modificadores), servicios, equipo de trabajo, sedes, planes y suscripción.
+  //
+  // Tolerante a migraciones sin aplicar: cada tabla se borra solo si existe
+  // (`to_regclass`), así el reset nunca rompe un vertical sin la migración.
+  if (action === "reset_orders" || action === "reset_all") {
     const vendor = await queryOne<{ id: string; user_id: string | null }>(
       `SELECT id, user_id FROM vendors WHERE id = $1 LIMIT 1`,
       [id]
@@ -66,25 +76,60 @@ export async function POST(
       return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });
     }
 
-    const result = await withTransaction(async (tx) => {
-      // Borra los pedidos del vendor (order_status_log se borra en cascada por FK).
-      const deleted = await tx.query<{ id: string }>(
-        `DELETE FROM orders WHERE vendor_id = $1 RETURNING id`,
+    // Borra las filas del comercio en `table` si la migración está aplicada.
+    // Se pregunta por la tabla antes de tocarla (to_regclass): un DELETE sobre
+    // una tabla inexistente aborta la transacción (25P02).
+    const wipe = async (tx: Tx, table: string): Promise<number> => {
+      if (!(await hasTable(tx, table))) return 0;
+      const rows = await tx.query<Record<string, unknown>>(
+        `DELETE FROM public.${table} WHERE vendor_id = $1 RETURNING 1`,
         [id]
       );
-      // Pone todas las mesas en libre.
+      return Array.isArray(rows) ? rows.length : 0;
+    };
+
+    const result = await withTransaction(async (tx) => {
+      const counted: Record<string, number> = {};
+      // --- Caja / gastos (van antes: cash_shifts linkea cash_closings) ---
+      counted.cashMovements = await wipe(tx, "cash_movements");
+      counted.cashShifts = await wipe(tx, "cash_shifts");
+      counted.cashClosings = await wipe(tx, "cash_closings");
+      counted.expenses = await wipe(tx, "expenses");
+      // --- Tarjetas de regalo (giftcard_moves cae en cascada) ---
+      counted.giftcards = await wipe(tx, "giftcards");
+      // --- Servicios: créditos de packs (los packs son configuración) ---
+      counted.packCredits = await wipe(tx, "service_pack_credits");
+      counted.waitlist = await wipe(tx, "waitlist");
+      // --- Presupuestos / consultas ---
+      counted.quotes = await wipe(tx, "quotes");
+      // --- Turnos + órdenes de servicio (event feed, repuestos, recordatorios,
+      //     reseñas y facturas caen por cascada; quotes.booking_id → NULL) ---
+      counted.bookings = await wipe(tx, "bookings");
+      // --- Equipos (ficha de taller/bici/celular) ---
+      counted.equipmentReminders = await wipe(tx, "equipment_reminder_log");
+      counted.equipment = await wipe(tx, "equipment");
+      // --- Libro de clientes (CRM) ---
+      counted.customers = await wipe(tx, "customers");
+      // --- Pedidos (order_status_log / order_payments caen por cascada) ---
+      counted.orders = await wipe(tx, "orders");
+      // Parciales de mesa sin order_id (no caen por cascada del pedido).
+      counted.orderPayments = await wipe(tx, "order_payments");
+      // Idempotencia del sync offline: claves viejas que podrían bloquear replays.
+      counted.syncKeys = await wipe(tx, "sync_idempotency");
+      // Mesas en libre.
       const tables = await tx.query<{ id: string }>(
         `UPDATE tables SET status = 'libre' WHERE vendor_id = $1 RETURNING id`,
         [id]
       );
-      // Notificaciones de pedido/pago del dueño (best-effort).
+      counted.tablesReset = Array.isArray(tables) ? tables.length : 0;
+      // Notificaciones de pedido/pago/reseña del dueño (best-effort).
       if (vendor.user_id) {
         await tx.queryVoid(
           `DELETE FROM notifications WHERE user_id = $1 AND type IN ('order', 'payment', 'review')`,
           [vendor.user_id]
         );
       }
-      return { ordersDeleted: deleted.length, tablesReset: tables.length };
+      return counted;
     });
 
     return NextResponse.json({ ok: true, ...result });

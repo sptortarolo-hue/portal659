@@ -58,10 +58,12 @@ interface VendorSidebarProps {
   isService?: boolean;
   /** Vertical estética: suma Pedidos + Catálogo al menú de servicios. */
   isEstetica?: boolean;
-  /** Vertical taller (incluido en isEstetica=hybrid): muestra el tab "🛠️ Taller" y el copy "Presupuestos". */
+  /** Vertical taller (incluido en isEstetica=hybrid): muestra el tab "Taller" y el copy "Presupuestos". */
   isTaller?: boolean;
   pendingQuotesCount?: number;
   pendingBookingsCount?: number;
+  /** Órdenes de servicio abiertas (badge del tab Taller; no confundir con turnos). */
+  openOrdersCount?: number;
   /** Pendientes offline por pestaña (outbox IndexedDB, Track Ventas F1). */
   pendingPosCount?: number;
   pendingMesasCount?: number;
@@ -276,6 +278,7 @@ export default function VendorSidebar({
   isTaller = false,
   pendingQuotesCount = 0,
   pendingBookingsCount = 0,
+  openOrdersCount = 0,
   pendingPosCount = 0,
   pendingMesasCount = 0,
   planName,
@@ -315,7 +318,7 @@ export default function VendorSidebar({
     // sube a 2do lugar; Pedidos/Mostrador/Catálogo quedan en el menú
     // desplegable. Estética mantiene su orden actual.
     if (isTaller) {
-      railItems.push({ tab: "taller" as any, label: "Taller", title: "Taller", icon: Wrench, badge: pendingBookingsCount });
+      railItems.push({ tab: "taller" as any, label: "Taller", title: "Taller", icon: Wrench, badge: openOrdersCount });
       railItems.push({ tab: "pos", label: "Turnos", title: "Turnos", icon: CalendarDays, badge: pendingBookingsCount });
       railItems.push({
         tab: "orders",
@@ -390,8 +393,8 @@ export default function VendorSidebar({
                 active={currentTab === "taller" as any}
                 onClick={() => handleTab("taller" as any)}
                 icon={Wrench}
-                label="🛠️ Taller (tablero)"
-                badge={pendingBookingsCount}
+                label="Taller"
+                badge={openOrdersCount}
               />
             )}
             <NavButton

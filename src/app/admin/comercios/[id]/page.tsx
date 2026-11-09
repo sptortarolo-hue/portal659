@@ -101,23 +101,39 @@ export default function AdminComercioDetailPage() {
   }
 
   async function resetOrders() {
-    if (!confirm(`¿Eliminar TODOS los pedidos y poner las mesas en libre de "${vendor?.store_name}"?`)) return;
-    if (!confirm("Esta acción es definitiva y no se puede deshacer. ¿Continuar?")) return;
+    if (
+      !confirm(
+        `¿Eliminar TODOS los datos de prueba de "${vendor?.store_name}"?\n\n` +
+          `• Pedidos y ventas\n• Turnos y órdenes de servicio\n• Presupuestos y consultas\n` +
+          `• Equipos registrados del taller\n• Clientes (CRM)\n• Caja, movimientos y gastos\n• Tarjetas de regalo y packs acreditados`
+      )
+    )
+      return;
+    if (
+      !confirm(
+        "Esta acción es definitiva y no se puede deshacer.\n\nSe CONSERVA el catálogo (productos, categorías, servicios, equipo de trabajo, sedes) y el plan del comercio. ¿Continuar?"
+      )
+    )
+      return;
     setResetting(true);
     try {
       const res = await fetch(`/api/admin/comercios/${id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "reset_orders" }),
+        body: JSON.stringify({ action: "reset_all" }),
       });
       const data = await res.json();
       if (data.ok) {
-        setMsg(`Pedidos y contadores inicializados: ${data.ordersDeleted} pedido(s) eliminado(s), ${data.tablesReset} mesa(s) en libre.`);
+        setMsg(
+          `Datos inicializados: ${data.orders ?? 0} pedido(s), ${data.bookings ?? 0} turno(s)/orden(es), ` +
+            `${data.quotes ?? 0} presupuesto(s), ${data.equipment ?? 0} equipo(s), ` +
+            `${data.customers ?? 0} cliente(s) · ${data.tablesReset ?? 0} mesa(s) en libre.`
+        );
       } else {
         setMsg(data.error || "No se pudo inicializar");
       }
     } catch {
-      setMsg("Error al inicializar pedidos");
+      setMsg("Error al inicializar datos");
     } finally {
       setResetting(false);
     }
@@ -345,16 +361,19 @@ export default function AdminComercioDetailPage() {
         )}
       </div>
 
-      {/* Inicializar pedidos y contadores */}
+      {/* Inicializar datos de prueba (llave en mano) */}
       <div className="rounded-xl border border-red-200 bg-red-50/40 dark:bg-red-950/20 dark:border-red-900 p-4 space-y-3">
-        <h2 className="font-semibold text-sm uppercase tracking-wide text-red-600">Inicializar pedidos y contadores</h2>
+        <h2 className="font-semibold text-sm uppercase tracking-wide text-red-600">Inicializar datos de prueba</h2>
         <p className="text-xs text-muted-foreground">
-          Elimina los pedidos cargados y deja todas las mesas en libre. Útil para sacar los datos de
-          prueba antes de arrancar. Se conserva el catálogo (productos) y el plan del comercio.
+          Borra toda la <strong>operación</strong> cargada antes de entregar el comercio: pedidos y
+          ventas, turnos, <strong>órdenes de servicio del taller</strong>, presupuestos/consultas,
+          equipos, clientes (CRM), caja y gastos, giftcards y packs acreditados; y deja las mesas en
+          libre. Se <strong>conserva</strong> la configuración: catálogo (productos, categorías,
+          modificadores), servicios, equipo de trabajo, sedes, y el plan del comercio.
         </p>
         <Button size="sm" variant="outline" className="border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-950" onClick={resetOrders} disabled={resetting}>
           {resetting && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
-          Inicializar pedidos
+          Inicializar datos de prueba
         </Button>
       </div>
     </div>

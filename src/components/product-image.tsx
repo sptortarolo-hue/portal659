@@ -123,6 +123,9 @@ export function ProductImage({
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  // El PNG de referencia (emojis/) a veces no está en el servidor (deploy
+  // parcial, 404). Sin esto quedaba roto; ahora cae al ícono lucide.
+  const [emojiFailed, setEmojiFailed] = useState(false);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
 
@@ -132,6 +135,7 @@ export function ProductImage({
     setLoaded(false);
     setFailed(false);
     setAttempt(0);
+    setEmojiFailed(false);
     return () => {
       if (retryTimer.current) clearTimeout(retryTimer.current);
     };
@@ -255,7 +259,7 @@ export function ProductImage({
 
   // Sin foto propia → imagen de referencia según nombre/categoría/vertical.
   const emojiPath = getProductEmojiImage(name, category, vertical);
-  if (emojiPath) {
+  if (emojiPath && !emojiFailed) {
     return (
       <div
         {...retryProps}
@@ -266,6 +270,7 @@ export function ProductImage({
           alt={alt}
           loading="lazy"
           decoding="async"
+          onError={() => setEmojiFailed(true)}
           className="h-full w-full object-contain p-2"
         />
       </div>

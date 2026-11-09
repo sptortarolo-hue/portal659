@@ -1239,6 +1239,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
           quotes={(quotesProp || quotes || []) as any[]}
           staff={catalogStaff}
           partsCatalog={offers as any[]}
+          onNewOrder={isTaller && orderCanCreate ? () => setOrderModalOpen(true) : undefined}
           onPurgePreview={purgePreviewOrdens}
         />
       )}
@@ -1599,16 +1600,6 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
           <Button size="sm" className="w-full h-8 text-xs" onClick={() => setBookingModalOpen(true)}>
             ＋ Nuevo turno
           </Button>
-          {isTaller && orderCanCreate && (
-            <>
-              <Button size="sm" variant="outline" className="w-full h-8 text-xs border-orange-300 text-orange-700" onClick={() => setOrderModalOpen(true)}>
-                🛠️ ＋ Nueva orden de servicio
-              </Button>
-              <p className="text-[11px] text-muted-foreground">
-                Recepción de taller: se ingresa hoy (sin horario) y se estima la fecha de entrega.
-              </p>
-            </>
-          )}
           {isHybrid && (
             <EsteticaWaitlistManager
               onSchedule={(w: WaitEntry) => {

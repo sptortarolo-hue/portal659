@@ -51,6 +51,7 @@ export function TallerJobBoard({
   quotes,
   staff,
   partsCatalog,
+  onNewOrder,
   onPurgePreview,
 }: {
   bookings: Booking[];
@@ -64,6 +65,8 @@ export function TallerJobBoard({
   staff?: { id: string; name: string }[];
   /** Catálogo de productos para repuestos en la ficha expandida. */
   partsCatalog?: { id: string; name: string; price?: number | null; promo_price?: number | null; stock?: number | null; stock_control?: boolean | null }[];
+  /** Abrir el alta de orden de servicio (recepción de taller). */
+  onNewOrder?: () => void;
   /** Borrar órdenes de prueba (is_preview=true). */
   onPurgePreview?: () => void;
 }) {
@@ -297,8 +300,20 @@ export function TallerJobBoard({
             ))}
           </select>
         )}
-        <span className="ml-auto text-[11px] text-muted-foreground tabular-nums">
-          {openOrders.length} orden(es) activa(s)
+        <span className="ml-auto flex items-center gap-2">
+          {onNewOrder && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs border-orange-300 text-orange-700"
+              onClick={onNewOrder}
+            >
+              🛠️ ＋ Nueva orden
+            </Button>
+          )}
+          <span className="text-[11px] text-muted-foreground tabular-nums whitespace-nowrap">
+            {openOrders.length} orden(es) activa(s)
+          </span>
         </span>
       </div>
 

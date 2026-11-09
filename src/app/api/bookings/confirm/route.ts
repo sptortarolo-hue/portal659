@@ -39,7 +39,7 @@ export const POST = withRateLimit(async (request: Request) => {
             booking_time::text AS booking_time, starts_at::text AS starts_at, status,
             staff_id::text AS staff_id, service_id::text AS service_id, duration_min,
             deposit_amount::numeric AS deposit_amount, deposit_status
-     FROM bookings WHERE confirm_token = $1 LIMIT 1`,
+     FROM bookings WHERE confirm_token = $1 AND booking_time IS NOT NULL LIMIT 1`,
     [token]
   ).catch(() => undefined);
   if (!booking) {
@@ -54,7 +54,7 @@ export const POST = withRateLimit(async (request: Request) => {
     }>(
       `SELECT id, vendor_id, customer_name, booking_date::text AS booking_date,
               booking_time::text AS booking_time, status
-       FROM bookings WHERE confirm_token = $1 LIMIT 1`,
+       FROM bookings WHERE confirm_token = $1 AND booking_time IS NOT NULL LIMIT 1`,
       [token]
     ).catch(() => undefined);
     if (legacy) {

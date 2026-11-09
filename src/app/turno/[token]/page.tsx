@@ -41,7 +41,7 @@ async function loadBooking(token: string): Promise<Booking | null> {
        LEFT JOIN services s ON s.id = b.service_id
        LEFT JOIN estetica_staff st ON st.id = b.staff_id
        LEFT JOIN estetica_locations l ON l.id = b.location_id
-       WHERE b.confirm_token = $1 LIMIT 1`,
+       WHERE b.confirm_token = $1 AND b.booking_time IS NOT NULL LIMIT 1`,
       [token]
     );
     if (!b) return null;

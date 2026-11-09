@@ -2360,6 +2360,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
           bookingCardProps={bookingCardProps}
           partsCatalog={(offers as unknown as { id: string; name: string; price?: number | null; promo_price?: number | null; stock?: number | null; stock_control?: boolean | null }[]) || []}
           onClose={() => setSelectedBookingId(null)}
+          onEquipmentChanged={reload}
         />
       ) : selectedBooking && (
         <Modal

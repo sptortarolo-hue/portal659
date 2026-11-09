@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import type { Vendor } from "@/types/database";
 import { bookingReminderMessage, bookingWhenLabel } from "@/lib/booking-message";
 import { isOrderBooking } from "@/lib/agenda";
-import { equipmentLabel } from "@/lib/equipment";
+import { orderEquipmentLabel } from "@/lib/equipment";
 import {
   checklistSummaryLabel,
   hasChecklistContent,
@@ -148,6 +148,7 @@ export function BookingCard({
   const orderDates = isOrder ? workOrderDatesLabel(booking.booking_date, (booking as any).delivery_date) : "";
   const orderDue = isOrder ? workOrderDeliveryDue((booking as any).delivery_date, booking.status) : null;
   const orderDeclared = isOrder ? nz((booking as any).declared_issue) : "";
+  const eqOrder = isOrder ? orderEquipmentLabel(booking as never) : "";
   const orderDiagnosis = isOrder ? nz((booking as any).diagnosis) : "";
   const nextLabel = isOrder ? workOrderNextLabel(booking.status) : "";
   // Presupuesto vinculado a la orden (para mostrar y enviar por WhatsApp).
@@ -176,8 +177,11 @@ export function BookingCard({
               <p className="text-xs font-semibold text-orange-700">
                 {workOrderTitle(orderNo)} · {orderDates || "sin fecha de entrega"}
               </p>
-              {equipmentLabel(booking as any) && (
-                <p className="text-xs text-foreground/90 mt-0.5">🛠️ {equipmentLabel(booking as any)}</p>
+              {eqOrder && (
+                <p className="text-xs text-foreground/90 mt-0.5">🛠️ {eqOrder}</p>
+              )}
+              {!eqOrder && orderDeclared && (
+                <p className="text-xs text-foreground/90 mt-0.5">🛠️ {orderDeclared}</p>
               )}
               {orderDeclared && (
                 <p className="text-xs text-foreground/90 mt-0.5">

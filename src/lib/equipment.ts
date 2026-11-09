@@ -41,6 +41,58 @@ export function equipmentLabel(e: Equipment | null | undefined): string {
   return label || (e.id ? "Equipo sin ficha de datos" : "");
 }
 
+/** Fila de `bookings` (la API devuelve el equipo con prefijo `equipment_*`). */
+export type EquipmentBooking = {
+  equipment_id?: string | null;
+  equipment_brand?: string | null;
+  equipment_model?: string | null;
+  equipment_rodado?: string | null;
+  equipment_identifier?: string | null;
+  equipment_color?: string | null;
+  equipment_notes?: string | null;
+  declared_issue?: string | null;
+  product_name?: string | null;
+  product_label?: string | null;
+};
+
+/**
+ * Equipo de una fila de booking/orden. `equipmentLabel` espera los campos sin
+ * prefijo, así que hay que mapearlos: pasarle la fila directa devolvía siempre
+ * "Equipo sin ficha de datos" (leía `brand` inexistente y `id` = id del turno).
+ */
+export function equipmentFromBooking(b: EquipmentBooking | null | undefined): Equipment {
+  return {
+    id: b?.equipment_id ?? "",
+    brand: b?.equipment_brand ?? null,
+    model: b?.equipment_model ?? null,
+    rodado: b?.equipment_rodado ?? null,
+    identifier: b?.equipment_identifier ?? null,
+    color: b?.equipment_color ?? null,
+    notes: b?.equipment_notes ?? null,
+    photo_url: undefined,
+  };
+}
+
+/** Etiqueta del equipo de una orden ("" si no hay equipo con datos). */
+export function orderEquipmentLabel(b: EquipmentBooking | null | undefined): string {
+  return equipmentLabel(equipmentFromBooking(b));
+}
+
+/**
+ * Asunto de una orden para LISTADOS (tablero, "En el taller", tira):
+ * el equipo si tiene ficha, y si no, lo que el cliente vino a hacer
+ * (falla declarada) — "cambio de cadena", no "Equipo sin ficha de datos".
+ */
+export function orderSubjectLabel(b: EquipmentBooking | null | undefined): string {
+  const eq = orderEquipmentLabel(b);
+  if (eq && eq !== "Equipo sin ficha de datos") return eq;
+  const issue = String(b?.declared_issue || "").trim();
+  if (issue) return issue;
+  const product = String(b?.product_name || b?.product_label || "").trim();
+  if (product) return product;
+  return "Sin ficha";
+}
+
 /** ¿Hay algo que valga para crear/asociar un equipo? (marca/modelo o serie). */
 export function equipmentHasContent(e: Pick<Equipment, "brand" | "model" | "identifier" | "rodado" | "color"> | null | undefined): boolean {
   if (!e) return false;

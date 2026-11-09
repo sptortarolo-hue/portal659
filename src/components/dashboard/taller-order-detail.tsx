@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { BookingCardProps } from "@/components/dashboard/booking-card";
 import { isOrderBooking } from "@/lib/agenda";
-import { equipmentLabel, type Equipment } from "@/lib/equipment";
+import { equipmentLabel, orderEquipmentLabel, type Equipment } from "@/lib/equipment";
+import { OrderEquipmentEditor } from "@/components/dashboard/order-equipment-editor";
 import {
   ACCESORIO_PRESETS,
   hasChecklistContent,
@@ -68,12 +69,15 @@ export function TallerOrderDetail({
   bookingCardProps,
   partsCatalog = [],
   onClose,
+  onEquipmentChanged,
 }: {
   booking: any;
   bookingCardProps: Omit<BookingCardProps, "booking">;
   /** Catálogo de productos (repuestos) del comercio. */
   partsCatalog?: CatalogProduct[];
   onClose: () => void;
+  /** Se guardó/cargó la ficha del equipo: recargar la lista de órdenes. */
+  onEquipmentChanged?: () => void;
 }) {
   const [events, setEvents] = useState<EventRow[]>([]);
   const [parts, setParts] = useState<WorkOrderPart[]>([]);
@@ -104,6 +108,8 @@ export function TallerOrderDetail({
 
   const isOrder = isOrderBooking(booking);
   const due = workOrderDeliveryDue(booking.delivery_date, booking.status);
+  const orderDeclaredIssue = String(booking.declared_issue || "").trim();
+  const [eqEditorOpen, setEqEditorOpen] = useState(false);
   // La API devuelve los campos de equipo con prefijo equipment_* (LEFT JOIN en bookings/route.ts).
   // equipmentLabel espera brand, model, rodado, identifier, color sin prefijo.
   const equipmentData: Equipment = {
@@ -320,8 +326,21 @@ export function TallerOrderDetail({
               )}
             </div>
             <div className="rounded-xl border border-border bg-muted/30 p-2.5">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Equipo</p>
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Equipo</p>
+                <button
+                  type="button"
+                  onClick={() => setEqEditorOpen(true)}
+                  className="mb-1 rounded-md border border-border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-muted"
+                  title={orderEquipmentLabel(booking as never) ? "Editar la ficha del equipo" : "Cargar la ficha del equipo"}
+                >
+                  {orderEquipmentLabel(booking as never) ? "✏️ Editar" : "＋ Cargar ficha"}
+                </button>
+              </div>
               <p className="font-medium truncate">{equipmentLabel(equipmentData) || "Sin ficha de equipo"}</p>
+              {!equipmentLabel(equipmentData) && orderDeclaredIssue && (
+                <p className="text-[11px] text-muted-foreground truncate">Falla: {orderDeclaredIssue}</p>
+              )}
               {eqJobs && (
                 <p className="text-[11px] text-muted-foreground">
                   {eqJobs.jobs} trabajo{eqJobs.jobs === 1 ? "" : "s"}
@@ -630,6 +649,18 @@ export function TallerOrderDetail({
           </div>
         </div>
       </div>
+
+      {eqEditorOpen && (
+        <OrderEquipmentEditor
+          order={booking}
+          onClose={() => setEqEditorOpen(false)}
+          onSaved={async () => {
+            onEquipmentChanged?.();
+            setLoaded(false);
+            await loadDetail();
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -3,7 +3,7 @@
 import type { Booking } from "@/types/database";
 import { isOrderBooking } from "@/lib/agenda";
 import { isoTodayAR, workOrderStateLabel } from "@/lib/work-order";
-import { equipmentLabel } from "@/lib/equipment";
+import { orderSubjectLabel } from "@/lib/equipment";
 
 /**
  * Banda "En el taller" debajo del calendario de la turnera: TODAS las
@@ -42,7 +42,7 @@ export function TallerOpenOrdersStrip({
       <p className="text-sm font-semibold text-orange-800">🛠️ En el taller ({open.length})</p>
       <div className="flex flex-wrap gap-1.5">
         {open.slice(0, max).map((b: any) => {
-          const eq = equipmentLabel(b as any) || String(b.declared_issue || "Equipo sin ficha");
+          const eq = orderSubjectLabel(b as any);
           const due = String(b.delivery_date || "");
           const late = due && due <= today;
           return (

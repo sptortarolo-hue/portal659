@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import type { Booking } from "@/types/database";
 import { isOrderBooking } from "@/lib/agenda";
 import { isoTodayAR } from "@/lib/work-order";
-import { equipmentLabel } from "@/lib/equipment";
+import { orderSubjectLabel } from "@/lib/equipment";
 
 /**
  * Panel "Hoy" del taller: qué hay FÍSICAMENTE en el local (unidades con
@@ -88,7 +88,7 @@ export function TallerHoyPanel({
         ) : (
           <div className="space-y-1">
             {visible.map((b: any) => {
-              const eq = equipmentLabel(b as any) || String(b.declared_issue || "Equipo sin ficha");
+              const eq = orderSubjectLabel(b as any);
               return (
                 <button
                   key={b.id}

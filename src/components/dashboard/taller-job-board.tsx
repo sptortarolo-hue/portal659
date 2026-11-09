@@ -14,7 +14,7 @@ import {
   type WorkOrderBoardFilter,
   type WorkOrderState,
 } from "@/lib/work-order";
-import { equipmentLabel } from "@/lib/equipment";
+import { equipmentFromBooking, orderEquipmentLabel, orderSubjectLabel } from "@/lib/equipment";
 import { BookingCard, type BookingCardProps } from "@/components/dashboard/booking-card";
 import { TallerOrderCard } from "@/components/dashboard/taller-order-card";
 
@@ -97,7 +97,7 @@ export function TallerJobBoard({
         `#${b.work_order_no ?? ""}`,
         b.customer_name,
         b.customer_phone,
-        equipmentLabel(b),
+        orderEquipmentLabel(b),
         b.declared_issue,
         b.diagnosis,
       ]
@@ -514,6 +514,9 @@ function OrderList({
               const due = workOrderDeliveryDue(b.delivery_date, b.status);
               const next = workOrderNextState(b.status);
               const total = Number(b.service_price || 0);
+              // Título: el equipo si tiene ficha; si no, lo que vino a hacer.
+              const subject = orderSubjectLabel(b);
+              const eqFilled = subject !== String(b.declared_issue || "").trim();
               return (
                 <tr
                   key={b.id}
@@ -526,8 +529,13 @@ function OrderList({
                     {b.customer_phone && <span className="block text-[10px] text-muted-foreground">{b.customer_phone}</span>}
                   </td>
                   <td className="px-2.5 py-2">
-                    <span className="block max-w-[220px] truncate">{equipmentLabel(b) || "Sin ficha"}</span>
-                    {b.declared_issue && <span className="block max-w-[220px] truncate text-[10px] text-muted-foreground">{String(b.declared_issue)}</span>}
+                    <span className="block max-w-[220px] truncate">{subject}</span>
+                    {eqFilled && b.declared_issue && (
+                      <span className="block max-w-[220px] truncate text-[10px] text-muted-foreground">{String(b.declared_issue)}</span>
+                    )}
+                    {!eqFilled && (
+                      <span className="block max-w-[220px] truncate text-[10px] text-muted-foreground">Equipo sin ficha</span>
+                    )}
                   </td>
                   <td className="px-2.5 py-2">
                     <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap ${workOrderStateTone(b.status)}`}>

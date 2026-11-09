@@ -14,6 +14,7 @@ import {
   workOrderDatesLabel,
   workOrderDeliveryDue,
   workOrderNextLabel,
+  workOrderPrevState,
   workOrderQuickActions,
   workOrderStateLabel,
   workOrderStateTone,
@@ -215,28 +216,30 @@ export function TallerOrderCard({
             </div>
           )}
 
-          {/* Presupuesto vinculado */}
-          {linkedQuote && (
-            <div className="rounded-lg border border-violet-200 bg-violet-50 p-2">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-700 mb-1">Presupuesto</p>
+          {/* Presupuesto */}
+          <div className="rounded-lg border border-violet-200 bg-violet-50 p-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-700 mb-1">Presupuesto</p>
+            {linkedQuote ? (
               <p className="text-sm font-medium">
                 {linkedQuote.status === "accepted" ? "✅ Aprobado por el cliente" : "🧾 Enviado — esperando respuesta"}
                 {Number(linkedQuote.quoted_price || 0) > 0 ? ` · $${Number(linkedQuote.quoted_price).toLocaleString("es-AR")}` : ""}
               </p>
-              <div className="flex gap-1.5 mt-1.5">
-                {bookingCardProps.onQuoteOrder && (
-                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={(e) => { e.stopPropagation(); bookingCardProps.onQuoteOrder!(booking); }}>
-                    💰 Cotizar
-                  </Button>
-                )}
-                {bookingCardProps.onSendOrderQuote && (
-                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={(e) => { e.stopPropagation(); bookingCardProps.onSendOrderQuote!(booking); }}>
-                    📲 Enviar WA
-                  </Button>
-                )}
-              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Sin presupuesto vinculado.</p>
+            )}
+            <div className="flex gap-1.5 mt-1.5 flex-wrap">
+              {bookingCardProps.onQuoteOrder && (
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={(e) => { e.stopPropagation(); bookingCardProps.onQuoteOrder!(booking); }}>
+                  💰 Presupuestar
+                </Button>
+              )}
+              {linkedQuote && bookingCardProps.onSendOrderQuote && (
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={(e) => { e.stopPropagation(); bookingCardProps.onSendOrderQuote!(booking); }}>
+                  📲 Enviar WA
+                </Button>
+              )}
             </div>
-          )}
+          </div>
 
           {/* Repuestos + mano de obra + margen */}
           <div className="rounded-lg border border-border p-2 space-y-1.5">
@@ -285,6 +288,31 @@ export function TallerOrderCard({
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Avance saltable + retroceder */}
+          {(quickActions.length > 0 || workOrderPrevState(booking.status)) && (
+            <div className="flex flex-wrap gap-1">
+              {workOrderPrevState(booking.status) && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); bookingCardProps.handleUpdateBookingStatus(booking.id, workOrderPrevState(booking.status)!); }}
+                  className="rounded-full border border-border bg-background px-2 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  ← Retroceder
+                </button>
+              )}
+              {quickActions.map((a) => (
+                <button
+                  key={a.to}
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); bookingCardProps.handleUpdateBookingStatus(booking.id, a.to); }}
+                  className="rounded-full border border-border bg-background px-2 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  {a.label}
+                </button>
+              ))}
             </div>
           )}
 

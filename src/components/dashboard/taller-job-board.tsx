@@ -550,6 +550,16 @@ function OrderList({
                     {b.payment_status === "paid" && <span className="block text-[10px] text-green-600">cobrado</span>}
                   </td>
                   <td className="px-2.5 py-2 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                    {bookingCardProps.onQuoteOrder && (
+                      <button
+                        type="button"
+                        onClick={() => bookingCardProps.onQuoteOrder!(b)}
+                        className="rounded-md border border-border bg-background px-2 py-1 text-[10px] font-medium hover:bg-muted mr-1"
+                        title="Presupuestar"
+                      >
+                        💰
+                      </button>
+                    )}
                     {next && (
                       <button
                         type="button"

@@ -120,17 +120,35 @@ export function workOrderNextState(status: unknown): WorkOrderState | null {
 }
 
 /**
+ * Estado anterior en el flujo (para "Retroceder"): null si ya está al
+ * principio o es terminal.
+ */
+export function workOrderPrevState(status: unknown): WorkOrderState | null {
+  const s = String(status || "pending");
+  if (s === "completed" || s === "cancelled") return null;
+  const idx = WORK_ORDER_FLOW.findIndex((x) => x === s);
+  if (idx <= 0) return null;
+  return WORK_ORDER_FLOW[idx - 1];
+}
+
+/**
  * Acciones rápidas de la tarjeta (todo saltable): cada una lleva directo a un
- * estado, sin obligar a pasar por los anteriores.
+ * estado, sin obligar a pasar por los anteriores. Incluye estados anteriores
+ * (retroceder) y posteriores (avanzar), etiquetados con la dirección.
  */
 export function workOrderQuickActions(status: unknown): { to: string; label: string }[] {
   const s = String(status || "pending");
   if (s === "completed" || s === "cancelled") return [];
   const order = ["diagnosed", "quoted", "approved", "repairing", "waiting_parts", "ready", "completed"] as const;
   const currentIdx = order.findIndex((x) => x === s);
-  return order
-    .filter((to) => currentIdx < 0 || to > s)
-    .map((to) => ({ to, label: `→ ${workOrderStateLabel(to)}` }));
+  // Si el estado actual no está en la lista (ej. "pending"), se tratan todos
+  // como alcanzables hacia adelante.
+  const reachable = order.filter((to) => to !== s);
+  return reachable.map((to) => {
+    const toIdx = order.findIndex((x) => x === to);
+    const isBack = currentIdx >= 0 && toIdx < currentIdx;
+    return { to, label: `${isBack ? "←" : "→"} ${workOrderStateLabel(to)}` };
+  });
 }
 
 /** Etiqueta de la orden para listas: "Orden N° 12". */
@@ -244,6 +262,38 @@ export const ACCESORIO_PRESETS = [
   "Llaves",
   "Soporte / accesorios",
 ] as const;
+
+// ---------------------------------------------------------------------------
+// Presets de accesorios por rubro (checklist de ingreso). Se elige según la
+// categoría (rubro) del comercio; sin migración, solo presets en código.
+// ---------------------------------------------------------------------------
+const ACCESORIO_PRESETS_BY_RUBRO: { match: RegExp; items: string[] }[] = [
+  {
+    match: /bici|cycl|bicicle/i,
+    items: ["Asiento", "Inflador", "Luz trasera", "Luz delantera", "Casco", "Computadora / bordcomputer", "Portaequipaje", "Espejo", "Candado", "Alforjas", "Bomba", "Cámara de repuesto", "Herramientas"],
+  },
+  {
+    match: /celular|móvil|movil|smartphone|teléfono|telefono/i,
+    items: ["Cargador", "Cable", "Funda", "Glass templado", "SIM / Memoria", "Huella / patrón (contraseña)", "Tapa trasera", "Auriculares"],
+  },
+  {
+    match: /helader/i,
+    items: ["Estantes", "Cajones", "Burletes", "Bandeja de agua", "Perillas", "Cable / toma", "Freezer", "Control"],
+  },
+  {
+    match: /electrodom|hogar|artículo del hogar|articulo del hogar|lavar|cocina|microondas|televisor|tv/i,
+    items: ["Cable", "Accesorios que trae", "Manual", "Control remoto", "Llaves", "Perillas", "Cepillos / filtros"],
+  },
+];
+
+/** Presets de accesorios según el rubro (categoría) del comercio. */
+export function accessorioPresetsFor(category: unknown): string[] {
+  const cat = String(category || "");
+  for (const p of ACCESORIO_PRESETS_BY_RUBRO) {
+    if (p.match.test(cat)) return p.items;
+  }
+  return [...ACCESORIO_PRESETS];
+}
 
 export function emptyChecklist(): IntakeChecklist {
   return { accessories: [] };

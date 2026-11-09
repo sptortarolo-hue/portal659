@@ -11,10 +11,11 @@ import { isOrderBooking } from "@/lib/agenda";
 import { equipmentLabel, orderEquipmentLabel, type Equipment } from "@/lib/equipment";
 import { OrderEquipmentEditor } from "@/components/dashboard/order-equipment-editor";
 import {
-  ACCESORIO_PRESETS,
+  accessorioPresetsFor,
   hasChecklistContent,
   normalizeChecklist,
   workOrderQuickActions,
+  workOrderPrevState,
   workOrderStateLabel,
   workOrderStateTone,
   workOrderTitle,
@@ -81,6 +82,7 @@ export function TallerOrderDetail({
   onEquipmentChanged?: () => void;
 }) {
   const [events, setEvents] = useState<EventRow[]>([]);
+  const [showAllEvents, setShowAllEvents] = useState(false);
   const [parts, setParts] = useState<WorkOrderPart[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [eqJobs, setEqJobs] = useState<{ jobs: number; last_job_at: string | null } | null>(null);
@@ -114,6 +116,8 @@ export function TallerOrderDetail({
   // Presupuesto vinculado: la conexión orden ↔ presupuesto es solo del
   // vertical taller (servicios/estética la ocultan).
   const isTaller = (bookingCardProps.vendor as { vertical?: string } | null | undefined)?.vertical === "taller";
+  const vendorCategory = (bookingCardProps.vendor as { category?: string } | null | undefined)?.category;
+  const accessoryPresets = accessorioPresetsFor(vendorCategory);
   const [quoteLinkPick, setQuoteLinkPick] = useState("");
   const [quoteLinkBusy, setQuoteLinkBusy] = useState(false);
   const [quoteLinkMsg, setQuoteLinkMsg] = useState("");
@@ -297,6 +301,18 @@ export function TallerOrderDetail({
               Cerrar
             </Button>
           </div>
+          {/* Retroceder al estado anterior */}
+          {workOrderPrevState(booking.status) && (
+            <div className="flex flex-wrap gap-1 mt-2">
+              <button
+                type="button"
+                onClick={() => bookingCardProps.handleUpdateBookingStatus(booking.id, workOrderPrevState(booking.status)!)}
+                className="rounded-full border border-border bg-background px-2 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                ← Retroceder
+              </button>
+            </div>
+          )}
           {/* Avance saltable: un toque lleva a cualquier estado posterior */}
           {quickActions.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-2">
@@ -406,7 +422,7 @@ export function TallerOrderDetail({
               <div className="space-y-1.5">
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Checklist de ingreso</p>
                 <div className="flex flex-wrap gap-1">
-                  {ACCESORIO_PRESETS.map((a) => {
+                  {accessoryPresets.map((a) => {
                     const on = (checklist.accessories || []).includes(a);
                     return (
                       <button
@@ -530,7 +546,7 @@ export function TallerOrderDetail({
                     <div className="flex gap-1.5 mt-1.5 flex-wrap">
                       {bookingCardProps.onQuoteOrder && (
                         <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => bookingCardProps.onQuoteOrder!(booking)}>
-                          💰 Cotizar
+                          💰 Presupuestar
                         </Button>
                       )}
                       {bookingCardProps.onSendOrderQuote && (
@@ -570,9 +586,21 @@ export function TallerOrderDetail({
                     >
                       {quoteLinkBusy ? "Vinculando..." : "Vincular"}
                     </Button>
+                    {bookingCardProps.onQuoteOrder && (
+                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => bookingCardProps.onQuoteOrder!(booking)}>
+                        💰 Presupuestar
+                      </Button>
+                    )}
                   </div>
                 ) : (
-                  <p className="text-xs text-muted-foreground">Sin presupuesto vinculado.</p>
+                  <div className="space-y-1.5">
+                    <p className="text-xs text-muted-foreground">Sin presupuesto vinculado.</p>
+                    {bookingCardProps.onQuoteOrder && (
+                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => bookingCardProps.onQuoteOrder!(booking)}>
+                        💰 Presupuestar
+                      </Button>
+                    )}
+                  </div>
                 )}
                 {quoteLinkMsg && (
                   <p className={`text-[11px] mt-1 ${quoteLinkMsg.includes("✅") ? "text-green-700" : "text-muted-foreground"}`}>
@@ -702,7 +730,7 @@ export function TallerOrderDetail({
               <p className="text-xs text-muted-foreground">Sin eventos registrados todavía.</p>
             ) : (
               <div className="space-y-1">
-                {events.map((ev) => (
+                {(showAllEvents ? events : events.slice(0, 5)).map((ev) => (
                   <div key={ev.id} className="flex items-start gap-2 text-xs">
                     <span className="w-9 shrink-0 tabular-nums text-muted-foreground">
                       {String(ev.created_at || "").slice(11, 16) || "—"}
@@ -714,6 +742,15 @@ export function TallerOrderDetail({
                     </span>
                   </div>
                 ))}
+                {events.length > 5 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllEvents((v) => !v)}
+                    className="text-[11px] text-primary font-medium hover:underline mt-1"
+                  >
+                    {showAllEvents ? "Ver menos" : `Ver todo el historial (${events.length})`}
+                  </button>
+                )}
               </div>
             )}
           </div>

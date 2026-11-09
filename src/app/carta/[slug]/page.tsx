@@ -98,6 +98,9 @@ export default async function CartaPage({ params }: { params: Promise<{ slug: st
         : null,
     weightStepKg: Number((v as any).weight_step_kg) > 0 ? Number((v as any).weight_step_kg) : null,
     weightMinKg: Number((v as any).weight_min_kg) > 0 ? Number((v as any).weight_min_kg) : null,
+    hours: (v as any).hours != null ? String((v as any).hours) : null,
+    openOverride: (v as any).open_override === true ? true : (v as any).open_override === false ? false : null,
+    acceptOrdersWhenClosed: (v as any).accept_orders_when_closed === true,
     volumeGroups: [],
   };
 

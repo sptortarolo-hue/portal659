@@ -13,6 +13,7 @@ import { cashAppliesToItem, cashPrice, normalizeCashPct } from "@/lib/cash-disco
 import { cashBillSuggestions } from "@/lib/cash-bills";
 import { cartLineTotal } from "@/lib/order-line";
 import { mirrorVolume } from "@/lib/volume-mirror";
+import { isStoreOpen } from "@/lib/open-hours";
 import { checkArgPhone, toE164 } from "@/lib/phone";
 import { fmtVence } from "@/lib/gift-card-share";
 import { OrderSummaryModal } from "@/components/cart/order-summary-modal";
@@ -171,6 +172,14 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
   // elige entre los próximos 3; default el primero (el server lo valida y,
   // si viene vacío/trucho, auto-asigna el próximo).
   const isRetailVendor = vendor?.vertical === "moda" || vendor?.vertical === "comercio";
+  const storeClosed = vendor ? isStoreOpen(vendor as any) === false : false;
+  const acceptsWhenClosed = (vendor as any)?.acceptOrdersWhenClosed === true;
+  const closedNotice =
+    storeClosed && acceptsWhenClosed
+      ? method === "delivery"
+        ? "🕐 El local está cerrado ahora. Tu pedido se procesará el día y turno que elegiste."
+        : "🕐 El local está cerrado ahora. Tu pedido se procesará cuando abra (próximo turno)."
+      : null;
   const showSlots = isRetailVendor && method === "delivery" && deliverySlots.length > 0 && !deliveryCoordinar && !shipActive;
   const activeSlotId = slotId || deliverySlots[0]?.id || "";
   const activeSlotLabel = deliverySlots.find((s) => s.id === activeSlotId)?.label || "";
@@ -864,6 +873,12 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
         Con <span className="font-medium">{v.storeName}</span> · {items.length} items ·{" "}
         <span className="font-bold text-foreground">${displayTotal.toLocaleString("es-AR")}</span>
       </p>
+
+      {closedNotice && (
+        <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
+          {closedNotice}
+        </div>
+      )}
 
       {/* Order summary */}
       <div className="border border-border rounded-2xl p-4 mb-6 bg-card space-y-3">

@@ -91,6 +91,9 @@ export type CartVendor = {
   deliveryZones?: { id: string; name: string; description: string | null; fee: number }[];
   /** % de descuento en efectivo del comercio (visual en checkout). */
   cashDiscountPct?: number | null;
+  hours?: string | null;
+  openOverride?: boolean | null;
+  acceptOrdersWhenClosed?: boolean;
   /** Pesables: múltiplo de venta en kg (0/NULL = libre). */
   weightStepKg?: number | null;
   /** Pesables: peso mínimo de venta en kg (0/NULL = sin mínimo). */

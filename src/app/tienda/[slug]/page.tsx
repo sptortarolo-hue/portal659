@@ -668,6 +668,9 @@ export default async function TiendaPage({
         .includes("Efectivo") && Number(v.cash_discount_pct) > 0
         ? Number(v.cash_discount_pct)
         : null,
+    hours: (v as any).hours != null ? String((v as any).hours) : null,
+    openOverride: (v as any).open_override === true ? true : (v as any).open_override === false ? false : null,
+    acceptOrdersWhenClosed: (v as any).accept_orders_when_closed === true,
     // Pesables: múltiplo de venta y peso mínimo (0/NULL = libre/sin mínimo).
     weightStepKg: Number((v as any).weight_step_kg) > 0 ? Number((v as any).weight_step_kg) : null,
     weightMinKg: Number((v as any).weight_min_kg) > 0 ? Number((v as any).weight_min_kg) : null,

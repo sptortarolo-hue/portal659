@@ -6,6 +6,7 @@ import { getSiteUrl } from "@/lib/site-url";
 import { computeCashClosing, computeShiftSummary, getOpenShift, lastClosingSince } from "@/lib/cash-closing";
 import { resolveVendorPlan } from "@/lib/plans";
 import { fetchOrderPayments } from "@/lib/order-payments";
+import { isOrderBooking } from "@/lib/agenda";
 import { formatShipmentCode } from "@/lib/shipping";
 import type { Order, Plan, Vendor } from "@/types/database";
 
@@ -187,7 +188,7 @@ export async function POST(request: Request) {
     if (!order) {
       return NextResponse.json({ ok: false, error: "Orden no encontrada" }, { status: 404 });
     }
-    if (order.kind !== "orden") {
+    if (!isOrderBooking(order as any)) {
       return NextResponse.json({ ok: false, error: "Esa reserva no es una orden de servicio" }, { status: 400 });
     }
     const eqParts = [

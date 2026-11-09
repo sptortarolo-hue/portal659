@@ -174,8 +174,6 @@ export async function PATCH(
       : null;
   // Equipo (ficha del turno): enlaza equipment_id (del picker) o crea inline.
   const wantEquip = body?.equipment_id !== undefined || body?.equipment !== undefined;
-  // Orden de servicio (taller): la fila es kind='orden' (tolerante a migración
-  // sin aplicar: sin columna kind, todo sigue siendo turno).
   const orderRow = await queryOne<{
     kind: string | null;
     delivery_date: string | null;
@@ -185,7 +183,12 @@ export async function PATCH(
      FROM bookings WHERE id = $1 LIMIT 1`,
     [id]
   ).catch(() => null);
-  const isOrder = orderRow?.kind === "orden";
+  // Orden de servicio (taller): `kind='orden'`, o fila vieja mal clasificada
+  // como turno pero con datos de orden (N° o fecha de entrega). Tolerante a
+  // migración sin aplicar: sin columna kind, todo sigue siendo turno.
+  const isOrder =
+    orderRow?.kind === "orden" ||
+    (!!orderRow && (orderRow.work_order_no != null || orderRow.delivery_date != null));
   // Campos propios de la orden: entrega, falla declarada, diagnóstico,
   // checklist de ingreso y mano de obra.
   const wantOrderFields =

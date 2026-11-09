@@ -858,9 +858,9 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
     }
   }
 
-  // Purga de órdenes de prueba del taller (kind='orden', is_preview=true).
+  // Purga de órdenes de prueba del taller (is_preview=true, orden de servicio).
   async function purgePreviewOrdens() {
-    const rows = bookings.filter((b: any) => b?.is_preview === true && b.kind === "orden");
+    const rows = bookings.filter((b: any) => b?.is_preview === true && isOrderBooking(b));
     const ids = rows.map((r) => r.id);
     if (ids.length === 0) return;
     if (!window.confirm(`¿Borrar ${ids.length} orden(es) de prueba del taller?`)) return;
@@ -2166,20 +2166,22 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
       <CollapsibleSection icon="📊" title="Resumen del mes">
         <div className="grid grid-cols-3 gap-2 text-center">
           <div className="rounded-xl border border-border p-3">
-            <p className="font-display text-xl font-bold">{quotes.length + bookings.length}</p>
+            <p className="font-display text-xl font-bold">{quotes.length + turnos.length}</p>
             <p className="text-[11px] text-muted-foreground">Solicitudes</p>
           </div>
           <div className="rounded-xl border border-border p-3">
             <p className="font-display text-xl font-bold">
-              {quotes.filter((q) => q.status === "accepted").length + bookings.filter((b: any) => b.status === "confirmed").length}
+              {quotes.filter((q) => q.status === "accepted").length + turnos.filter((b: any) => b.status === "confirmed").length}
             </p>
             <p className="text-[11px] text-muted-foreground">Confirmadas</p>
           </div>
           <div className="rounded-xl border border-border p-3">
             <p className="font-display text-xl font-bold">
               {(() => {
-                const total = quotes.length + bookings.length;
-                const ok = quotes.filter((q) => q.status === "accepted").length + bookings.filter((b: any) => b.status === "confirmed").length;
+                // Solo turnos: las órdenes de servicio (kind='orden') no son
+                // solicitudes online y viven en el tablero del taller.
+                const total = quotes.length + turnos.length;
+                const ok = quotes.filter((q) => q.status === "accepted").length + turnos.filter((b: any) => b.status === "confirmed").length;
                 return total > 0 ? `${Math.round((ok / total) * 100)}%` : "—";
               })()}
             </p>

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { CustomerFormTimeline } from "@/components/dashboard/customer-form-timeline";
 import { WorkOrderModal } from "@/components/dashboard/work-order-modal";
 import { customerMatches } from "@/lib/search-match";
+import { isOrderBooking } from "@/lib/agenda";
 import { cn } from "@/lib/utils";
 import { TONE_CHIP, type PanelTone } from "@/components/panel-ui/tones";
 
@@ -85,6 +86,14 @@ type CustomerQuote = {
 
 type CustomerBooking = {
   id: string;
+  /** 'turno' | 'orden' (migrate-work-orders); null en filas viejas. */
+  kind?: string | null;
+  work_order_no?: number | null;
+  delivery_date?: string | null;
+  declared_issue?: string | null;
+  equipment_brand?: string | null;
+  equipment_model?: string | null;
+  equipment_identifier?: string | null;
   product_name: string | null;
   service_label?: string | null;
   staff_label?: string | null;
@@ -888,11 +897,37 @@ export function CustomersManager({ serviceMode = false, vendorId = null, loyalty
                                 </div>
                               </div>
                             )}
-                            {bookings.length > 0 && (
+                            {bookings.some((b) => isOrderBooking(b as any)) && (
+                              <div className="mb-2">
+                                <p className="text-[11px] font-semibold text-muted-foreground mb-1">Órdenes de servicio</p>
+                                <div className="space-y-1">
+                                  {bookings.filter((b) => isOrderBooking(b as any)).map((b) => {
+                                    const eq = [b.equipment_brand, b.equipment_model].filter(Boolean).join(" ");
+                                    return (
+                                      <div key={b.id} className="flex justify-between gap-2 text-xs py-1 border-b border-border last:border-0">
+                                        <span className="min-w-0">
+                                          <span className="block truncate">
+                                            {b.work_order_no ? `N° ${b.work_order_no} · ` : ""}
+                                            {eq || b.product_name || b.service_label || "Orden de servicio"}
+                                            {b.equipment_identifier ? ` · N° ${b.equipment_identifier}` : ""} — {b.status}
+                                          </span>
+                                          <span className="block truncate text-muted-foreground">
+                                            {b.booking_date ? `Ingreso ${b.booking_date}` : ""}
+                                            {b.delivery_date ? ` · entrega ${b.delivery_date}` : ""}
+                                            {b.declared_issue ? ` · ${b.declared_issue}` : ""}
+                                          </span>
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                            {bookings.some((b) => !isOrderBooking(b as any)) && (
                               <div className="mb-2">
                                 <p className="text-[11px] font-semibold text-muted-foreground mb-1">Turnos</p>
                                 <div className="space-y-1">
-                                  {bookings.map((b) => (
+                                  {bookings.filter((b) => !isOrderBooking(b as any)).map((b) => (
                                     <div key={b.id} className="flex justify-between gap-2 text-xs py-1 border-b border-border last:border-0">
                                       <span className="min-w-0">
                                         <span className="block truncate">

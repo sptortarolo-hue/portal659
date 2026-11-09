@@ -132,9 +132,11 @@ export async function POST(request: Request) {
       }
 
       // Número corrido por comercio: MAX + 1, con reintento ante carrera.
+      // Se cuenta por `work_order_no` (no por kind) para no repetir números
+      // si quedaron órdenes viejas marcadas como turno.
       for (let attempt = 0; attempt < 3; attempt++) {
         const maxRow = await tx.queryOne<{ next: number }>(
-          `SELECT COALESCE(MAX(work_order_no), 0) + 1 AS next FROM bookings WHERE vendor_id = $1 AND kind = 'orden'`,
+          `SELECT COALESCE(MAX(work_order_no), 0) + 1 AS next FROM bookings WHERE vendor_id = $1 AND work_order_no IS NOT NULL`,
           [gate.vendor.id]
         );
         const no = maxRow?.next ?? 1;

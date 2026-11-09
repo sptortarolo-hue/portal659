@@ -228,7 +228,7 @@ export function TallerJobBoard({
   };
 
   const showTechFilter = (staff || []).length > 1;
-  const previewOrdens = bookings.filter((b: any) => b?.is_preview === true && b.kind === "orden");
+  const previewOrdens = bookings.filter((b: any) => b?.is_preview === true && isOrderBooking(b));
 
   return (
     <div className="space-y-3">

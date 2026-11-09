@@ -120,11 +120,14 @@ export async function GET(
     try {
       try {
         bookings = (await queryMany<Record<string, any>>(
-          `SELECT b.id, b.product_name, s.name AS service_label, st.name AS staff_label,
-                  b.products_used, b.booking_date, b.booking_time, b.status, b.notes, b.created_at
+          `SELECT b.id, b.kind, b.work_order_no, b.delivery_date, b.declared_issue, b.diagnosis,
+                  b.product_name, s.name AS service_label, st.name AS staff_label,
+                  b.products_used, b.booking_date, b.booking_time, b.status, b.notes, b.created_at,
+                  e.brand AS equipment_brand, e.model AS equipment_model, e.identifier AS equipment_identifier
            FROM bookings b
            LEFT JOIN services s ON s.id = b.service_id
            LEFT JOIN estetica_staff st ON st.id = b.staff_id
+           LEFT JOIN equipment e ON e.id = b.equipment_id
            WHERE b.vendor_id = $1
              AND (regexp_replace(b.customer_phone, '[^0-9]', '', 'g') = ANY($2))
            ORDER BY b.booking_date DESC, b.booking_time DESC LIMIT 30`,

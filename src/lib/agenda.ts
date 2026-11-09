@@ -29,9 +29,26 @@ export type AgendaBooking = {
 
 export type AgendaStaff = { id: string; name: string };
 
-/** ¿Es una orden de servicio (recepción de taller: sin hora ni duración)? */
+/**
+ * ¿Es una orden de servicio (recepción de taller: sin hora ni duración)?
+ *
+ * `kind` es la fuente de verdad, pero se toleran filas viejas mal clasificadas
+ * como turno (INSERTs anteriores que no pasaron `kind` y quedaron con el
+ * DEFAULT 'turno'). Una orden se reconoce sin ambigüedad porque **no tiene
+ * hora** y trae datos propios de orden (N°, falla declarada o fecha de
+ * entrega). Así el panel separa órdenes de turnos aunque la migración
+ * `migrate-taller-kind-repair.sql` no se haya corrido todavía.
+ */
 export function isOrderBooking(b: AgendaBooking): boolean {
-  return (b as { kind?: string | null }).kind === "orden";
+  if (!b) return false;
+  const kind = (b as { kind?: string | null }).kind;
+  if (kind === "orden") return true;
+  const row = b as Record<string, unknown>;
+  const hasOrderData =
+    row.work_order_no != null || row.declared_issue != null || row.delivery_date != null;
+  if (!hasOrderData) return false;
+  // Un turno siempre tiene hora; si no la tiene y hay datos de orden, es orden.
+  return bookingStartMinutes(b) == null;
 }
 
 /**

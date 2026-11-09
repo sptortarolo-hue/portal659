@@ -59,6 +59,7 @@ import { buildClientWhatsAppUrl, ORDER_STATUS_COLORS, RETAIL_STATUS_LABELS, flow
 import OrderDetailModal from "@/components/dashboard/order-detail-modal";
 import { ApartadoModal } from "@/components/dashboard/apartado-modal";
 import { apartadoInfo } from "@/lib/apartado";
+import { isOrderBooking } from "@/lib/agenda";
 import DashboardGastro from "@/components/dashboard/dashboard-gastro";
 import DashboardComercio from "@/components/dashboard/dashboard-comercio";
 import DashboardServicio from "@/components/dashboard/dashboard-servicio";
@@ -1693,12 +1694,12 @@ function VendorDashboardInner() {
   const pendingQuotesCount = quotes.filter((q) => q.status === "pending" || q.status === "responded").length;
   // Turnos pendientes (citas con hora) — sin contar órdenes de servicio.
   const pendingBookingsCount = bookings.filter(
-    (b: any) => (b.kind === "turno" || b.kind == null) && b.status === "pending"
+    (b: any) => !isOrderBooking(b) && b.status === "pending"
   ).length;
   const pendingDepositsCount = quotes.filter((q) => q.deposit_status === "pending").length;
-  // Badge del tab "🛠️ Taller": órdenes de servicio abiertas (no completadas).
+  // Badge del tab "Taller": órdenes de servicio abiertas (no completadas).
   const openOrdersCount = bookings.filter(
-    (b: any) => b.kind === "orden" && b.status !== "completed" && b.status !== "cancelled"
+    (b: any) => isOrderBooking(b) && b.status !== "completed" && b.status !== "cancelled"
   ).length;
 
   const tabTitle =

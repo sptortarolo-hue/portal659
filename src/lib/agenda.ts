@@ -30,25 +30,26 @@ export type AgendaBooking = {
 export type AgendaStaff = { id: string; name: string };
 
 /**
- * ¿Es una orden de servicio (recepción de taller: sin hora ni duración)?
+ * ¿Es una orden de servicio (recepción de taller)?
  *
- * `kind` es la fuente de verdad, pero se toleran filas viejas mal clasificadas
- * como turno (INSERTs anteriores que no pasaron `kind` y quedaron con el
- * DEFAULT 'turno'). Una orden se reconoce sin ambigüedad porque **no tiene
- * hora** y trae datos propios de orden (N°, falla declarada o fecha de
- * entrega). Así el panel separa órdenes de turnos aunque la migración
- * `migrate-taller-kind-repair.sql` no se haya corrido todavía.
+ * `kind = 'orden'` es la fuente de verdad, pero se toleran las filas viejas
+ * mal clasificadas como turno (INSERTs previos que quedaron con el DEFAULT
+ * 'turno') mirando las columnas que **solo** usan las órdenes
+ * (`work_order_no`, `declared_issue`, `delivery_date`). Un turno nunca las
+ * setea, así que alcanza con una de ellas para identificarla — tenga o no
+ * hora, que era la fuga que dejaba órdenes dentro del calendario de turnos.
  */
 export function isOrderBooking(b: AgendaBooking): boolean {
   if (!b) return false;
-  const kind = (b as { kind?: string | null }).kind;
-  if (kind === "orden") return true;
   const row = b as Record<string, unknown>;
-  const hasOrderData =
-    row.work_order_no != null || row.declared_issue != null || row.delivery_date != null;
-  if (!hasOrderData) return false;
-  // Un turno siempre tiene hora; si no la tiene y hay datos de orden, es orden.
-  return bookingStartMinutes(b) == null;
+  // Columnas EXCLUSIVAS de las órdenes de servicio (ningún turno las usa):
+  // si están presentes, es orden — tenga o no hora.
+  return (
+    row.kind === "orden" ||
+    row.work_order_no != null ||
+    row.declared_issue != null ||
+    row.delivery_date != null
+  );
 }
 
 /**
@@ -288,9 +289,12 @@ export type MonthCell = {
   byStatus: MonthStatusCounts;
   /** Turnos del día, ordenados por hora (ya filtrados por profesional). */
   items: AgendaBooking[];
-  /** Órdenes de servicio recibidas este día (recepciones de taller). */
+  /**
+   * Deprecated: las órdenes de servicio NO viven en el calendario de turnos
+   * (se mantiene el campo en 0 para no romper consumidores viejos).
+   */
   orders: number;
-  /** Entregas estimadas este día (solo con `showDeliveries`). */
+  /** Idem: siempre vacío. */
   deliveries: AgendaBooking[];
 };
 
@@ -298,8 +302,8 @@ export type MonthCell = {
  * Grilla de 42 celdas (6 filas × 7) del mes que contiene `anchorISO`,
  * empezando el lunes. Los turnos se agrupan por `booking_date` "YYYY-MM-DD"
  * (los que no tienen fecha válida se ignoran acá) y, si se pasa `staffId`,
- * sólo se cuentan los de ese profesional. Con `showDeliveries`, las órdenes
- * de servicio también se ubican en su fecha de ENTREGA estimada.
+ * sólo se cuentan los de ese profesional. Las órdenes de servicio quedan
+ * afuera: viven en el tablero 🛠️ Taller, no en el calendario de turnos.
  */
 export function buildMonthGrid(
   anchorISO: string,
@@ -320,22 +324,14 @@ export function buildMonthGrid(
   const staffId = opts.staffId && opts.staffId !== "all" ? opts.staffId : null;
 
   const byDate = new Map<string, AgendaBooking[]>();
-  const byDelivery = new Map<string, AgendaBooking[]>();
   for (const b of bookings) {
+    // Las órdenes de servicio NO son turnos: no se cuentan ni salen en el mes.
+    if (isOrderBooking(b)) continue;
     const iso = String(b.booking_date || "").slice(0, 10);
     if (/^\d{4}-\d{2}-\d{2}$/.test(iso) && (!staffId || (b.staff_id || "") === staffId)) {
       const arr = byDate.get(iso) || [];
       arr.push(b);
       byDate.set(iso, arr);
-    }
-    // Entregas estimadas de las órdenes (para el toggle del Mes).
-    if (opts.showDeliveries && isOrderBooking(b)) {
-      const d = String((b as { delivery_date?: string | null }).delivery_date || "").slice(0, 10);
-      if (/^\d{4}-\d{2}-\d{2}$/.test(d) && (!staffId || (b.staff_id || "") === staffId)) {
-        const arr = byDelivery.get(d) || [];
-        arr.push(b);
-        byDelivery.set(d, arr);
-      }
     }
   }
 
@@ -373,8 +369,8 @@ export function buildMonthGrid(
       count: items.length,
       byStatus,
       items,
-      orders: items.filter(isOrderBooking).length,
-      deliveries: byDelivery.get(iso) || [],
+      orders: 0,
+      deliveries: [],
     });
     cur.setDate(cur.getDate() + 1);
   }

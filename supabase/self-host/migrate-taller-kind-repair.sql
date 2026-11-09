@@ -8,11 +8,12 @@
 -- creado sin la columna `kind` explícita (o antes de aplicar
 -- migrate-work-orders.sql) queda como turno aunque tenga datos de orden.
 --
--- Criterio (conservador): solo se re-clasifica como orden la fila que
---   - está marcada como turno,
---   - NO tiene hora (`booking_time IS NULL`; un turno siempre tiene hora), y
+-- Criterio: solo se re-clasifica como orden la fila que
+--   - está marcada como turno, y
 --   - tiene al menos un dato propio de una orden de servicio
 --     (número de orden, falla declarada o fecha de entrega).
+-- No se exige "sin hora": una orden vieja pudo quedar con `booking_time`
+-- cargado, y esas eran justo las que seguían apareciendo en Turnos.
 -- Es idempotente: correrla dos veces no cambia nada.
 --
 -- Aplicar contra el contenedor (ver AGENTS.md):
@@ -34,7 +35,6 @@ BEGIN
   UPDATE public.bookings
      SET kind = 'orden'
    WHERE kind = 'turno'
-     AND booking_time IS NULL
      AND (
        work_order_no IS NOT NULL
        OR declared_issue IS NOT NULL

@@ -8,7 +8,6 @@ import {
   addDaysISO,
   addMonthsISO,
   agendaWindow,
-  allDayBookings,
   arNowMinutes,
   blockHeight,
   blockTop,
@@ -17,6 +16,7 @@ import {
   buildDayColumns,
   buildMonthGrid,
   formatDayLabel,
+  isOrderBooking,
   minutesToLabel,
   monthLabel,
   startOfMonthISO,
@@ -25,7 +25,6 @@ import {
   type AgendaStaff,
   type MonthCell,
 } from "@/lib/agenda";
-import { workOrderStateLabel, workOrderStateTone } from "@/lib/work-order";
 import { arToday } from "@/lib/booking-schedule";
 
 export type AgendaViewMode = "day" | "month" | "plan" | "list";
@@ -110,10 +109,14 @@ function AgendaDay({
   staffFilter: string;
   onOpenBooking: (id: string) => void;
 }) {
+  const rows = useMemo(
+    () => bookings.filter((b) => !isOrderBooking(b)),
+    [bookings]
+  );
   const dayBookings = useMemo(() => {
-    const base = bookings.filter((b) => String(b.booking_date || "").slice(0, 10) === dateISO && bookingStartMinutes(b) != null);
+    const base = rows.filter((b) => String(b.booking_date || "").slice(0, 10) === dateISO && bookingStartMinutes(b) != null);
     return staffFilter === "all" ? base : base.filter((b) => (b.staff_id || "") === staffFilter);
-  }, [bookings, dateISO, staffFilter]);
+  }, [rows, dateISO, staffFilter]);
 
   const { startMin, endMin } = useMemo(() => agendaWindow(dayBookings), [dayBookings]);
   const totalHeight = ((endMin - startMin) / 60) * HOUR_HEIGHT;
@@ -124,8 +127,6 @@ function AgendaDay({
   }, [startMin, endMin]);
 
   const cols = useMemo(() => buildDayColumns(dayBookings, dateISO, staff), [dayBookings, dateISO, staff]);
-  // Órdenes de servicio del día: sin hora, en banda propia arriba de la grilla.
-  const dayOrders = useMemo(() => allDayBookings(bookings, dateISO, staffFilter), [bookings, dateISO, staffFilter]);
 
   const isToday = dateISO === arToday();
   const nowMin = arNowMinutes();
@@ -133,36 +134,6 @@ function AgendaDay({
 
   return (
     <div className="space-y-2">
-      {dayOrders.length > 0 && (
-        <div className="rounded-xl border border-border bg-card p-2 space-y-1.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            🛠️ Recepciones del día (sin horario) — {dayOrders.length}
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {dayOrders.map((b) => {
-              const no = (b as { work_order_no?: number | null }).work_order_no;
-              const del = String((b as { delivery_date?: string | null }).delivery_date || "").slice(0, 10);
-              return (
-                <button
-                  key={b.id}
-                  type="button"
-                  onClick={() => onOpenBooking(b.id)}
-                  className={`rounded-lg border px-2 py-1 text-left text-[11px] leading-tight ${workOrderStateTone(b.status)}`}
-                  title="Abrir la orden"
-                >
-                  <span className="block font-semibold">
-                    N° {Number(no) || "—"} · {String(b.customer_name || "Sin nombre")}
-                  </span>
-                  <span className="block opacity-80">
-                    {workOrderStateLabel(b.status)}
-                    {del ? ` · entrega ${del.slice(8, 10)}/${del.slice(5, 7)}` : ""}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
       <div className="overflow-x-auto -mx-1 px-1">
         <div className="min-w-max">
           {/* Encabezado: riel vacío + columnas por profesional */}
@@ -273,15 +244,16 @@ function AgendaMonth({
   onDaySelect: (iso: string) => void;
   onCreateBooking?: (iso: string, staffId?: string) => void;
 }) {
-  // Toggle: ubica también las órdenes en su fecha de ENTREGA estimada.
-  const [showDeliveries, setShowDeliveries] = useState(false);
+  const rows = useMemo(
+    () => bookings.filter((b) => !isOrderBooking(b)),
+    [bookings]
+  );
   const cells = useMemo(
-    () => buildMonthGrid(dateISO, bookings, { staffId: staffFilter, showDeliveries }),
-    [dateISO, bookings, staffFilter, showDeliveries]
+    () => buildMonthGrid(dateISO, rows, { staffId: staffFilter }),
+    [dateISO, rows, staffFilter]
   );
   const totalMonth = cells.reduce((acc, c) => (c.inMonth ? acc + c.count : acc), 0);
-  const totalOrders = cells.reduce((acc, c) => (c.inMonth ? acc + c.orders : acc), 0);
-  const noDate = bookings.filter(
+  const noDate = rows.filter(
     (b) => !/^\d{4}-\d{2}-\d{2}$/.test(String(b.booking_date || "").slice(0, 10))
   ).length;
 
@@ -294,7 +266,7 @@ function AgendaMonth({
           </div>
         ))}
         {cells.map((cell) => {
-          const hasAny = cell.count > 0 || cell.deliveries.length > 0;
+          const hasAny = cell.count > 0;
           return (
           <button
             key={cell.iso}
@@ -307,7 +279,7 @@ function AgendaMonth({
             }`}
             title={
               hasAny
-                ? `${cell.count} turno(s)${cell.orders > 0 ? ` · ${cell.orders} orden(es)` : ""}${cell.deliveries.length > 0 ? ` · ${cell.deliveries.length} entrega(s)` : ""} — abrir el día`
+                ? `${cell.count} turno(s) — abrir el día`
                 : onCreateBooking
                   ? "Agendar turno"
                   : undefined
@@ -348,20 +320,6 @@ function AgendaMonth({
               </span>
             )}
 
-            {(cell.orders > 0 || cell.deliveries.length > 0) && (
-              <span className="mt-auto flex flex-wrap gap-1">
-                {cell.orders > 0 && (
-                  <span className="rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700" title="Órdenes de servicio recibidas">
-                    🛠️ {cell.orders}
-                  </span>
-                )}
-                {cell.deliveries.length > 0 && (
-                  <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700" title="Entregas estimadas de órdenes">
-                    📦 {cell.deliveries.length}
-                  </span>
-                )}
-              </span>
-            )}
           </button>
           );
         })}
@@ -375,16 +333,6 @@ function AgendaMonth({
               {d.label}
             </span>
           ))}
-          {totalOrders > 0 && (
-            <span className="flex items-center gap-1">
-              <span className="rounded-full bg-orange-100 px-1.5 text-[10px] font-semibold text-orange-700">🛠️ {totalOrders}</span>
-              órdenes de servicio
-            </span>
-          )}
-          <label className="flex items-center gap-1 cursor-pointer">
-            <input type="checkbox" checked={showDeliveries} onChange={(e) => setShowDeliveries(e.target.checked)} className="h-3.5 w-3.5" />
-            Ver entregas estimadas
-          </label>
         </div>
         <p className="text-[11px] text-muted-foreground">
           {totalMonth > 0 ? `${totalMonth} turno(s) este mes` : "Sin turnos este mes"} · tocá un día con turnos para ver el detalle
@@ -415,6 +363,12 @@ export function AgendaView({
 }: Props) {
   const today = arToday();
   const [staffFilter, setStaffFilter] = useState<string>("all");
+  // Defensa: la pantalla de Turnos muestra SOLO turnos. Las órdenes de
+  // servicio viven en el tablero 🛠️ Taller (nunca en el calendario).
+  const rows = useMemo(
+    () => bookings.filter((b) => !isOrderBooking(b)),
+    [bookings]
+  );
 
   return (
     <div className="space-y-3">
@@ -525,7 +479,7 @@ export function AgendaView({
             </label>
           </div>
           <AgendaDay
-            bookings={bookings}
+            bookings={rows}
             staff={staff}
             dateISO={dateISO}
             staffFilter={staffFilter}
@@ -536,7 +490,7 @@ export function AgendaView({
 
       {view === "month" && (
         <AgendaMonth
-          bookings={bookings}
+          bookings={rows}
           dateISO={dateISO}
           staffFilter={staffFilter}
           onDaySelect={onDaySelect}

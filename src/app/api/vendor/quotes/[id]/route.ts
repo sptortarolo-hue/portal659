@@ -79,12 +79,14 @@ export async function PATCH(
           });
         }
         // Si el presupuesto es de una orden de servicio, al aceptarlo la
-        // orden pasa a "Aprobada" (ya se puede reparar).
+        // orden pasa a "Aprobada" (ya se puede reparar). Tolerante a filas
+        // viejas mal clasificadas como turno: con datos de orden alcanza.
         const hasOrderCol = await hasColumn(tx, "bookings", "quote_id");
         if (hasOrderCol) {
           await tx.queryVoid(
             `UPDATE bookings SET status = 'approved'
-              WHERE quote_id = $1 AND vendor_id = $2 AND kind = 'orden'
+              WHERE quote_id = $1 AND vendor_id = $2
+                AND (kind = 'orden' OR work_order_no IS NOT NULL OR declared_issue IS NOT NULL)
                 AND status NOT IN ('approved', 'repairing', 'ready', 'completed', 'cancelled')`,
             [id, gate.vendor.id]
           );

@@ -27,10 +27,6 @@ export default function AdminConfigPage() {
   const [newCategory, setNewCategory] = useState({ name: "", slug: "", vertical: "" });
   const [editingNeighborhood, setEditingNeighborhood] = useState<Neighborhood | null>(null);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
-  // Botón flotante de WhatsApp del portal (on/off global, /api/portal-settings).
-  const [waFloat, setWaFloat] = useState<boolean | null>(null);
-  const [savingWaFloat, setSavingWaFloat] = useState(false);
-  const [waFloatError, setWaFloatError] = useState("");
   const [tvQrOnline, setTvQrOnline] = useState<boolean | null>(null);
   const [savingTvQr, setSavingTvQr] = useState(false);
   const [tvQrError, setTvQrError] = useState("");
@@ -81,13 +77,11 @@ export default function AdminConfigPage() {
       const data = await api("/api/admin/config");
       setNeighborhoods(Array.isArray(data?.neighborhoods) ? data.neighborhoods : []);
       setCategories(Array.isArray(data?.categories) ? data.categories : []);
-      // El on/off del botón vive en endpoint público (lo mismo que lee el layout).
+      // El on/off del QR de la Pantalla TV vive en endpoint público (lo mismo que lee el panel).
       try {
         const s = await api("/api/portal-settings");
-        setWaFloat(s?.waFloat !== false);
         setTvQrOnline(s?.tvQrOnline === true);
       } catch {
-        setWaFloat(null);
         setTvQrOnline(null);
       }
     } catch (e) {
@@ -157,23 +151,6 @@ export default function AdminConfigPage() {
     }
   }
 
-  async function toggleWaFloat(next: boolean) {
-    setSavingWaFloat(true);
-    setWaFloatError("");
-    try {
-      await api("/api/admin/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key: "wa_float", value: next }),
-      });
-      setWaFloat(next);
-    } catch (e) {
-      setWaFloatError(e instanceof Error ? e.message : "No se pudo guardar el switch");
-    } finally {
-      setSavingWaFloat(false);
-    }
-  }
-
   async function toggleTvQr(next: boolean) {
     setSavingTvQr(true);
     setTvQrError("");
@@ -207,43 +184,6 @@ export default function AdminConfigPage() {
       <div className="border border-border rounded-xl p-5 bg-card">
         <h2 className="font-medium text-lg mb-4">Portal</h2>
         <div className="flex items-center justify-between gap-4">
-          <div>
-            <p className="text-sm font-medium">Botón flotante de WhatsApp</p>
-            <p className="text-xs text-muted-foreground">
-              Contacto al portal (221 201 0898) en todas las páginas públicas. Apagalo
-              para hacer pruebas sin que aparezca.
-            </p>
-          </div>
-          {waFloat === null ? (
-            <span className="text-xs text-muted-foreground">…</span>
-          ) : (
-            <button
-              type="button"
-              role="switch"
-              aria-checked={waFloat}
-              aria-label="Botón flotante de WhatsApp"
-              disabled={savingWaFloat}
-              onClick={() => toggleWaFloat(!waFloat)}
-              className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${
-                waFloat ? "bg-primary" : "bg-muted"
-              }`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-                  waFloat ? "translate-x-6" : "translate-x-1"
-                }`}
-              />
-            </button>
-          )}
-        </div>
-        {waFloatError && (
-          <p className="text-xs text-red-600 pt-3">{waFloatError}</p>
-        )}
-        {waFloat === false && !waFloatError && (
-          <p className="text-xs text-amber-700 pt-3">El botón está oculto en todo el sitio.</p>
-        )}
-
-        <div className="mt-6 border-t border-border pt-5 flex items-center justify-between gap-4">
           <div>
             <p className="text-sm font-medium">QR de pedidos online en la Pantalla TV</p>
             <p className="text-xs text-muted-foreground">

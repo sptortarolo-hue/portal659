@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -110,6 +111,12 @@ export function TallerOrderDetail({
   const due = workOrderDeliveryDue(booking.delivery_date, booking.status);
   const orderDeclaredIssue = String(booking.declared_issue || "").trim();
   const [eqEditorOpen, setEqEditorOpen] = useState(false);
+  // Presupuesto vinculado: la conexión orden ↔ presupuesto es solo del
+  // vertical taller (servicios/estética la ocultan).
+  const isTaller = (bookingCardProps.vendor as { vertical?: string } | null | undefined)?.vertical === "taller";
+  const [quoteLinkPick, setQuoteLinkPick] = useState("");
+  const [quoteLinkBusy, setQuoteLinkBusy] = useState(false);
+  const [quoteLinkMsg, setQuoteLinkMsg] = useState("");
   // La API devuelve los campos de equipo con prefijo equipment_* (LEFT JOIN en bookings/route.ts).
   // equipmentLabel espera brand, model, rodado, identifier, color sin prefijo.
   const equipmentData: Equipment = {
@@ -446,33 +453,135 @@ export function TallerOrderDetail({
             )}
           </div>
 
-          {/* Presupuesto vinculado */}
-          {(bookingCardProps.orderQuotes || []).some((q: any) => String(q?.id) === String(booking.quote_id || "")) && (
-            <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-2.5">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-700 mb-1">Presupuesto</p>
-              {((bookingCardProps.orderQuotes || []) as any[]).length > 0 ? (
-                <div className="space-y-1">
-                  <p className="text-sm font-medium">
-                    Presupuesto vinculado a la orden
-                  </p>
-                  <div className="flex gap-1.5 mt-1.5">
-                    {bookingCardProps.onQuoteOrder && (
-                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => bookingCardProps.onQuoteOrder!(booking)}>
-                        💰 Cotizar
-                      </Button>
+          {/* Presupuesto vinculado (solo vertical taller) */}
+          {isTaller && (() => {
+            const quotes = (bookingCardProps.orderQuotes || []) as any[];
+            const linked = quotes.find((q: any) => String(q?.id) === String(booking.quote_id || "")) || null;
+            const phoneDigits = String(booking.customer_phone || "").replace(/\D/g, "").slice(-10);
+            const linkable = quotes.filter(
+              (q: any) => q.status === "accepted" && !q.booking_id && !q.is_preview &&
+                String(q.customer_phone || "").replace(/\D/g, "").slice(-10) === phoneDigits
+            );
+            const quoteStatusLabel: Record<string, string> = {
+              pending: "Pendiente",
+              responded: "Respondido",
+              accepted: "Aceptado",
+              cancelled: "Descartado",
+            };
+
+            async function linkQuote(quoteId: string) {
+              setQuoteLinkBusy(true);
+              setQuoteLinkMsg("");
+              try {
+                const res = await fetch(`/api/vendor/bookings/${booking.id}`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ quote_id: quoteId }),
+                });
+                if (!res.ok) throw new Error("No se pudo vincular el presupuesto");
+                onEquipmentChanged?.();
+                setQuoteLinkMsg("Presupuesto vinculado ✅");
+                await loadDetail();
+              } catch (e) {
+                setQuoteLinkMsg(e instanceof Error ? e.message : "No se pudo vincular");
+              } finally {
+                setQuoteLinkBusy(false);
+              }
+            }
+
+            async function unlinkQuote() {
+              if (!window.confirm("¿Desvincular el presupuesto de esta orden?")) return;
+              setQuoteLinkBusy(true);
+              setQuoteLinkMsg("");
+              try {
+                const res = await fetch(`/api/vendor/bookings/${booking.id}`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ quote_id: null }),
+                });
+                if (!res.ok) throw new Error("No se pudo desvincular el presupuesto");
+                onEquipmentChanged?.();
+                setQuoteLinkMsg("Presupuesto desvinculado");
+                await loadDetail();
+              } catch (e) {
+                setQuoteLinkMsg(e instanceof Error ? e.message : "No se pudo desvincular");
+              } finally {
+                setQuoteLinkBusy(false);
+              }
+            }
+
+            return (
+              <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-700 mb-1">Presupuesto</p>
+                {linked ? (
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">{linked.description || "Sin descripción"}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {linked.service_name ? `${linked.service_name} · ` : ""}
+                      {linked.preferred_date || "Sin fecha"}{linked.preferred_time ? ` ${linked.preferred_time}` : ""}
+                      {" · "}
+                      <span className="font-medium">{quoteStatusLabel[linked.status] || linked.status}</span>
+                    </p>
+                    {linked.quoted_price != null && (
+                      <p className="text-sm">
+                        💰 Cotizado: <strong>${Number(linked.quoted_price).toLocaleString("es-AR")}</strong>
+                      </p>
                     )}
-                    {bookingCardProps.onSendOrderQuote && (
-                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => bookingCardProps.onSendOrderQuote!(booking)}>
-                        📲 Enviar por WhatsApp
+                    <div className="flex gap-1.5 mt-1.5 flex-wrap">
+                      {bookingCardProps.onQuoteOrder && (
+                        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => bookingCardProps.onQuoteOrder!(booking)}>
+                          💰 Cotizar
+                        </Button>
+                      )}
+                      {bookingCardProps.onSendOrderQuote && (
+                        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => bookingCardProps.onSendOrderQuote!(booking)}>
+                          📲 Enviar por WhatsApp
+                        </Button>
+                      )}
+                      <Link href={`/vendor/presupuesto/${linked.id}`} target="_blank" className="inline-flex items-center h-7 rounded-md border border-border px-2.5 text-xs font-medium hover:bg-muted">
+                        🧾 Ver presupuesto
+                      </Link>
+                      <Button size="sm" variant="outline" className="h-7 text-xs text-muted-foreground" disabled={quoteLinkBusy} onClick={() => void unlinkQuote()}>
+                        Desvincular
                       </Button>
-                    )}
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">Sin presupuesto vinculado.</p>
-              )}
-            </div>
-          )}
+                ) : linkable.length > 0 ? (
+                  <div className="space-y-1.5">
+                    <select
+                      value={quoteLinkPick}
+                      onChange={(e) => setQuoteLinkPick(e.target.value)}
+                      className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+                    >
+                      <option value="">Vincular un presupuesto aceptado…</option>
+                      {linkable.map((q: any) => (
+                        <option key={q.id} value={q.id}>
+                          {(q.service_name || q.description || "Presupuesto").slice(0, 60)}
+                          {q.quoted_price != null ? ` · $${Number(q.quoted_price).toLocaleString("es-AR")}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs"
+                      disabled={!quoteLinkPick || quoteLinkBusy}
+                      onClick={() => quoteLinkPick && void linkQuote(quoteLinkPick)}
+                    >
+                      {quoteLinkBusy ? "Vinculando..." : "Vincular"}
+                    </Button>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Sin presupuesto vinculado.</p>
+                )}
+                {quoteLinkMsg && (
+                  <p className={`text-[11px] mt-1 ${quoteLinkMsg.includes("✅") ? "text-green-700" : "text-muted-foreground"}`}>
+                    {quoteLinkMsg}
+                  </p>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Repuestos + mano de obra */}
           <div className="rounded-xl border border-border p-2.5 space-y-2">

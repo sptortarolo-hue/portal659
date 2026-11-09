@@ -2,7 +2,7 @@ import { getVendorByRequest } from "@/lib/vendor-utils";
 import { notifyServiceClient } from "@/lib/service-notify";
 import { addServiceJob, decrementCustomerFromOrder, ensureServiceCustomer } from "@/lib/customers";
 import { isPreviewRow } from "@/lib/preview-flag";
-import { hasTable, queryMany, queryOne, query, withTransaction } from "@/lib/db";
+import { hasColumn, hasTable, queryMany, queryOne, query, withTransaction } from "@/lib/db";
 import { toE164 } from "@/lib/phone";
 import { resolveEquipmentForWorkTx, hasEquipmentColumnTx } from "@/lib/equipment-server";
 import { computeBookingWarnings, computeStartsEnds, isISODate, resolveBookingRefs, toMinutes } from "@/lib/vendor-booking";
@@ -132,9 +132,10 @@ export async function PATCH(
       customer_phone: string | null;
       deposit_amount: number | null;
       deposit_status: string | null;
+      quote_id: string | null;
     }>(
       `SELECT id, vendor_id, status, booking_date::text AS booking_date, customer_name, customer_phone,
-              deposit_amount, deposit_status
+              deposit_amount, deposit_status, quote_id
        FROM bookings WHERE id = $1 LIMIT 1`,
       [id]
     );
@@ -149,9 +150,10 @@ export async function PATCH(
       customer_phone: string | null;
       deposit_amount: number | null;
       deposit_status: string | null;
+      quote_id: string | null;
     }>(
       `SELECT id, vendor_id, status, booking_date::text AS booking_date, customer_name, customer_phone,
-              NULL::numeric AS deposit_amount, NULL::text AS deposit_status
+              NULL::numeric AS deposit_amount, NULL::text AS deposit_status, NULL::uuid AS quote_id
        FROM bookings WHERE id = $1 LIMIT 1`,
       [id]
     );
@@ -386,6 +388,7 @@ export async function PATCH(
       // Vínculo con el presupuesto (orden de servicio cotizada): se guarda
       // aparte porque no es un campo del form de turno.
       if (body?.quote_id !== undefined) {
+        const prevQuoteId = existing.quote_id ? String(existing.quote_id) : null;
         const colRows = await tx.query<{ column_name: string }>(
           `SELECT column_name FROM information_schema.columns
            WHERE table_schema = 'public' AND table_name = 'bookings'`,
@@ -406,6 +409,27 @@ export async function PATCH(
           valid = own?.ok === true ? qid : null;
         }
         await tx.queryVoid(`UPDATE bookings SET quote_id = $1 WHERE id = $2`, [valid, id]);
+
+        // Sincronización bidireccional: el badge "🛠️ Orden"/"📋 Consulta" del
+        // presupuesto lee quotes.booking_id, así que hay que mantenerlo al día
+        // (antes solo se guardaba bookings.quote_id y el presupuesto quedaba
+        // marcado como "Consulta" pese a estar ligado).
+        const hasQuoteBookingCol = await hasColumn(tx, "quotes", "booking_id");
+        if (hasQuoteBookingCol) {
+          if (valid) {
+            await tx.queryVoid(`UPDATE quotes SET booking_id = $1 WHERE id = $2`, [id, valid]);
+          } else {
+            // Desvinculación (o vínculo inválido): liberar el presupuesto que
+            // ESTABA apuntando a esta orden, sea el que vino en el body o no.
+            const prev = qid ?? prevQuoteId;
+            if (prev) {
+              await tx.queryVoid(
+                `UPDATE quotes SET booking_id = NULL WHERE id = $1 AND booking_id = $2`,
+                [prev, id]
+              );
+            }
+          }
+        }
         }
       }
       if (wantEquip) {

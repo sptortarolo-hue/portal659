@@ -172,10 +172,8 @@ export default async function TiendaPage({
     `SELECT * FROM products WHERE vendor_id = $1 AND available = true ORDER BY featured_today DESC, name ASC`,
     [vendor.id]
   );
-  // Venta online on/off (solo taller): ocultar productos con online_available=false.
-  const offersAll = (vendor.vertical === "taller")
-    ? (offersAllRaw || []).filter((p: any) => p?.online_available !== false)
-    : (offersAllRaw || []);
+  // Venta online on/off: ocultar productos con online_available=false.
+  const offersAll = (offersAllRaw || []).filter((p: any) => p?.online_available !== false);
   // Giftcards (comercio/moda): son productos reales pero NO van en el
   // catálogo — salen como una sola tarjeta en su propia sección.
   // Se detectan por sku GC-... o categoría "Giftcards".

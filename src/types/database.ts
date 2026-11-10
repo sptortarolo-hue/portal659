@@ -688,11 +688,13 @@ export type Quote = {
 export type QuoteItem = {
   id: string;
   quote_id: string;
-  kind: "material" | "labor";
+  kind: "repuesto" | "material" | "labor";
   description: string;
   qty: number;
   unit_price: number;
   position: number;
+  product_id?: string | null;
+  variant_id?: string | null;
   created_at: string;
 };
 

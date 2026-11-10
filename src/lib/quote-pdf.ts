@@ -152,7 +152,7 @@ export async function buildQuotePdf(data: QuotePdfData): Promise<Buffer> {
       if (y < 220) break; // v1: una página
       const lineTotal = Math.round(Number(it.qty) * Number(it.unit_price) * 100) / 100;
       text(String(it.qty), cols[0], y, 10);
-      const tag = it.kind === "labor" ? "Mano de obra: " : "";
+      const tag = it.kind === "labor" ? "Mano de obra: " : it.kind === "repuesto" ? "Repuesto: " : "";
       text(tag + it.description, cols[1], y, 10, font, black, 220);
       text(money(Number(it.unit_price)), cols[2], y, 10);
       const imp = money(lineTotal);

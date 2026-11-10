@@ -238,6 +238,17 @@ export async function POST(
         message: `Cobrado $${Number(amountPaid).toLocaleString("es-AR")} · ${paymentMethod}`,
         actor: (gate.vendor as { user_id?: string }).user_id || null,
       });
+      // Si la orden tiene un presupuesto vinculado, marcarlo como cobrado.
+      const bq = await tx.queryOne<{ quote_id: string | null }>(
+        `SELECT quote_id FROM bookings WHERE id = $1 LIMIT 1`,
+        [id]
+      ).catch(() => null);
+      if (bq?.quote_id) {
+        await tx.queryVoid(
+          `UPDATE quotes SET status = 'cobrado', accepted_at = COALESCE(accepted_at, now()) WHERE id = $1`,
+          [bq.quote_id]
+        ).catch(() => { /* sin migración: se ignora */ });
+      }
       if (signatureData) {
         await addBookingEventTx(tx, {
           vendorId: gate.vendor.id,

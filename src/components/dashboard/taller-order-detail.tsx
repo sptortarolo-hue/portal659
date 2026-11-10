@@ -549,6 +549,29 @@ export function TallerOrderDetail({
                           💰 Presupuestar
                         </Button>
                       )}
+                      {linked && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          onClick={async () => {
+                            try {
+                              const res = await fetch(`/api/vendor/bookings/${booking.id}/import-quote`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ quote_id: linked.id }),
+                              });
+                              if (!res.ok) throw new Error("No se pudo importar");
+                              await loadDetail();
+                              onEquipmentChanged?.();
+                            } catch (e) {
+                              alert(e instanceof Error ? e.message : "No se pudo importar");
+                            }
+                          }}
+                        >
+                          📥 Pasar a cuenta
+                        </Button>
+                      )}
                       {bookingCardProps.onSendOrderQuote && (
                         <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => bookingCardProps.onSendOrderQuote!(booking)}>
                           📲 Enviar por WhatsApp

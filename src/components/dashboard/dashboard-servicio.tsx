@@ -460,7 +460,8 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
   const quota = quotaProp !== undefined ? quotaProp : innerQuota;
   const canQuotePrice = canQuotePriceProp ?? innerCanQuotePrice;
   const canDeposits = canDepositsProp ?? innerCanDeposits;
-  const [quoteFilter, setQuoteFilter] = useState<"all" | "pending" | "responded" | "accepted" | "cancelled">("all");
+  const [quoteFilter, setQuoteFilter] = useState<"all" | "pending" | "responded" | "accepted" | "cobrado" | "cancelled">("all");
+  const [quoteOriginTab, setQuoteOriginTab] = useState<"consultas" | "ordenes">("consultas");
   const [respondingId, setRespondingId] = useState<string | null>(null);
   const [respondNotes, setRespondNotes] = useState("");
   const [respondPrice, setRespondPrice] = useState("");
@@ -1093,11 +1094,15 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
     pending: "Pendiente",
     responded: "Respondido",
     accepted: "Aceptado",
+    cobrado: "Cobrado",
     cancelled: "Descartado",
   };
 
+  const quotesByOrigin = (quotes as any[]).filter((q: any) =>
+    quoteOriginTab === "ordenes" ? !!q.booking_id : !q.booking_id
+  );
   const filteredQuotes =
-    quoteFilter === "all" ? quotes : quotes.filter((q) => q.status === quoteFilter);
+    quoteFilter === "all" ? quotesByOrigin : quotesByOrigin.filter((q) => q.status === quoteFilter);
 
   // Órdenes de servicio: imprime comprobante (80mm) o etiqueta (58mm).
   async function handlePrintOrder(id: string, kind: "orden" | "orden_tag") {
@@ -1767,7 +1772,22 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
             </p>
           )}
           <div className="flex gap-1 flex-wrap">
-            {(["all", "pending", "responded", "accepted", "cancelled"] as const).map((status) => (
+            {(["consultas", "ordenes"] as const).map((t) => (
+              <Button
+                key={t}
+                size="sm"
+                variant={quoteOriginTab === t ? "default" : "outline"}
+                onClick={() => setQuoteOriginTab(t)}
+                className="h-7 text-xs"
+              >
+                {t === "consultas"
+                  ? `📋 Consultas (${(quotes as any[]).filter((q: any) => !q.booking_id).length})`
+                  : `🛠️ De órdenes (${(quotes as any[]).filter((q: any) => !!q.booking_id).length})`}
+              </Button>
+            ))}
+          </div>
+          <div className="flex gap-1 flex-wrap">
+            {(["all", "pending", "responded", "accepted", "cobrado", "cancelled"] as const).map((status) => (
               <Button
                 key={status}
                 size="sm"
@@ -2234,6 +2254,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
           initialCustomerName={orderQuoteFor ? String(orderQuoteFor.customer_name || "") : undefined}
           initialCustomerPhone={orderQuoteFor ? String(orderQuoteFor.customer_phone || "") : undefined}
           initialDeclaredIssue={orderQuoteFor ? String(orderQuoteFor.declared_issue || "") : undefined}
+          products={offers as any}
           initialEquipment={orderQuoteFor
             ? ({
                 id: orderQuoteFor.equipment_id ? String(orderQuoteFor.equipment_id) : null,
@@ -2262,6 +2283,12 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ quote_id: quote.id, status: "quoted" }),
                 });
+                // Pasar el presupuesto a la cuenta de la orden (partidas + total).
+                await fetch(`/api/vendor/bookings/${order.id}/import-quote`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ quote_id: quote.id }),
+                }).catch(() => {});
               } catch {
                 /* el vínculo se puede rehacer desde el detalle */
               }

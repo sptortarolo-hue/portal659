@@ -84,6 +84,8 @@ type ManualItem = {
   description?: string;
   qty?: number;
   unit_price?: number;
+  product_id?: string;
+  variant_id?: string;
 };
 
 /**
@@ -114,10 +116,12 @@ export async function POST(request: Request) {
   const rawItems: ManualItem[] = Array.isArray(body.items) ? body.items : [];
   const items = rawItems
     .map((it, i) => ({
-      kind: it.kind === "labor" ? "labor" : "material",
+      kind: it.kind === "repuesto" ? "repuesto" : it.kind === "labor" ? "labor" : "material",
       description: String(it.description || "").trim(),
       qty: Math.max(0, Number(it.qty) || 0),
       unit_price: Math.max(0, Number(it.unit_price) || 0),
+      product_id: typeof it.product_id === "string" && it.product_id ? it.product_id : null,
+      variant_id: typeof it.variant_id === "string" && it.variant_id ? it.variant_id : null,
       position: i,
     }))
     .filter((it) => it.description !== "")
@@ -179,12 +183,21 @@ export async function POST(request: Request) {
       );
       const id = q[0]?.id;
       if (!id) throw new Error("No se pudo crear el presupuesto");
+      const hasProductCol = await hasColumn(tx, "quote_items", "product_id").catch(() => false);
       for (const it of items) {
-        await tx.queryVoid(
-          `INSERT INTO quote_items (quote_id, kind, description, qty, unit_price, position)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
-          [id, it.kind, it.description, it.qty, it.unit_price, it.position]
-        );
+        if (hasProductCol) {
+          await tx.queryVoid(
+            `INSERT INTO quote_items (quote_id, kind, description, qty, unit_price, position, product_id, variant_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [id, it.kind, it.description, it.qty, it.unit_price, it.position, it.product_id, it.variant_id]
+          );
+        } else {
+          await tx.queryVoid(
+            `INSERT INTO quote_items (quote_id, kind, description, qty, unit_price, position)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [id, it.kind, it.description, it.qty, it.unit_price, it.position]
+          );
+        }
       }
       if (!isPreview) {
         await ensureServiceCustomer(tx, gate.vendor.id, { phone: customerPhone, name: customerName });

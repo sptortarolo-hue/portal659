@@ -85,7 +85,14 @@ export function CustomerPicker({
   );
 }
 
-type ManualItem = { kind: "material" | "labor"; description: string; qty: string; unit_price: string };
+type ManualItem = {
+  kind: "repuesto" | "material" | "labor";
+  description: string;
+  qty: string;
+  unit_price: string;
+  product_id?: string | null;
+  variant_id?: string | null;
+};
 
 type QuoteVariant = "estetica" | "taller" | "oficios";
 
@@ -97,6 +104,7 @@ export function QuoteManualModal({
   initialCustomerPhone = "",
   initialDeclaredIssue = "",
   initialEquipment = null,
+  products = [],
 }: {
   onClose: () => void;
   /** Recibe el presupuesto creado (para vincularlo a la orden y avisar). */
@@ -112,6 +120,8 @@ export function QuoteManualModal({
   initialCustomerPhone?: string;
   initialDeclaredIssue?: string;
   initialEquipment?: Equipment | null;
+  /** Catálogo de productos (repuestos) para agregar partidas de repuesto. */
+  products?: { id: string; name: string; price?: number | null; promo_price?: number | null }[];
 }) {
   const isEstetica = variant === "estetica";
   const isTaller = variant === "taller";
@@ -126,6 +136,7 @@ export function QuoteManualModal({
   // Taller: modo de cotización — partidas (materiales + mano de obra) o precio cerrado.
   const [workshopMode, setWorkshopMode] = useState<"partidas" | "cerrado">("partidas");
   const [items, setItems] = useState<ManualItem[]>([{ kind: "material", description: "", qty: "1", unit_price: "" }]);
+  const [partQuery, setPartQuery] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   // Memoria de precios: últimos materiales usados (autocompleta precio).
@@ -140,6 +151,27 @@ export function QuoteManualModal({
   }, [isEstetica]);
 
   const total = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.unit_price) || 0), 0);
+
+  const partMatches = (() => {
+    const q = partQuery.trim().toLowerCase();
+    if (!q) return [];
+    return (products || []).filter((p) => p.name.toLowerCase().includes(q)).slice(0, 6);
+  })();
+
+  function addRepuesto(p: { id: string; name: string; price?: number | null; promo_price?: number | null }) {
+    setItems((prev) => {
+      const cleaned = prev.filter((it) => it.description.trim() !== "");
+      return [...(cleaned.length ? cleaned : []), {
+        kind: "repuesto",
+        description: p.name,
+        qty: "1",
+        unit_price: String(p.promo_price ?? p.price ?? 0),
+        product_id: p.id,
+        variant_id: null,
+      }];
+    });
+    setPartQuery("");
+  }
 
   function setItem(i: number, patch: Partial<ManualItem>) {
     setItems((prev) => {
@@ -198,6 +230,8 @@ export function QuoteManualModal({
                   description: it.description.trim(),
                   qty: Number(it.qty) || 0,
                   unit_price: Number(it.unit_price) || 0,
+product_id: it.product_id || null,
+variant_id: it.variant_id || null,
                 })),
               equipment_id: isTaller ? equipment?.id || null : null,
             }),
@@ -279,6 +313,21 @@ export function QuoteManualModal({
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <Label className="text-xs">Partidas (materiales y mano de obra)</Label>
+             {products && products.length > 0 && (
+               <div className="relative mb-1.5">
+                 <Input value={partQuery} onChange={(e) => setPartQuery(e.target.value)} placeholder=" + Agregar repuesto del catalogo (busca por nombre)" className="h-8 text-xs" />
+                 {partMatches.length > 0 && (
+                   <div className="absolute z-10 mt-1 w-full rounded-lg border border-border bg-card shadow-lg overflow-hidden max-h-40 overflow-y-auto">
+                     {partMatches.map((p) => (
+                       <button key={p.id} type="button" onClick={() => addRepuesto(p)} className="flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left text-xs hover:bg-muted/50">
+                         <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                         <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">${Number(p.promo_price ?? p.price ?? 0).toLocaleString("es-AR")}</span>
+                       </button>
+                     ))}
+                   </div>
+                 )}
+               </div>
+             )}
               <button
                 type="button"
                 onClick={() => setItems((prev) => [...prev, { kind: "material", description: "", qty: "1", unit_price: "" }])}
@@ -299,10 +348,11 @@ export function QuoteManualModal({
                 <div key={i} className="flex gap-1.5">
                   <select
                     value={it.kind}
-                    onChange={(e) => setItem(i, { kind: e.target.value as "material" | "labor" })}
+                    onChange={(e) => setItem(i, { kind: e.target.value as "repuesto" | "material" | "labor" })}
                     className="h-9 rounded-md border border-input bg-background text-xs w-[86px] flex-shrink-0"
                     title="Tipo"
                   >
+                    <option value="repuesto">Repuesto</option>
                     <option value="material">Material</option>
                     <option value="labor">M. obra</option>
                   </select>

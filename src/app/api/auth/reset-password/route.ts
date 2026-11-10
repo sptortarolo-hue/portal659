@@ -25,8 +25,11 @@ export const POST = withRateLimit(async (request: Request) => {
   }
 
   const passwordHash = await hashPassword(password);
+  // token_version + 1: el cambio de clave mata las sesiones abiertas (los
+  // tokens viejos llevan la versión anterior y dejan de verificar). Antes el
+  // reset no bumpiaba y un ladrón con la sesión robada seguía adentro.
   await query(
-    `UPDATE profiles SET password_hash = $1, reset_token_hash = NULL, reset_token_expires = NULL WHERE id = $2`,
+    `UPDATE profiles SET password_hash = $1, token_version = token_version + 1, reset_token_hash = NULL, reset_token_expires = NULL WHERE id = $2`,
     [passwordHash, profile.id]
   );
 

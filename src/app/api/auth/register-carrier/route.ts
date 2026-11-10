@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { queryOne, withTransaction } from "@/lib/db";
-import { hashPassword, signAccessToken } from "@/lib/auth";
+import { hashPassword, signAccessToken, signRefreshToken, setAuthSessionCookies } from "@/lib/auth";
 import { withRateLimit } from "@/lib/api-wrapper";
 import { toE164Plus, checkArgPhone, phoneVariantsAR } from "@/lib/phone";
 
@@ -143,6 +143,12 @@ export const POST = withRateLimit(async (request: Request) => {
       role: result.role,
       tokenVersion: result.token_version,
     });
+    const refreshToken = await signRefreshToken({
+      id: result.id,
+      email: result.email,
+      role: result.role,
+      tokenVersion: result.token_version,
+    });
 
     const response = NextResponse.json({
       ok: true,
@@ -150,17 +156,7 @@ export const POST = withRateLimit(async (request: Request) => {
       user: { id: result.id, email: result.email, name: result.full_name || result.email, role: result.role },
     });
 
-    const isLocal = process.env.NODE_ENV === "development";
-    const cookieOpts = {
-      httpOnly: true,
-      secure: !isLocal,
-      sameSite: "lax" as const,
-      path: "/",
-      maxAge: 60 * 60 * 24 * 7,
-      ...(!isLocal && { domain: ".portal659.com.ar" }),
-    };
-    response.cookies.set("sb-access-token", accessToken, cookieOpts);
-    response.cookies.set("sb-refresh-token", accessToken, cookieOpts);
+    setAuthSessionCookies(response, accessToken, refreshToken);
 
     return response;
   } catch (e) {

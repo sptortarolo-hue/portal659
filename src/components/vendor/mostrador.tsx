@@ -20,6 +20,7 @@ import { checkOfflineAllowed, offlineDeniedMsg } from "@/lib/offline-plan";
 import { describePrintError, dispatchOfflinePrint, markPrintsDone } from "@/lib/local-print";
 import { printsAdd } from "@/lib/offline-db";
 import { saveDraft, loadDraft, clearDraft } from "@/lib/draft";
+import { fetchWithAuthRefresh } from "@/lib/auth-refresh";
 import type { ContingencyKind } from "@/lib/offline-print";
 import { useCashShift } from "@/lib/use-cash-shift";
 import { fmtVence, buildGiftcardWaText, giftcardCardUrl, giftcardWaLink } from "@/lib/gift-card-share";
@@ -890,6 +891,9 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
   // Escáner de código de barras con la cámara (BarcodeDetector, Chrome/Edge).
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState("");
+  // Sesión expirada (401 definitivo al cobrar, refresh falló): aviso con
+  // salida a login — la venta queda en el borrador local, no se pierde.
+  const [sessionExpired, setSessionExpired] = useState(false);
   const scanVideoRef = useRef<HTMLVideoElement | null>(null);
   const scanStopRef = useRef(false);
   async function stopScan() {
@@ -1692,8 +1696,9 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     }
 
     let res: Response;
+    setSessionExpired(false);
     try {
-      res = await fetch("/api/vendor/pos/order", {
+      res = await fetchWithAuthRefresh("/api/vendor/pos/order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -1711,7 +1716,14 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     }
     const data = await res.json().catch(() => ({}));
     if (!data.ok) {
-      setMsg(data.error || "No se pudo registrar el pedido");
+      // 401 definitivo (el auto-refresh ya intentó renovar y no pudo): la
+      // venta no se pierde — queda en el borrador local de 24h.
+      if (res.status === 401 || data.error === "No autenticado") {
+        setSessionExpired(true);
+        setMsg("⚠️ Tu sesión expiró — iniciá sesión de nuevo para cobrar");
+      } else {
+        setMsg(data.error || "No se pudo registrar el pedido");
+      }
       setSaving(false);
       return;
     }
@@ -1819,7 +1831,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       const fiscalOrderId = data.orderId as string;
       setMsg(`${baseMsg} · 🧾 Facturando en ARCA…`);
       try {
-      const fres = await fetch("/api/vendor/fiscal/emitir", {
+      const fres = await fetchWithAuthRefresh("/api/vendor/fiscal/emitir", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2785,6 +2797,19 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             >
               Descartar
             </button>
+          </div>
+        )}
+        {sessionExpired && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2">
+            <p className="text-xs font-medium text-amber-900">
+              Tu venta queda guardada en este equipo: volvé a entrar y la cobrás sin recargarla.
+            </p>
+            <a
+              href={`/login?next=${encodeURIComponent("/vendor/dashboard?tab=pos")}`}
+              className="text-xs font-semibold text-amber-900 underline flex-shrink-0"
+            >
+              Iniciar sesión
+            </a>
           </div>
         )}
         {msg && (

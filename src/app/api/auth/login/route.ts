@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { queryOne } from "@/lib/db";
-import { verifyPassword, signAccessToken, signPending2faToken } from "@/lib/auth";
+import { verifyPassword, signAccessToken, signRefreshToken, signPending2faToken, setAuthSessionCookies } from "@/lib/auth";
 import { withRateLimit } from "@/lib/api-wrapper";
 import { phoneVariantsAR } from "@/lib/phone";
 
@@ -91,10 +91,16 @@ export const POST = withRateLimit(async (request: Request) => {
     role: user.role,
     tokenVersion: user.token_version,
   });
+  const refreshToken = await signRefreshToken({
+    id: user.id,
+    email: user.email,
+    role: user.role,
+    tokenVersion: user.token_version,
+  });
 
   const response = NextResponse.json({
     ok: true,
-    session: { access_token: accessToken, refresh_token: accessToken },
+    session: { access_token: accessToken, refresh_token: refreshToken },
     user: {
       id: user.id,
       email: user.email,
@@ -103,21 +109,8 @@ export const POST = withRateLimit(async (request: Request) => {
     },
   });
 
-  const isLocal = process.env.NODE_ENV === "development";
-  const cookieOpts = {
-    httpOnly: true,
-    secure: !isLocal,
-    sameSite: "lax" as const,
-    path: "/",
-    maxAge: 60 * 60 * 24 * 7,
-    ...(!isLocal && { domain: ".portal659.com.ar" }),
-  };
-  // NOTA: no agregar un segundo set() con el mismo nombre para limpiar la
-  // variante host-only legacy: ResponseCookies usa un Map por nombre y el
-  // segundo set PISARÍA la cookie válida (rompe el login). El shadowing se
-  // resuelve del lado servidor en getAuthUser (prueba todos los candidatos).
-  response.cookies.set("sb-access-token", accessToken, cookieOpts);
-  response.cookies.set("sb-refresh-token", accessToken, cookieOpts);
+  // Access (7d) + refresh (30d): el panel renueva solo con /api/auth/refresh.
+  setAuthSessionCookies(response, accessToken, refreshToken);
 
   return response;
 }, { maxRequests: 15 });

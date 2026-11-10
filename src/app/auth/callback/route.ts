@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 import { queryOne } from "@/lib/db";
-import { signAccessToken, signPending2faToken } from "@/lib/auth";
+import { signAccessToken, signRefreshToken, signPending2faToken, setAuthSessionCookies } from "@/lib/auth";
 import { getSiteUrl } from "@/lib/site-url";
 
 export async function GET(request: Request) {
@@ -40,13 +40,10 @@ export async function GET(request: Request) {
     }
 
     const accessToken = await signAccessToken({ id: profile.id, email: profile.email, role: profile.role, tokenVersion: profile.token_version });
+    const refreshToken = await signRefreshToken({ id: profile.id, email: profile.email, role: profile.role, tokenVersion: profile.token_version });
     const response = NextResponse.redirect(origin);
-    const isLocal = process.env.NODE_ENV === "development";
-    const opts = { httpOnly: true, secure: !isLocal, sameSite: "lax" as const, path: "/", maxAge: 60 * 60 * 24 * 7, ...(!isLocal && { domain: ".portal659.com.ar" }) };
-    // NOTA: no agregar segundo set() con el mismo nombre (ResponseCookies pisa
-    // por nombre y rompería la sesión; ver login/route.ts).
-    response.cookies.set("sb-access-token", accessToken, opts);
-    response.cookies.set("sb-refresh-token", accessToken, opts);
+    // Access (7d) + refresh (30d): el panel renueva solo con /api/auth/refresh.
+    setAuthSessionCookies(response, accessToken, refreshToken);
     return response;
   }
 

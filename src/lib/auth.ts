@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 import * as argon2 from "argon2";
+import type { NextResponse } from "next/server";
 import { queryOne } from "./db";
 
 export type AuthUser = {
@@ -40,6 +41,36 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 }
 
 type DecodedToken = { userId: string; email?: string; role?: string; tv?: number; staff?: boolean };
+
+export const ACCESS_COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 días (igual que ACCESS_TTL)
+export const REFRESH_COOKIE_MAX_AGE = 60 * 60 * 24 * 30; // 30 días (igual que REFRESH_TTL)
+
+/** Opciones de cookie de sesión, compartidas por login/refresh/logout. */
+export function authCookieOpts(maxAgeSeconds: number) {
+  const isLocal = process.env.NODE_ENV === "development";
+  return {
+    httpOnly: true,
+    secure: !isLocal,
+    sameSite: "lax" as const,
+    path: "/",
+    maxAge: maxAgeSeconds,
+    ...(!isLocal && { domain: ".portal659.com.ar" }),
+  };
+}
+
+/**
+ * Setea ambas cookies de sesión en la respuesta: access (7d) + refresh (30d).
+ * NOTA: un solo set() por nombre (ResponseCookies pisa por nombre; el shadowing
+ * host-only legacy se resuelve del lado servidor en getAuthUser/refresh).
+ */
+export function setAuthSessionCookies(
+  response: NextResponse,
+  accessToken: string,
+  refreshToken: string
+) {
+  response.cookies.set("sb-access-token", accessToken, authCookieOpts(ACCESS_COOKIE_MAX_AGE));
+  response.cookies.set("sb-refresh-token", refreshToken, authCookieOpts(REFRESH_COOKIE_MAX_AGE));
+}
 
 /**
  * Firma un JWT (access token). `tv` = versión de tokens (logout en todos
@@ -87,6 +118,30 @@ export async function signAccessToken(user: {
   tokenVersion?: number;
   staff?: boolean;
 }): Promise<string> {
+  return signSessionToken(user, ACCESS_TTL);
+}
+
+/**
+ * Refresh token: mismos claims, 30 días. Viaja en la cookie `sb-refresh-token`
+ * y solo lo consume POST /api/auth/refresh (renueva el access de 7d). Así una
+ * sesión puede vivir 30 días aunque el access vence a la semana — antes ambas
+ * cookies guardaban el mismo token de 7d y al vencer el mostrador quedaba en
+ * "No autenticado" sin salida.
+ */
+export async function signRefreshToken(user: {
+  id: string;
+  email: string;
+  role: string;
+  tokenVersion?: number;
+  staff?: boolean;
+}): Promise<string> {
+  return signSessionToken(user, REFRESH_TTL);
+}
+
+function signSessionToken(
+  user: { id: string; email: string; role: string; tokenVersion?: number; staff?: boolean },
+  ttl: string
+): Promise<string> {
   return new SignJWT({
     sub: user.id,
     email: user.email,
@@ -98,7 +153,7 @@ export async function signAccessToken(user: {
   })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime(ACCESS_TTL)
+    .setExpirationTime(ttl)
     .sign(getJwtSecret());
 }
 
@@ -113,6 +168,7 @@ export async function verifyAccessToken(
       email: (payload.email as string) || undefined,
       role: (payload.role as string) || undefined,
       tv: typeof payload.tv === "number" ? payload.tv : undefined,
+      staff: payload.staff === true,
     };
   } catch {
     return null;
@@ -132,13 +188,16 @@ export function extractToken(request: Request): string | undefined {
  * Se devuelven en orden (header primero) para que el llamador pruebe
  * cada uno hasta encontrar uno válido.
  */
-export function extractAllTokens(request: Request): string[] {
+export function extractAllTokens(
+  request: Request,
+  cookieName: "sb-access-token" | "sb-refresh-token" = "sb-access-token"
+): string[] {
   const out: string[] = [];
   const auth = request.headers.get("authorization")?.replace("Bearer ", "").trim();
   if (auth) out.push(auth);
   const cookieHeader = request.headers.get("cookie") || "";
   const cookieTokens: string[] = [];
-  for (const m of cookieHeader.matchAll(/sb-access-token=([^;]*)/g)) {
+  for (const m of cookieHeader.matchAll(new RegExp(`${cookieName}=([^;]*)`, "g"))) {
     const t = (m[1] || "").trim();
     if (t) cookieTokens.push(t);
   }

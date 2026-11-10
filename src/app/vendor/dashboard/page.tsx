@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useRenderGuard } from "@/hooks/use-render-guard";
 import { TabErrorBoundary } from "@/components/dashboard/tab-error-boundary";
 import { saveDraft, loadDraft, clearDraft } from "@/lib/draft";
+import { refreshSession } from "@/lib/auth-refresh";
 import dynamic from "next/dynamic";
 import {
   Menu,
@@ -600,6 +601,12 @@ function VendorDashboardInner() {
   const [bootstrappedAt, setBootstrappedAt] = useState<number | null>(null);
 
   const loadData = useCallback(async () => {
+    // Sesión deslizante: si el access (7d) venció con el panel cerrado, el
+    // refresh (cookie de 30d) lo renueva ANTES de las lecturas. Sin esto, un
+    // mostrador abierto hace más de una semana moría en "No autenticado" al
+    // cobrar. Falla silenciosa: si no se puede renovar, las lecturas siguen
+    // su curso (y su 401 manda a login como siempre).
+    await refreshSession();
     // Timeout global: un endpoint colgado no puede dejar el dashboard en
     // "Cargando..." para siempre (antes Promise.all esperaba a todos).
     const ctrl = new AbortController();

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { queryMany, queryOne } from "@/lib/db";
-import { verifyPassword, signAccessToken } from "@/lib/auth";
+import { verifyPassword, signAccessToken, signRefreshToken, setAuthSessionCookies } from "@/lib/auth";
 import { withRateLimit } from "@/lib/api-wrapper";
 import { toE164, phoneMatchCandidates } from "@/lib/phone";
 
@@ -81,28 +81,22 @@ export const POST = withRateLimit(async (request: Request) => {
     role: "buyer",
     tokenVersion: staff.token_version,
   });
+  const refreshToken = await signRefreshToken({
+    id: staff.profile_id,
+    email: staff.email || `rep_${phone}@portal659.local`,
+    role: "buyer",
+    tokenVersion: staff.token_version,
+  });
 
   const response = NextResponse.json({
     ok: true,
     // La app nativa de Reparto se autentica con Bearer (sin cookies): expone
     // el token igual que el login normal (session.access_token). `profile.id`
     // le permite matchear assigned_to para "Mis entregas".
-    session: { access_token: accessToken, refresh_token: accessToken },
+    session: { access_token: accessToken, refresh_token: refreshToken },
     profile: { id: staff.profile_id },
     vendor: { id: vendor?.id, store_name: vendor?.store_name },
   });
-  const isLocal = process.env.NODE_ENV === "development";
-  const cookieOpts = {
-    httpOnly: true,
-    secure: !isLocal,
-    sameSite: "lax" as const,
-    path: "/",
-    maxAge: 60 * 60 * 24 * 7,
-    ...(!isLocal && { domain: ".portal659.com.ar" }),
-  };
-  // NOTA: no agregar segundo set() con el mismo nombre (ResponseCookies pisa
-  // por nombre y rompería la sesión; ver login/route.ts).
-  response.cookies.set("sb-access-token", accessToken, cookieOpts);
-  response.cookies.set("sb-refresh-token", accessToken, cookieOpts);
+  setAuthSessionCookies(response, accessToken, refreshToken);
   return response;
 }, { maxRequests: 15 });

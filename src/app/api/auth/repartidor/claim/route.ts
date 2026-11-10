@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { query, queryOne, withTransaction } from "@/lib/db";
-import { hashPassword, signAccessToken } from "@/lib/auth";
+import { hashPassword, signAccessToken, signRefreshToken, setAuthSessionCookies } from "@/lib/auth";
 import { toE164 } from "@/lib/phone";
 
 /**
@@ -88,25 +88,19 @@ export async function POST(request: Request) {
     role: "buyer",
     tokenVersion: result.tokenVersion,
   });
+  const refreshToken = await signRefreshToken({
+    id: result.profileId,
+    email,
+    role: "buyer",
+    tokenVersion: result.tokenVersion,
+  });
 
   const response = NextResponse.json({
     ok: true,
     // Igual que login repartidor: la app nativa usa session.access_token (Bearer).
-    session: { access_token: accessToken, refresh_token: accessToken },
+    session: { access_token: accessToken, refresh_token: refreshToken },
     vendor: { id: vendor?.id, store_name: vendor?.store_name },
   });
-  const isLocal = process.env.NODE_ENV === "development";
-  const cookieOpts = {
-    httpOnly: true,
-    secure: !isLocal,
-    sameSite: "lax" as const,
-    path: "/",
-    maxAge: 60 * 60 * 24 * 7,
-    ...(!isLocal && { domain: ".portal659.com.ar" }),
-  };
-  // NOTA: no agregar segundo set() con el mismo nombre (ResponseCookies pisa
-  // por nombre y rompería la sesión; ver login/route.ts).
-  response.cookies.set("sb-access-token", accessToken, cookieOpts);
-  response.cookies.set("sb-refresh-token", accessToken, cookieOpts);
+  setAuthSessionCookies(response, accessToken, refreshToken);
   return response;
 }

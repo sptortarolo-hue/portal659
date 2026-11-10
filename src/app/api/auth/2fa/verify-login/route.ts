@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { queryOne } from "@/lib/db";
-import { verifyPending2faToken, signAccessToken } from "@/lib/auth";
+import { verifyPending2faToken, signAccessToken, signRefreshToken, setAuthSessionCookies } from "@/lib/auth";
 import { withRateLimit } from "@/lib/api-wrapper";
 import { decryptTotpSecret, verifyTotp, isMissing2faMigration } from "@/lib/totp";
 
@@ -81,25 +81,18 @@ export const POST = withRateLimit(async (request: Request) => {
     /* best-effort: no bloquear el login si falla la persistencia */
   }
 
-  const accessToken = await signAccessToken({
+  const claims = {
     id: user.id,
     email: user.email,
     role: user.role,
     tokenVersion: user.token_version,
-  });
-
-  const isLocal = process.env.NODE_ENV === "development";
-  const cookieOpts = {
-    httpOnly: true,
-    secure: !isLocal,
-    sameSite: "lax" as const,
-    path: "/",
-    maxAge: 60 * 60 * 24 * 7,
-    ...(!isLocal && { domain: ".portal659.com.ar" }),
   };
+  const accessToken = await signAccessToken(claims);
+  const refreshToken = await signRefreshToken(claims);
+
   const response = NextResponse.json({
     ok: true,
-    session: { access_token: accessToken, refresh_token: accessToken },
+    session: { access_token: accessToken, refresh_token: refreshToken },
     user: {
       id: user.id,
       email: user.email,
@@ -107,7 +100,6 @@ export const POST = withRateLimit(async (request: Request) => {
       role: user.role,
     },
   });
-  response.cookies.set("sb-access-token", accessToken, cookieOpts);
-  response.cookies.set("sb-refresh-token", accessToken, cookieOpts);
+  setAuthSessionCookies(response, accessToken, refreshToken);
   return response;
 }, { maxRequests: 10 });

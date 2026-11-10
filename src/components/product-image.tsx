@@ -257,7 +257,32 @@ export function ProductImage({
     );
   }
 
-  // Sin foto propia → imagen de referencia según nombre/categoría/vertical.
+  const isGastro = vertical === "gastronomia";
+
+  // Fuera de gastronomía: placeholder branded con marca de agua muy tenue del
+  // logo de Portal 659 + leyenda "sin foto" (en lugar del emoji/ícono genérico).
+  if (!isGastro) {
+    return (
+      <div
+        {...retryProps}
+        className={`${className ?? "w-full h-full"} relative flex items-center justify-center overflow-hidden bg-muted/40 ${canRetry ? "cursor-pointer" : ""}`}
+      >
+        <img
+          src="/logo.png"
+          alt=""
+          aria-hidden
+          loading="lazy"
+          decoding="async"
+          className="absolute inset-0 m-auto w-2/3 max-w-[120px] opacity-[0.07] grayscale dark:invert pointer-events-none select-none"
+        />
+        <span className="relative z-10 text-xs font-medium tracking-[0.2em] uppercase text-muted-foreground/50">
+          sin foto
+        </span>
+      </div>
+    );
+  }
+
+  // Gastronomía: imagen de referencia según nombre/categoría/vertical.
   const emojiPath = getProductEmojiImage(name, category, vertical);
   if (emojiPath && !emojiFailed) {
     return (

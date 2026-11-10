@@ -2026,6 +2026,7 @@ function VendorDashboardInner() {
                   productImages={productImages}
                   onCrop={openCrop}
                   onChanged={() => loadData()}
+                  vendor={vendor}
                   vendorId={vendor?.id}
                 />
                 </TabErrorBoundary>
@@ -2206,6 +2207,7 @@ function VendorDashboardInner() {
                     productImages={productImages}
                     onCrop={openCrop}
                     onChanged={() => loadData()}
+                    vendor={vendor}
                     vendorId={vendor?.id}
                   />
                   </TabErrorBoundary>

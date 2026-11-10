@@ -21,6 +21,7 @@ import { ProductImage } from "@/components/product-image";
 import { SIZE_GUIDE_TEMPLATES, templateToText } from "@/lib/size-guides";
 import type { ProductVariant } from "@/types/database";
 import type { ProductImage as ProductImageRow } from "@/types/database";
+import type { Vendor } from "@/types/database";
 
 
 type MenuCategory = { id: string; name: string; position: number };
@@ -69,6 +70,8 @@ type Props = {
   showOnlineToggle?: boolean;
   /** Para el borrador del formulario (24h). */
   vendorId?: string | null;
+  /** Datos del comercio (para decidir visibilidad de toggle online por vertical). */
+  vendor?: Vendor | null;
   /** Variantes de todos los productos (solo moda). */
   variants?: ProductVariant[];
   /** Galería de todos los productos (solo moda). */
@@ -105,7 +108,7 @@ const PM_VIEWS: { id: string; icon: string; label: string }[] = [
 ];
 
 /** Gestión completa de platos/productos (listado + ficha inline + modificadores), sin ir a Configuración. */
-export function ProductManager({ isModa = false, isComercio = false, showCatalogViews = false, showStock = true, showPrep = false, showCosts = false, canEditCost = false, showExpiry = false, showOnlineToggle = false, vendorId = null, variants, productImages, onCrop, onChanged }: Props) {
+export function ProductManager({ isModa = false, isComercio = false, showCatalogViews = false, showStock = true, showPrep = false, showCosts = false, canEditCost = false, showExpiry = false, showOnlineToggle = false, vendorId = null, vendor = null, variants, productImages, onCrop, onChanged }: Props) {
   // Wording por vertical: gastro habla de "platos", retail de "productos".
   const noun = isModa || isComercio ? "Producto" : "Plato";
   // Vistas del catálogo: moda las trae por defecto; otros verticales
@@ -126,6 +129,7 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
   const [bulkScope, setBulkScope] = useState<"all" | "visible">("all");
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkMsg, setBulkMsg] = useState("");
+  const isTaller = vendor?.vertical === "taller";
   // Vista activa del catálogo (solo moda usa el tab-bar).
   const [view, setView] = useState<string>("productos");
   const [offName, setOffName] = useState("");
@@ -1084,7 +1088,7 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
                               >
                                 {o.available !== false ? "⏸ Pausar" : "▶ Activar"}
                               </button>
-                              {true && (
+                              {isTaller && (
                                 <button
                                   type="button"
                                   onClick={async () => {

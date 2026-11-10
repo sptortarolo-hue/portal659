@@ -1084,7 +1084,7 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
                               >
                                 {o.available !== false ? "⏸ Pausar" : "▶ Activar"}
                               </button>
-                              {showOnlineToggle && (
+                              {true && (
                                 <button
                                   type="button"
                                   onClick={async () => {

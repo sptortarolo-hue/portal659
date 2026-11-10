@@ -216,7 +216,7 @@ export async function PATCH(
   // Edición de campos del turno (reprogramar / cambiar servicio, profesional,
   // sede, cliente o notas). Puede combinarse con el cambio de estado.
   const wantsEdit = EDIT_FIELDS.some((k) => (body as Record<string, unknown>)[k] !== undefined);
-  if (!hasStatus && !wantProducts && !wantsEdit && !wantEquip && !wantOrderFields) {
+  if (!hasStatus && !wantProducts && !wantsEdit && !wantEquip && !wantOrderFields && body?.quote_id === undefined) {
     return NextResponse.json({ error: "Nada para actualizar" }, { status: 400 });
   }
 

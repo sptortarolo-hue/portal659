@@ -408,6 +408,8 @@ export type Product = {
   cost_avg?: number | null;
   promo_price: number | null;
   available: boolean;
+  /** Venta online on/off (independiente de "disponible"). Default true. */
+  online_available?: boolean;
   featured_today: boolean;
   unit: string | null;
   has_variants?: boolean;

@@ -168,10 +168,14 @@ export default async function TiendaPage({
   // En preview con token compartible se propaga a sessionStorage para el checkout.
   const previewToken = preview && previewParam && previewParam !== "1" ? previewParam : null;
 
-  const offersAll = await queryMany<any>(
+  const offersAllRaw = await queryMany<any>(
     `SELECT * FROM products WHERE vendor_id = $1 AND available = true ORDER BY featured_today DESC, name ASC`,
     [vendor.id]
   );
+  // Venta online on/off (solo taller): ocultar productos con online_available=false.
+  const offersAll = (vendor.vertical === "taller")
+    ? (offersAllRaw || []).filter((p: any) => p?.online_available !== false)
+    : (offersAllRaw || []);
   // Giftcards (comercio/moda): son productos reales pero NO van en el
   // catálogo — salen como una sola tarjeta en su propia sección.
   // Se detectan por sku GC-... o categoría "Giftcards".

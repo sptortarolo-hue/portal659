@@ -36,6 +36,7 @@ export async function PATCH(
     "stock_low_threshold", "currency", "neighborhood", "type", "unit",
     "has_variants", "stock_control", "requires_prep", "cash_discount_excluded",
     "pack_size", "size_guide", "promo_only", "sku", "supplier_id", "expires_at",
+    "online_available",
   ] as const;
 
   const safeUpdate: Record<string, unknown> = {};
@@ -159,6 +160,20 @@ export async function PATCH(
       safeUpdate.expires_at = raw != null && String(raw).trim() !== "" ? toDateOnly(raw) : null;
     } else {
       delete safeUpdate.expires_at;
+    }
+  }
+  // Venta online on/off (taller): tolerante a migración sin aplicar.
+  if ("online_available" in safeUpdate) {
+    const hasOnline = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'products' AND column_name = 'online_available'
+       ) AS exists`
+    );
+    if (hasOnline?.exists === true) {
+      safeUpdate.online_available = safeUpdate.online_available === true;
+    } else {
+      delete safeUpdate.online_available;
     }
   }
   // Costo de compra manual (inventario): tolerante a migración sin aplicar.

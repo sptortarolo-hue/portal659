@@ -32,6 +32,7 @@ type OfferRow = {
   price: number;
   category: string | null;
   available: boolean;
+  online_available?: boolean;
   featured_today: boolean;
   image_url: string | null;
   stock: number | null;
@@ -64,6 +65,8 @@ type Props = {
   canEditCost?: boolean;
   /** Muestra el campo de vencimiento del stock (plan Gestión con inventario). */
   showExpiry?: boolean;
+  /** Muestra el toggle de venta online (solo taller). */
+  showOnlineToggle?: boolean;
   /** Para el borrador del formulario (24h). */
   vendorId?: string | null;
   /** Variantes de todos los productos (solo moda). */
@@ -102,7 +105,7 @@ const PM_VIEWS: { id: string; icon: string; label: string }[] = [
 ];
 
 /** Gestión completa de platos/productos (listado + ficha inline + modificadores), sin ir a Configuración. */
-export function ProductManager({ isModa = false, isComercio = false, showCatalogViews = false, showStock = true, showPrep = false, showCosts = false, canEditCost = false, showExpiry = false, vendorId = null, variants, productImages, onCrop, onChanged }: Props) {
+export function ProductManager({ isModa = false, isComercio = false, showCatalogViews = false, showStock = true, showPrep = false, showCosts = false, canEditCost = false, showExpiry = false, showOnlineToggle = false, vendorId = null, variants, productImages, onCrop, onChanged }: Props) {
   // Wording por vertical: gastro habla de "platos", retail de "productos".
   const noun = isModa || isComercio ? "Producto" : "Plato";
   // Vistas del catálogo: moda las trae por defecto; otros verticales
@@ -1070,6 +1073,22 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
                               >
                                 {o.available !== false ? "⏸ Pausar" : "▶ Activar"}
                               </button>
+                              {showOnlineToggle && (
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    await fetch(`/api/vendor/offers/${o.id}`, {
+                                      method: "PATCH",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ online_available: !(o.online_available !== false) }),
+                                    });
+                                    load(); onChanged?.();
+                                  }}
+                                  className="text-xs text-muted-foreground hover:text-foreground"
+                                >
+                                  {o.online_available !== false ? "🌐 Online" : "🚫 Sin online"}
+                                </button>
+                              )}
                             </div>
                           </div>
                         </div>

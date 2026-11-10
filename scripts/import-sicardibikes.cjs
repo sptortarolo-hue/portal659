@@ -206,6 +206,8 @@ async function main() {
         if (hasCostCol && cost != null) { colNames.push('cost_last'); push(cost); }
         if (hasStockCol) { colNames.push('stock'); push(stock); }
         if (hasStockCtrlCol) { colNames.push('stock_control'); push(true); }
+        const hasOnlineCol = await hasColumn(client, 'products', 'online_available');
+        if (hasOnlineCol) { colNames.push('online_available'); push(true); }
         if (hasSkuCol && sku) { colNames.push('sku'); push(sku); }
         if (hasSupplierCol && supplierId) { colNames.push('supplier_id'); push(supplierId); }
         const ph = colNames.map((_, i) => '$' + (i + 1)).join(', ');

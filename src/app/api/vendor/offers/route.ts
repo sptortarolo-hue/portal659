@@ -279,6 +279,14 @@ export async function POST(request: Request) {
   }
   if (supplierId != null) { extraCols.push("supplier_id"); extraVals.push(supplierId); }
   if (expiresAt != null) { extraCols.push("expires_at"); extraVals.push(expiresAt); }
+  // Venta online on/off (taller): tolerante a migración sin aplicar.
+  const hasOnlineAvailableCol = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'online_available') AS exists`
+  ).catch(() => ({ exists: false }));
+  if (hasOnlineAvailableCol?.exists === true && body?.online_available !== undefined) {
+    extraCols.push("online_available");
+    extraVals.push(body.online_available === true);
+  }
   const extraPlaceholders = extraVals.map((_, i) => `$${15 + i}`).join(", ");
   // Foto remota sugerida por lookup (Open Food Facts): se descarga a uploads
   // para no hotlinkear. Si falla, se guarda la URL tal cual (no rompe el alta).

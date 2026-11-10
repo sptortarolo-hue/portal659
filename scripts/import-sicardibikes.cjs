@@ -8,33 +8,8 @@ const pool = new Pool({ connectionString: DB_URL });
 function normName(s) { return String(s || '').trim().toLowerCase().replace(/\s+/g, ' '); }
 
 function categoryFor(grupo, name) {
-  const n = String(name || '').toUpperCase();
   if (grupo === 3) return 'Camaras';
-  if (grupo === 1) {
-    if (/CASCO/.test(n)) return 'Cascos';
-    if (/BOLSO|CANASTO/.test(n)) return 'Bolsos y canastos';
-    if (/CARAMA.O|BOTELLA/.test(n)) return 'Hidratacion';
-    if (/FARO|LUZ|LINTERNA/.test(n)) return 'Iluminacion';
-    if (/TIMBRE|BOCINA/.test(n)) return 'Accesorios';
-    if (/CANDADO/.test(n)) return 'Seguridad';
-    if (/BOMBA|INFLADOR/.test(n)) return 'Inflado';
-    return 'Accesorios';
-  }
-  if (/CAMARA/.test(n)) return 'Camaras';
-  if (/CUBIERTA|NEUMATICO|GOMA/.test(n)) return 'Cubiertas';
-  if (/ASIENTO/.test(n)) return 'Asientos';
-  if (/CADENA/.test(n)) return 'Cadenas';
-  if (/FRENO|PASTILLA|DISCO|CALIPER|ZAPATA/.test(n)) return 'Frenos';
-  if (/PEDAL|BIELA/.test(n)) return 'Pedales y bielas';
-  if (/MANUBRIO|PU.O|GUIDON|GRIP/.test(n)) return 'Manubrios y punos';
-  if (/CABLE|FUNDA/.test(n)) return 'Cables y fundas';
-  if (/ACEITE|LUBRICANTE|GRASA|PENETRIT/.test(n)) return 'Lubricantes';
-  if (/HERRAMIENTA/.test(n)) return 'Herramientas';
-  if (/CASCO/.test(n)) return 'Cascos';
-  if (/CANDADO/.test(n)) return 'Seguridad';
-  if (/BOMBA|INFLADOR/.test(n)) return 'Inflado';
-  if (/FARO|LUZ|LINTERNA/.test(n)) return 'Iluminacion';
-  if (/BOLSO|CANASTO/.test(n)) return 'Bolsos y canastos';
+  if (grupo === 1) return 'Accesorios';
   return 'Repuestos';
 }
 

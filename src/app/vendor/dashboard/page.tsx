@@ -2021,7 +2021,7 @@ function VendorDashboardInner() {
                   showCosts={false}
                   canEditCost={effectivePlan.can("inventory")}
                   showExpiry={effectivePlan.can("inventory")}
-                  showOnlineToggle
+                  showOnlineToggle={isTaller}
                   variants={variants}
                   productImages={productImages}
                   onCrop={openCrop}

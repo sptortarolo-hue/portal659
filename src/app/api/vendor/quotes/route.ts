@@ -104,9 +104,9 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const customerName = String(body.customer_name || "").trim();
   const customerPhone = toE164(String(body.customer_phone || ""));
-  const description = String(body.description || "").trim();
-  if (!customerName || !customerPhone || !description) {
-    return NextResponse.json({ error: "Faltan cliente, teléfono o descripción" }, { status: 400 });
+  const description = String(body.description || "").trim() || "Presupuesto";
+  if (!customerName || !customerPhone) {
+    return NextResponse.json({ error: "Faltan cliente o teléfono" }, { status: 400 });
   }
   const quoteType = body.quote_type === "orden" ? "orden" : "consulta";
   const bookingId = typeof body.booking_id === "string" && /^[0-9a-f-]{36}$/i.test(body.booking_id)

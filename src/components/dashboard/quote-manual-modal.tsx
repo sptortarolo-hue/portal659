@@ -188,8 +188,8 @@ export function QuoteManualModal({
 
   async function submit() {
     setError("");
-    if (!customerName.trim() || !customerPhone.trim() || !description.trim()) {
-      setError("Faltan cliente, teléfono o descripción");
+    if (!customerName.trim() || !customerPhone.trim()) {
+      setError("Faltan cliente o teléfono");
       return;
     }
     if (isEstetica && !(Number(directPrice) > 0)) {
@@ -214,7 +214,7 @@ export function QuoteManualModal({
               customer_name: customerName.trim(),
               customer_phone: customerPhone.trim(),
               service_name: isTaller ? equipmentLabel(equipment) || null : serviceName.trim() || null,
-              description: description.trim(),
+              description: description.trim() || (isTaller && equipment ? equipmentLabel(equipment) : "") || "Presupuesto",
               quoted_price: Number(directPrice),
               equipment_id: isTaller ? equipment?.id || null : null,
             })
@@ -222,7 +222,7 @@ export function QuoteManualModal({
               customer_name: customerName.trim(),
               customer_phone: customerPhone.trim(),
               service_name: isTaller ? equipmentLabel(equipment) || null : serviceName.trim() || null,
-              description: description.trim(),
+              description: description.trim() || (isTaller && equipment ? equipmentLabel(equipment) : "") || "Presupuesto",
               items: items
                 .filter((it) => it.description.trim() !== "")
                 .map((it) => ({

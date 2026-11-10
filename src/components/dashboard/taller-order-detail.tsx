@@ -545,7 +545,29 @@ export function TallerOrderDetail({
                     )}
                     <div className="flex gap-1.5 mt-1.5 flex-wrap">
                       {bookingCardProps.onQuoteOrder && (
-                        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => bookingCardProps.onQuoteOrder!(booking)}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            const linkedQuotes = ((bookingCardProps.orderQuotes || []) as any[]).filter(
+                              (q: any) => String(q?.booking_id || "") === String(booking.id)
+                            );
+                            if (linkedQuotes.length > 0) {
+                              const ok = window.confirm(
+                                `Esta orden ya tiene ${linkedQuotes.length} presupuesto(s) vinculado(s). ¿Crear uno nuevo y desvincular el actual?`
+                              );
+                              if (!ok) return;
+                              // desvincular el actual antes de crear el nuevo
+                              void fetch(`/api/vendor/bookings/${booking.id}`, {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ quote_id: null }),
+                              });
+                            }
+                            bookingCardProps.onQuoteOrder!(booking);
+                          }}
+                        >
                           💰 Presupuestar
                         </Button>
                       )}
@@ -572,6 +594,28 @@ export function TallerOrderDetail({
                           📥 Pasar a cuenta
                         </Button>
                       )}
+                      {(() => {
+                        const allLinked = ((bookingCardProps.orderQuotes || []) as any[]).filter(
+                          (q: any) => String(q?.booking_id || "") === String(booking.id)
+                        );
+                        if (allLinked.length <= 1) return null;
+                        return (
+                          <div className="w-full mt-1.5 space-y-1">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-700">Historial de presupuestos de esta orden</p>
+                            {allLinked.map((q: any) => (
+                              <div key={q.id} className="flex items-center justify-between gap-2 text-[11px] rounded-md border border-violet-100 bg-white/50 px-2 py-1">
+                                <span className="min-w-0 flex-1 truncate">
+                                  {q.service_name || q.description || "Presupuesto"} · ${Number(q.quoted_price || 0).toLocaleString("es-AR")}
+                                </span>
+                                <span className="shrink-0 text-muted-foreground">{q.status}</span>
+                                <Link href={`/vendor/presupuesto/${q.id}`} target="_blank" className="shrink-0 text-primary hover:underline">
+                                  Ver
+                                </Link>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
                       {bookingCardProps.onSendOrderQuote && (
                         <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => bookingCardProps.onSendOrderQuote!(booking)}>
                           📲 Enviar por WhatsApp

@@ -61,78 +61,78 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         [quoteId]
       );
 
-      const existingParts = await tx.query<{ id: string }>(
-        `SELECT id FROM work_order_parts WHERE booking_id = $1 LIMIT 1`,
-        [id]
+      // Partidas ya existentes (por nombre) para no duplicar en re-importaciones.
+      const existingPartNames = new Set(
+        (await tx.query<{ name: string | null }>(`SELECT name FROM work_order_parts WHERE booking_id = $1`, [id]))
+          .map((r) => String(r.name || "").trim().toLowerCase())
       );
 
-      // Importar repuestos/material solo si no hay partidas aún.
-      if (existingParts.length === 0) {
-        let laborTotal = 0;
-        for (const it of items) {
-          if (it.kind === "labor") {
-            laborTotal += Number(it.qty) * Number(it.unit_price);
-            continue;
-          }
-          // repuesto o material
-          if (it.kind === "repuesto" && it.product_id) {
-            // descontar stock si controla
-            const prod = await tx.queryOne<{ name: string; price: number | null; promo_price: number | null; stock_control: boolean | null; stock: number | null; cost_last: number | null; cost_avg: number | null }>(
-              `SELECT name, price, promo_price, stock_control, stock, cost_last, cost_avg FROM products WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
-              [it.product_id, vendor.id]
-            );
-            if (prod) {
-              if (prod.stock_control === true) {
-                const rows = await tx.query<{ id: string }>(
-                  `UPDATE products SET stock = stock - $1 WHERE id = $2 AND stock_control = true AND COALESCE(stock, 0) >= $1 RETURNING id`,
-                  [it.qty, it.product_id]
-                );
-                if (rows.length === 0) throw new Error(`Sin stock suficiente de "${prod.name}"`);
-              }
-              const unitPrice = Number(it.unit_price) > 0 ? Number(it.unit_price) : Number(prod.promo_price ?? prod.price ?? 0);
-              const unitCost = Number(prod.cost_last ?? prod.cost_avg ?? 0);
-              await tx.queryVoid(
-                `INSERT INTO work_order_parts (vendor_id, booking_id, product_id, variant_id, name, qty, unit_cost, unit_price, created_by)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL)`,
-                [vendor.id, id, it.product_id, it.variant_id, prod.name, it.qty, unitCost, unitPrice]
+      let laborTotal = 0;
+      let addedAny = false;
+      for (const it of items) {
+        if (it.kind === "labor") {
+          laborTotal += Number(it.qty) * Number(it.unit_price);
+          continue;
+        }
+        const nameKey = String(it.description || "").trim().toLowerCase();
+        if (existingPartNames.has(nameKey) && nameKey) continue; // ya existe, no duplicar
+        // repuesto o material
+        if (it.kind === "repuesto" && it.product_id) {
+          const prod = await tx.queryOne<{ name: string; price: number | null; promo_price: number | null; stock_control: boolean | null; stock: number | null; cost_last: number | null; cost_avg: number | null }>(
+            `SELECT name, price, promo_price, stock_control, stock, cost_last, cost_avg FROM products WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+            [it.product_id, vendor.id]
+          );
+          if (prod) {
+            if (prod.stock_control === true) {
+              const rows = await tx.query<{ id: string }>(
+                `UPDATE products SET stock = stock - $1 WHERE id = $2 AND stock_control = true AND COALESCE(stock, 0) >= $1 RETURNING id`,
+                [it.qty, it.product_id]
               );
-              await logStockMovement(tx, {
-                vendorId: vendor.id,
-                product_id: it.product_id,
-                variant_id: it.variant_id,
-                qty_delta: -it.qty,
-                reason: "orden",
-                ref_booking: id,
-              });
-            } else {
-              // producto no encontrado: cargar como material libre
-              await tx.queryVoid(
-                `INSERT INTO work_order_parts (vendor_id, booking_id, product_id, variant_id, name, qty, unit_cost, unit_price, created_by)
-                 VALUES ($1, $2, NULL, NULL, $3, $4, 0, $5, NULL)`,
-                [vendor.id, id, it.description, it.qty, it.unit_price]
-              );
+              if (rows.length === 0) throw new Error(`Sin stock suficiente de "${prod.name}"`);
             }
+            const unitPrice = Number(it.unit_price) > 0 ? Number(it.unit_price) : Number(prod.promo_price ?? prod.price ?? 0);
+            const unitCost = Number(prod.cost_last ?? prod.cost_avg ?? 0);
+            await tx.queryVoid(
+              `INSERT INTO work_order_parts (vendor_id, booking_id, product_id, variant_id, name, qty, unit_cost, unit_price, created_by)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL)`,
+              [vendor.id, id, it.product_id, it.variant_id, prod.name, it.qty, unitCost, unitPrice]
+            );
+            await logStockMovement(tx, {
+              vendorId: vendor.id,
+              product_id: it.product_id,
+              variant_id: it.variant_id,
+              qty_delta: -it.qty,
+              reason: "orden",
+              ref_booking: id,
+            });
+            addedAny = true;
           } else {
-            // material libre
             await tx.queryVoid(
               `INSERT INTO work_order_parts (vendor_id, booking_id, product_id, variant_id, name, qty, unit_cost, unit_price, created_by)
                VALUES ($1, $2, NULL, NULL, $3, $4, 0, $5, NULL)`,
               [vendor.id, id, it.description, it.qty, it.unit_price]
             );
+            addedAny = true;
           }
-        }
-        // labor_amount: sumar labor si no había
-        if (laborTotal > 0 && (booking.labor_amount == null || Number(booking.labor_amount) === 0)) {
-          await tx.queryVoid(`UPDATE bookings SET labor_amount = $1 WHERE id = $2`, [laborTotal, id]);
+        } else {
+          // material libre
+          await tx.queryVoid(
+            `INSERT INTO work_order_parts (vendor_id, booking_id, product_id, variant_id, name, qty, unit_cost, unit_price, created_by)
+             VALUES ($1, $2, NULL, NULL, $3, $4, 0, $5, NULL)`,
+            [vendor.id, id, it.description, it.qty, it.unit_price]
+          );
+          addedAny = true;
         }
       }
+      // labor_amount: sumar labor si no había (o si está vacío)
+      if (laborTotal > 0 && (booking.labor_amount == null || Number(booking.labor_amount) === 0)) {
+        await tx.queryVoid(`UPDATE bookings SET labor_amount = $1 WHERE id = $2`, [laborTotal, id]);
+      }
 
-      // service_price: sembrar si vacío
-      if (booking.service_price == null || Number(booking.service_price) === 0) {
-        const price = quote.quoted_price != null ? Number(quote.quoted_price) : null;
-        if (price != null && price > 0) {
-          await tx.queryVoid(`UPDATE bookings SET service_price = $1 WHERE id = $2`, [price, id]);
-        }
+      // service_price: actualizar con el presupuesto (el presupuesto manda).
+      const price = quote.quoted_price != null ? Number(quote.quoted_price) : null;
+      if (price != null && price > 0) {
+        await tx.queryVoid(`UPDATE bookings SET service_price = $1 WHERE id = $2`, [price, id]);
       }
 
       await tx.queryVoid(`UPDATE bookings SET quote_id = $1 WHERE id = $2`, [quoteId, id]);

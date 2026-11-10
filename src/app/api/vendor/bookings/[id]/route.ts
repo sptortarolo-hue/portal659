@@ -216,7 +216,7 @@ export async function PATCH(
   // Edición de campos del turno (reprogramar / cambiar servicio, profesional,
   // sede, cliente o notas). Puede combinarse con el cambio de estado.
   const wantsEdit = EDIT_FIELDS.some((k) => (body as Record<string, unknown>)[k] !== undefined);
-  if (!hasStatus && !wantProducts && !wantsEdit && !wantEquip && !wantOrderFields && body?.quote_id === undefined) {
+  if (!hasStatus && !wantProducts && !wantsEdit && !wantEquip && !wantOrderFields && body?.quote_id === undefined && body?.service_price === undefined) {
     return NextResponse.json({ error: "Nada para actualizar" }, { status: 400 });
   }
 
@@ -431,6 +431,13 @@ export async function PATCH(
           }
         }
         }
+      }
+      // Total a cobrar (service_price) editable desde el panel (p.ej. recalcular desde partidas).
+      if (body?.service_price !== undefined) {
+        const sp = body.service_price == null || body.service_price === ""
+          ? null
+          : Math.max(0, Math.round(Number(body.service_price) * 100) / 100);
+        await tx.queryVoid(`UPDATE bookings SET service_price = $1 WHERE id = $2`, [sp, id]).catch(() => {});
       }
       if (wantEquip) {
         const eqId = await resolveEquipmentForWorkTx(tx, vendor.id, body, {

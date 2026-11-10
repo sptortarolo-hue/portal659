@@ -874,12 +874,6 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
         <span className="font-bold text-foreground">${displayTotal.toLocaleString("es-AR")}</span>
       </p>
 
-      {closedNotice && (
-        <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
-          {closedNotice}
-        </div>
-      )}
-
       {/* Order summary */}
       <div className="border border-border rounded-2xl p-4 mb-6 bg-card space-y-3">
         {(() => {
@@ -1074,6 +1068,11 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
             )}
           </div>
         </div>
+        )}
+        {closedNotice && (
+          <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
+            {closedNotice}
+          </div>
         )}
         {method === "delivery" && (
           <div className="animate-fade-in-up space-y-3">

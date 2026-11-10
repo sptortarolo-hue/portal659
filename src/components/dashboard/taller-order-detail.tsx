@@ -733,6 +733,28 @@ export function TallerOrderDetail({
                     ${money(summary.margin)}
                   </span>
                 </div>
+               <Button
+                 size="sm"
+                 variant="outline"
+                 className="h-7 text-xs w-full mt-1.5"
+                 onClick={async () => {
+                   const newTotal = Math.round((summary.partsPrice + summary.labor) * 100) / 100;
+                   try {
+                     const res = await fetch(`/api/vendor/bookings/${booking.id}`, {
+                       method: "PATCH",
+                       headers: { "Content-Type": "application/json" },
+                       body: JSON.stringify({ service_price: newTotal }),
+                     });
+                     if (!res.ok) throw new Error("No se pudo actualizar");
+                     await loadDetail();
+                     onEquipmentChanged?.();
+                   } catch (e) {
+                     alert(e instanceof Error ? e.message : "No se pudo actualizar");
+                   }
+                 }}
+               >
+                 Recalcular total desde partidas
+               </Button>
               </div>
             )}
           </div>

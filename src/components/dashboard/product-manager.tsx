@@ -120,6 +120,12 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkMode, setBulkMode] = useState<"pct" | "amount">("pct");
+  const [bulkValue, setBulkValue] = useState("");
+  const [bulkScope, setBulkScope] = useState<"all" | "visible">("all");
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkMsg, setBulkMsg] = useState("");
   // Vista activa del catálogo (solo moda usa el tab-bar).
   const [view, setView] = useState<string>("productos");
   const [offName, setOffName] = useState("");
@@ -902,9 +908,14 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
       <div className="flex items-center justify-between">
         <h2 className="font-display text-xl font-semibold">{isModa || isComercio ? "Catálogo" : "Menú y catálogo"}</h2>
         {(!catalogViews || view === "productos") && (
-          <Button size="sm" onClick={() => { if (editingId || showForm) resetForm(); else setShowForm(true); }}>
-            {editingId || showForm ? "Cancelar" : `+ ${noun}`}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => setBulkOpen(true)}>
+              📊 Precios masivos
+            </Button>
+            <Button size="sm" onClick={() => { if (editingId || showForm) resetForm(); else setShowForm(true); }}>
+              {editingId || showForm ? "Cancelar" : `+ ${noun}`}
+            </Button>
+          </div>
         )}
       </div>
 
@@ -1122,6 +1133,70 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
           )}
         </>
       )}
+    {bulkOpen && (
+      <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50" onClick={() => setBulkOpen(false)}>
+        <div className="bg-card rounded-t-2xl sm:rounded-2xl border border-border w-full sm:max-w-md sm:mx-4 p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+          <h3 className="font-display text-lg font-semibold">Precios masivos</h3>
+          <p className="text-xs text-muted-foreground">Actualiza el precio de varios productos a la vez.</p>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setBulkMode("pct")} className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium ${bulkMode === "pct" ? "border-primary bg-primary/10 text-primary" : "border-border bg-card"}`}>
+              Porcentaje (%)
+            </button>
+            <button type="button" onClick={() => setBulkMode("amount")} className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium ${bulkMode === "amount" ? "border-primary bg-primary/10 text-primary" : "border-border bg-card"}`}>
+              Monto fijo ($)
+            </button>
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">{bulkMode === "pct" ? "Porcentaje (ej: 10 = +10%, -5 = -5%)" : "Monto a sumar/restar ($)"}</label>
+            <input
+              type="number"
+              value={bulkValue}
+              onChange={(e) => setBulkValue(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+              placeholder={bulkMode === "pct" ? "10" : "500"}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">Se aplicara a los {offers.length} productos del catalogo.</p>
+          {bulkMsg && <p className="text-xs text-muted-foreground">{bulkMsg}</p>}
+          <div className="flex gap-2 pt-1">
+            <Button variant="outline" className="flex-1" onClick={() => { setBulkOpen(false); setBulkMsg(""); }}>
+              Cancelar
+            </Button>
+            <Button
+              className="flex-1"
+              disabled={bulkBusy || !bulkValue.trim()}
+              onClick={async () => {
+                const val = Number(bulkValue);
+                if (!Number.isFinite(val)) { setBulkMsg("Valor invalido"); return; }
+                const targets = offers;
+                if (targets.length === 0) { setBulkMsg("No hay productos"); return; }
+                setBulkBusy(true);
+                setBulkMsg(`Actualizando ${targets.length} productos...`);
+                let ok = 0, fail = 0;
+                for (const o of targets) {
+                  const newPrice = bulkMode === "pct"
+                    ? Math.round(Number(o.price) * (1 + val / 100))
+                    : Math.max(0, Math.round((Number(o.price) + val) * 100) / 100);
+                  try {
+                    const r = await fetch(`/api/vendor/offers/${o.id}`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ price: newPrice }),
+                    });
+                    if (r.ok) ok++; else fail++;
+                  } catch { fail++; }
+                }
+                setBulkBusy(false);
+                setBulkMsg(`Listo: ${ok} actualizados${fail ? `, ${fail} con error` : ""}.`);
+                load(); onChanged?.();
+              }}
+            >
+              {bulkBusy ? "Actualizando..." : "Aplicar"}
+            </Button>
+          </div>
+        </div>
+      </div>
+    )}
     </div>
   );
 }

@@ -49,8 +49,8 @@ export async function POST(
   if (quote.quote_type !== "consulta") {
     return NextResponse.json({ error: "Solo se puede convertir una consulta" }, { status: 400 });
   }
-  if (quote.status !== "accepted") {
-    return NextResponse.json({ error: "La consulta debe estar aceptada para convertir en orden" }, { status: 400 });
+  if (quote.status === "cancelled" || quote.status === "cobrado") {
+    return NextResponse.json({ error: "No se puede convertir un presupuesto cancelado o cobrado" }, { status: 400 });
   }
   if (quote.booking_id) {
     return NextResponse.json({ error: "Esta consulta ya tiene una orden vinculada" }, { status: 400 });
@@ -135,6 +135,11 @@ export async function POST(
       );
       const id = q[0]?.id;
       if (!id) throw new Error("No se pudo crear la orden");
+      // Aceptación verbal: al generar la orden, el presupuesto queda aceptado.
+      await tx.queryVoid(
+        `UPDATE quotes SET status = 'accepted', accepted_at = COALESCE(accepted_at, now()) WHERE id = $1`,
+        [quote.id]
+      );
       return id;
     });
   } catch (e) {

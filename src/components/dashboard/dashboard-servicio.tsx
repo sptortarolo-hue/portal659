@@ -2046,8 +2046,26 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                           >
                             📅 Agendar turno
                           </Button>
+                           {isTaller && !q.booking_id && q.status !== "cancelled" && (
+                             <Button
+                               size="sm"
+                               variant="outline"
+                               className="h-7 text-xs border-orange-300 text-orange-700"
+                               onClick={() => {
+                                 setConvertQuoteFor({
+                                   id: q.id,
+                                   customer_name: q.customer_name || null,
+                                   customer_phone: q.customer_phone || null,
+                                   description: q.description || "",
+                                 });
+                               }}
+                             >
+                               🛠️ Generar orden
+                             </Button>
+                           )}
                         </div>
                       )}
+
                       {convertingId === q.id && (
                         <div className="w-full rounded-lg border border-border p-2 mt-1 space-y-2">
                           <div className="flex items-center gap-2 flex-wrap">

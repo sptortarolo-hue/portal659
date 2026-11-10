@@ -33,7 +33,7 @@ type OfferRow = {
   price: number;
   category: string | null;
   available: boolean;
-  online_available?: boolean;
+  online_available?: boolean | null;
   featured_today: boolean;
   image_url: string | null;
   stock: number | null;
@@ -612,6 +612,15 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
     load(); onChanged?.();
   }
 
+  async function toggleOnline(offer: OfferRow) {
+    await fetch(`/api/vendor/offers/${offer.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ online_available: !(offer.online_available !== false) }),
+    });
+    load(); onChanged?.();
+  }
+
   async function deleteOffer(offer: OfferRow) {
     if (!confirm(`¿Eliminar "${offer.name}"? Esta acción no se puede deshacer.`)) return;
     await fetch(`/api/vendor/offers/${offer.id}`, { method: "DELETE" });
@@ -964,6 +973,7 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
                   onEdit={startEdit}
                   onToggleFeatured={toggleFeatured}
                   onToggleAvailable={toggleAvailable}
+                  onToggleOnline={isTaller ? toggleOnline : undefined}
                   onDelete={deleteOffer}
                   editingId={editingId}
                   editForm={editingId ? offerFormNode : undefined}
@@ -1126,6 +1136,7 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
               onEdit={startEdit}
               onToggleFeatured={toggleFeatured}
               onToggleAvailable={toggleAvailable}
+              onToggleOnline={isTaller ? toggleOnline : undefined}
               onDelete={deleteOffer}
               editingId={editingId}
               editForm={editingId ? offerFormNode : undefined}

@@ -131,6 +131,8 @@ type Offer = {
   requires_prep?: boolean;
   /** Solo sale en la sección Promo (no figura en el menú). */
   promo_only?: boolean;
+  /** Venta online on/off (solo taller; con la migración pendiente queda undefined = visible). */
+  online_available?: boolean | null;
 };
 
 type Modifier = {
@@ -742,7 +744,7 @@ export function OfferForm({
   );
 }
 
-export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable, onDelete, editingId, editForm, onEditModifiers, costByProduct, showBuyCost = false, emptyText = "Todavía no cargaste platos.", onTogglePromoOnly }: {
+export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable, onDelete, editingId, editForm, onEditModifiers, costByProduct, showBuyCost = false, emptyText = "Todavía no cargaste platos.", onTogglePromoOnly, onToggleOnline }: {
   offers: Offer[];
   onEdit: (o: Offer) => void;
   onToggleFeatured: (o: Offer) => void;
@@ -759,6 +761,8 @@ export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable,
   emptyText?: string;
   /** Solo-promo (no figura en el menú). Opcional: solo gastro lo pasa. */
   onTogglePromoOnly?: (o: Offer) => void;
+  /** Toggle venta online (solo taller: ProductManager lo pasa solo para ese vertical). */
+  onToggleOnline?: (o: Offer) => void;
 }) {
   const editAnchorRef = useRef<HTMLDivElement>(null);
 
@@ -870,6 +874,11 @@ export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable,
                     <Button variant="outline" size="sm" onClick={() => onTogglePromoOnly(offer)}>{offer.promo_only ? "A menú" : "Solo promo"}</Button>
                   )}
                   <Button variant="outline" size="sm" onClick={() => onToggleAvailable(offer)}>{offer.available ? "Pausar" : "Activar"}</Button>
+                  {onToggleOnline && (
+                    <Button variant="outline" size="sm" onClick={() => onToggleOnline(offer)} title="Mostrar u ocultar este producto en la venta online">
+                      {offer.online_available !== false ? "🌐 Online" : "🚫 Sin online"}
+                    </Button>
+                  )}
                   <Button variant="ghost" size="sm" className="text-red-600" onClick={() => onDelete(offer)}>Eliminar</Button>
                 </div>
                 <div className="sm:hidden flex-shrink-0">
@@ -881,6 +890,7 @@ export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable,
                       { label: offer.featured_today ? "Quitar de Hoy" : "Oferta del día", icon: "⭐", onClick: () => onToggleFeatured(offer) },
                       ...(onTogglePromoOnly ? [{ label: offer.promo_only ? "Volver al menú" : "Solo promo", icon: "🏷️", onClick: () => onTogglePromoOnly(offer) }] : []),
                       { label: offer.available ? "Pausar" : "Activar", icon: offer.available ? "⏸️" : "▶️", onClick: () => onToggleAvailable(offer) },
+                      ...(onToggleOnline ? [{ label: offer.online_available !== false ? "Quitar de venta online" : "Poner en venta online", icon: "🌐", onClick: () => onToggleOnline(offer) }] : []),
                       { label: "Eliminar", icon: "🗑️", onClick: () => onDelete(offer), destructive: true },
                     ]}
                   />

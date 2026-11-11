@@ -78,6 +78,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         if (existingPartNames.has(nameKey) && nameKey) continue; // ya existe, no duplicar
         // repuesto o material
         if (it.kind === "repuesto" && it.product_id) {
+          // quote_items.qty es numeric → pg lo devuelve como string ("1.00"),
+          // y stock (integer) / stock_ledger.qty_delta no lo aceptan: Postgres
+          // explota con "invalid input syntax for type integer: 1.00".
+          // El stock de repuestos se descuenta por unidades enteras.
+          const stockQty = Math.max(1, Math.round(Number(it.qty) || 1));
           const prod = await tx.queryOne<{ name: string; price: number | null; promo_price: number | null; stock_control: boolean | null; stock: number | null; cost_last: number | null; cost_avg: number | null }>(
             `SELECT name, price, promo_price, stock_control, stock, cost_last, cost_avg FROM products WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
             [it.product_id, vendor.id]
@@ -86,7 +91,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
             if (prod.stock_control === true) {
               const rows = await tx.query<{ id: string }>(
                 `UPDATE products SET stock = stock - $1 WHERE id = $2 AND stock_control = true AND COALESCE(stock, 0) >= $1 RETURNING id`,
-                [it.qty, it.product_id]
+                [stockQty, it.product_id]
               );
               if (rows.length === 0) throw new Error(`Sin stock suficiente de "${prod.name}"`);
             }
@@ -95,13 +100,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
             await tx.queryVoid(
               `INSERT INTO work_order_parts (vendor_id, booking_id, product_id, variant_id, name, qty, unit_cost, unit_price, created_by)
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL)`,
-              [vendor.id, id, it.product_id, it.variant_id, prod.name, it.qty, unitCost, unitPrice]
+              [vendor.id, id, it.product_id, it.variant_id, prod.name, Number(it.qty), unitCost, unitPrice]
             );
             await logStockMovement(tx, {
               vendorId: vendor.id,
               product_id: it.product_id,
               variant_id: it.variant_id,
-              qty_delta: -it.qty,
+              qty_delta: -stockQty,
               reason: "orden",
               ref_booking: id,
             });
@@ -110,7 +115,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
             await tx.queryVoid(
               `INSERT INTO work_order_parts (vendor_id, booking_id, product_id, variant_id, name, qty, unit_cost, unit_price, created_by)
                VALUES ($1, $2, NULL, NULL, $3, $4, 0, $5, NULL)`,
-              [vendor.id, id, it.description, it.qty, it.unit_price]
+              [vendor.id, id, it.description, Number(it.qty), Number(it.unit_price)]
             );
             addedAny = true;
           }
@@ -119,7 +124,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           await tx.queryVoid(
             `INSERT INTO work_order_parts (vendor_id, booking_id, product_id, variant_id, name, qty, unit_cost, unit_price, created_by)
              VALUES ($1, $2, NULL, NULL, $3, $4, 0, $5, NULL)`,
-            [vendor.id, id, it.description, it.qty, it.unit_price]
+            [vendor.id, id, it.description, Number(it.qty), Number(it.unit_price)]
           );
           addedAny = true;
         }

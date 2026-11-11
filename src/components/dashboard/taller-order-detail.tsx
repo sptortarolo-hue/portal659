@@ -583,7 +583,10 @@ export function TallerOrderDetail({
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({ quote_id: linked.id }),
                               });
-                              if (!res.ok) throw new Error("No se pudo importar");
+                              if (!res.ok) {
+                                const d = await res.json().catch(() => ({}));
+                                throw new Error(d?.error || "No se pudo importar");
+                              }
                               await loadDetail();
                               onEquipmentChanged?.();
                             } catch (e) {

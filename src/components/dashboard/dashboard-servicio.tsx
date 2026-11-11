@@ -2302,16 +2302,21 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                   body: JSON.stringify({ quote_id: quote.id, status: "quoted" }),
                 });
                 // Pasar el presupuesto a la cuenta de la orden (partidas + total).
-                await fetch(`/api/vendor/bookings/${order.id}/import-quote`, {
+                const res = await fetch(`/api/vendor/bookings/${order.id}/import-quote`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ quote_id: quote.id }),
-                }).catch(() => {});
+                });
+                if (!res.ok) {
+                  const d = await res.json().catch(() => ({}));
+                  setMsg(`Presupuesto creado, pero no se pudo pasar a la cuenta: ${d?.error || "error desconocido"} (podés reintentarlo desde el detalle de la orden).`);
+                }
               } catch {
-                /* el vínculo se puede rehacer desde el detalle */
+                setMsg("Presupuesto creado, pero no se pudo pasar a la cuenta (podés reintentarlo desde el detalle de la orden).");
               }
+            } else {
+              setMsg("Presupuesto creado (no cuenta para el tope mensual). Mandámelo al cliente por WhatsApp.");
             }
-            setMsg("Presupuesto creado (no cuenta para el tope mensual). Mandámelo al cliente por WhatsApp.");
           }}
         />
       )}

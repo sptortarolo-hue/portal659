@@ -28,7 +28,7 @@ import { EsteticaWaitlistManager, type WaitEntry } from "@/components/dashboard/
 import { StaffManager } from "@/components/vendor/staff-manager";
 import { arToday } from "@/lib/booking-schedule";
 import { bookingReminderMessage, bookingWhenLabel } from "@/lib/booking-message";
-import { isOrderBooking } from "@/lib/agenda";
+import { isOrderBooking, type AgendaBooking } from "@/lib/agenda";
 import { isoTodayAR, quoteFollowUpText, quoteNeedsFollowUp, workOrderExtensionText, type WorkOrderBoardFilter } from "@/lib/work-order";
 import { loadDraft, saveDraft } from "@/lib/draft";
 import { AgendaView, type AgendaViewMode } from "@/components/dashboard/agenda-view";
@@ -2481,6 +2481,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
           }}
           canFiscal={canFiscal}
           fiscalReady={fiscalReady}
+          isOrder={isOrderBooking((bookings.find((b: any) => b.id === cobroOpenId) || {}) as AgendaBooking)}
         />
       )}
       {fichaOpenId && (

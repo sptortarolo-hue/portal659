@@ -169,6 +169,9 @@ export async function POST(request: Request) {
       deposit_amount: number | null;
       deposit_status: string | null;
       service_price: number | null;
+      amount_paid: number | null;
+      payment_status: string | null;
+      payment_method: string | null;
       equipment_brand: string | null;
       equipment_model: string | null;
       equipment_identifier: string | null;
@@ -178,6 +181,7 @@ export async function POST(request: Request) {
       `SELECT b.id, b.kind, b.work_order_no, b.customer_name, b.customer_phone,
               b.booking_date::text AS booking_date, b.delivery_date::text AS delivery_date,
               b.declared_issue, b.diagnosis, b.deposit_amount, b.deposit_status, b.service_price,
+              b.amount_paid, b.payment_status, b.payment_method,
               e.brand AS equipment_brand, e.model AS equipment_model, e.identifier AS equipment_identifier,
               e.rodado AS equipment_rodado, e.color AS equipment_color
          FROM bookings b
@@ -213,6 +217,9 @@ export async function POST(request: Request) {
           deposit_amount: order.deposit_amount != null ? Number(order.deposit_amount) : null,
           deposit_paid: order.deposit_status === "paid",
           price: order.service_price != null ? Number(order.service_price) : null,
+          paid: order.payment_status === "paid",
+          amount_paid: order.amount_paid != null ? Number(order.amount_paid) : null,
+          payment_method: (order.payment_method as string) || null,
         },
       },
     });

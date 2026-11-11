@@ -80,6 +80,10 @@ export type WorkOrderPrintData = {
   deposit_paid: boolean;
   /** Precio acordado (si ya está definido). */
   price: number | null;
+  /** Orden cobrada (al imprimir el comprobante tras el cobro). */
+  paid?: boolean;
+  amount_paid?: number | null;
+  payment_method?: string | null;
 };
 
 /** Datos del presupuesto de oficio para impresión térmica. */
@@ -2127,7 +2131,15 @@ async function composeOrden(
 
   printer.println("");
   printer.println(separator);
-  if (o.price != null && Number(o.price) > 0) {
+  if (o.paid && (o.amount_paid ?? 0) > 0) {
+    // Recibo de pago: la orden ya está cobrada.
+    const medio = o.payment_method ? ` · ${o.payment_method}` : "";
+    printer.alignCenter();
+    printer.bold(true);
+    printer.println(`ABONADO ✅ $${Number(o.amount_paid).toLocaleString("es-AR")}${medio}`);
+    printer.bold(false);
+    printer.alignLeft();
+  } else if (o.price != null && Number(o.price) > 0) {
     printer.alignRight();
     printer.bold(true);
     printer.println(`PRESUPUESTO: $${Number(o.price).toLocaleString("es-AR")}`);

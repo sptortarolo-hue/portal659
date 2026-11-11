@@ -16,6 +16,8 @@ export type BookingCobroModalProps = {
   onSuccess: () => void;
   canFiscal?: boolean;
   fiscalReady?: boolean;
+  /** Orden de servicio (taller): cambia el título y ofrece imprimir el comprobante al cobrar. */
+  isOrder?: boolean;
 };
 
 function fmt(n: number | null | undefined): string {
@@ -30,6 +32,7 @@ export function BookingCobroModal({
   onSuccess,
   canFiscal = false,
   fiscalReady = false,
+  isOrder = false,
 }: BookingCobroModalProps) {
   const snapshotTotal = Number(booking.service_price || 0);
   const depositPaid =
@@ -41,6 +44,8 @@ export function BookingCobroModal({
   const [amountToCharge, setAmountToCharge] = useState("");
   const [amountReceived, setAmountReceived] = useState("");
   const [wantFiscal, setWantFiscal] = useState(false);
+  /** Orden de taller: imprimir el comprobante de la orden al confirmar el cobro (best-effort). */
+  const [printComprobante, setPrintComprobante] = useState(true);
   const [receptorTipo, setReceptorTipo] = useState<"cf" | "dni" | "cuit">("cf");
   const [receptorNro, setReceptorNro] = useState("");
   const [receptorNombre, setReceptorNombre] = useState("");
@@ -67,6 +72,7 @@ export function BookingCobroModal({
     setAmountToCharge("");
     setAmountReceived("");
     setWantFiscal(false);
+    setPrintComprobante(true);
     setReceptorTipo("cf");
     setReceptorNro("");
     setReceptorNombre("");
@@ -183,6 +189,19 @@ export function BookingCobroModal({
         setErr(data.error);
         return;
       }
+      // Orden de taller: comprobante para el cliente (best-effort: si no hay
+      // impresora conectada, el cobro igual quedó hecho).
+      if (isOrder && printComprobante) {
+        try {
+          await fetch("/api/print", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type: "orden", bookingId: booking.id }),
+          });
+        } catch {
+          /* sin conexión a impresora: se ignora */
+        }
+      }
       onSuccess();
     } catch {
       setErr("Sin conexión");
@@ -201,7 +220,7 @@ export function BookingCobroModal({
       <div className="relative z-[61] w-full max-w-md mx-4 rounded-2xl border border-border bg-card p-5 shadow-xl">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold">
-            💰 Cobrar turno · {booking.customer_name || "Sin nombre"}
+            💰 Cobrar {isOrder ? "orden" : "turno"} · {booking.customer_name || "Sin nombre"}
           </h2>
           <Button size="sm" variant="outline" className="h-7" onClick={onClose}>
             Cerrar
@@ -338,6 +357,30 @@ export function BookingCobroModal({
             </p>
           )}
 
+          {isOrder && (
+            <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+              <input
+                type="checkbox"
+                checked={printComprobante}
+                onChange={(e) => setPrintComprobante(e.target.checked)}
+                className="h-3.5 w-3.5"
+              />
+              🖨️ Imprimir comprobante de la orden al cobrar
+            </label>
+          )}
+
+          {fiscalAllowed && (
+            <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+              <input
+                type="checkbox"
+                checked={wantFiscal}
+                onChange={(e) => setWantFiscal(e.target.checked)}
+                className="h-3.5 w-3.5"
+              />
+              🧾 Emitir Factura C (fiscal)
+            </label>
+          )}
+
           {canFiscal && !fiscalReady && (
             <p className="text-[10px] text-muted-foreground">
               Configurá facturación en Config → Fiscal para habilitarlo.
@@ -402,12 +445,6 @@ export function BookingCobroModal({
           </Button>
            <Button size="sm" className="h-9 flex-1" disabled={submitting} onClick={submit}>
              <span className="flex items-center justify-center gap-2">
-               {canFiscal && fiscalReady && (
-                 <span onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1">
-                   <input type="checkbox" checked={wantFiscal} onChange={(e) => setWantFiscal(e.target.checked)} className="h-3.5 w-3.5 rounded border-border" aria-label="Facturar (Factura C)" />
-                   <span className="text-[10px] opacity-90">Facturar</span>
-                 </span>
-               )}
                <span>{submitting ? "Cobrando…" : paymentMethod === "fiado" ? "Registrar deuda" : "Cobrar"}</span>
              </span>
            </Button>

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { orderEquipmentLabel, inferEquipmentKind, equipmentAttrLabel } from "@/lib/equipment";
+import { orderEquipmentLabel, inferEquipmentKind, equipmentAttrLabel, equipmentFieldExamples } from "@/lib/equipment";
 import { EQUIPMENT_KINDS, equipmentEmoji, equipmentKindLabel, type EquipmentKind } from "@/lib/equipment";
 
 export type OrderForEquipment = {
@@ -46,8 +46,13 @@ export function OrderEquipmentEditor({
   // Tipo de equipo: el de la ficha existente, o el inferido del rubro del
   // comercio al crear una nueva (una gomería crea motos, no bicis).
   const [kind, setKind] = useState<EquipmentKind>("otro");
+  // Selector colapsado por default ("Tipo: X · cambiar"); abierto si el rubro
+  // es ambiguo y no hay tipo cargado en la ficha.
+  const [tipoAbierto, setTipoAbierto] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // Ejemplos de marca/modelo según el tipo (evita "Scott" en un service de PC).
+  const eg = equipmentFieldExamples(kind);
 
   // Tipo inicial: el del equipo vinculado, o el inferido del rubro (una vez).
   useEffect(() => {
@@ -57,8 +62,11 @@ export function OrderEquipmentEditor({
       .then((d) => {
         if (cancelled) return;
         const fromOrder = (order as { equipment_kind?: string | null }).equipment_kind;
-        const next = fromOrder || inferEquipmentKind(d?.vendor?.category);
-        setKind(next as EquipmentKind);
+        const inferred = inferEquipmentKind(d?.vendor?.category);
+        const next = (fromOrder || inferred) as EquipmentKind;
+        setKind(next);
+        // Sin tipo en la ficha y rubro ambiguo → selector abierto para elegir.
+        if (!fromOrder && inferred === "otro") setTipoAbierto(true);
       })
       .catch(() => {
         if (!cancelled) setKind("otro");
@@ -169,26 +177,37 @@ export function OrderEquipmentEditor({
         </div>
 
         <div className="p-4 space-y-2.5 overflow-y-auto">
-          <div className="flex flex-wrap gap-1">
-            {EQUIPMENT_KINDS.map((k) => (
-              <button
-                key={k}
-                type="button"
-                onClick={() => setKind(k)}
-                className={`px-2 h-6 rounded-md text-[11px] font-medium ${kind === k ? "bg-primary text-primary-foreground" : "text-muted-foreground border border-border"}`}
-              >
-                {equipmentEmoji(k)} {equipmentKindLabel(k)}
-              </button>
-            ))}
-          </div>
+          {tipoAbierto ? (
+            <div className="flex flex-wrap gap-1">
+              {EQUIPMENT_KINDS.map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => { setKind(k); setTipoAbierto(false); }}
+                  className={`px-2 h-6 rounded-md text-[11px] font-medium ${kind === k ? "bg-primary text-primary-foreground" : "text-muted-foreground border border-border"}`}
+                >
+                  {equipmentEmoji(k)} {equipmentKindLabel(k)}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setTipoAbierto(true)}
+              className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+            >
+              {equipmentEmoji(kind)} Tipo: {equipmentKindLabel(kind)}
+              <span className="underline">cambiar</span>
+            </button>
+          )}
           <div className="grid grid-cols-2 gap-2">
             <div>
               <Label className="text-xs">Marca</Label>
-              <Input value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="Scott" className="mt-1 h-9 text-sm" />
+              <Input value={brand} onChange={(e) => setBrand(e.target.value)} placeholder={eg.brand} className="mt-1 h-9 text-sm" />
             </div>
             <div>
               <Label className="text-xs">Modelo</Label>
-              <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="XT rodado 29" className="mt-1 h-9 text-sm" />
+              <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder={eg.model} className="mt-1 h-9 text-sm" />
             </div>
             <div>
               <Label className="text-xs">{equipmentAttrLabel(kind)}</Label>

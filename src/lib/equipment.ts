@@ -114,6 +114,8 @@ export function equipmentHasContent(e: Pick<Equipment, "brand" | "model" | "iden
 /** Nombre visible de cada tipo ("Bicicleta", "Moto", "Celular"...). */
 export function equipmentKindLabel(kind: string | null | undefined): string {
   switch (kind) {
+    case "bici":
+      return "Bicicleta";
     case "moto":
       return "Moto";
     case "automotor":
@@ -143,6 +145,29 @@ const EQUIPMENT_ATTR_LABEL: Partial<Record<EquipmentKind, string>> = {
 /** Etiqueta del segundo dato para formularios (placeholder). */
 export function equipmentAttrLabel(kind: string | null | undefined): string {
   return EQUIPMENT_ATTR_LABEL[(kind || "bici") as EquipmentKind] || "Medida / detalle";
+}
+
+/**
+ * Ejemplos de marca/modelo para los placeholders, por tipo: un formulario
+ * genérico con "Scott/XT" confunde en un service de celulares o PC.
+ */
+export function equipmentFieldExamples(kind: string | null | undefined): { brand: string; model: string } {
+  switch (kind) {
+    case "moto":
+      return { brand: "Zanella", model: "150" };
+    case "automotor":
+      return { brand: "Ford", model: "Focus" };
+    case "electro":
+      return { brand: "Philco", model: "Lavarropas" };
+    case "celular":
+      return { brand: "Samsung", model: "A55" };
+    case "pc":
+      return { brand: "HP", model: "Pavilion" };
+    case "bici":
+      return { brand: "Scott", model: "XT" };
+    default:
+      return { brand: "Marca", model: "Modelo" };
+  }
 }
 
 /** Emoji representativo del tipo (etiqueta térmica, recordatorios). */

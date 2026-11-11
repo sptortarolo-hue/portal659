@@ -2073,10 +2073,21 @@ async function composeOrden(
 
   printer.alignCenter();
   await composeStoreHeader(printer, vendor, width);
+  // Título: al doble de ancho NO entra en 58mm (17 chars ×2 = 34 > 32 columnas)
+  // y en 80mm "ORDEN DE SERVICIO N° X" completo rozaba las 48 columnas y se iba
+  // de línea. Título y N° van separados.
   printer.bold(true);
-  printer.setTextSize(1, 1);
-  printer.println(`ORDEN DE SERVICIO N° ${Number(o.order_no) || "—"}`);
-  printer.setTextSize(0, 0);
+  if (width >= 48) {
+    printer.setTextSize(1, 1);
+    printer.println("ORDEN DE SERVICIO");
+    printer.setTextSize(0, 0);
+    printer.println(`N° ${Number(o.order_no) || "—"}`);
+  } else {
+    printer.println("ORDEN DE SERVICIO");
+    printer.setTextSize(1, 1);
+    printer.println(`N° ${Number(o.order_no) || "—"}`);
+    printer.setTextSize(0, 0);
+  }
   printer.bold(false);
   printer.println("(no es comprobante fiscal)");
   printer.println(separator);

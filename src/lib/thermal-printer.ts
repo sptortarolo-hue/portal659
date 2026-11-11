@@ -2239,7 +2239,13 @@ async function composeOrden(
     printer.bold(false);
   }
   printer.println("");
-  printer.println("Conserve este comprobante para retirar su equipo.");
+  // Pie: al cobrar/retirar se agradece (el cliente ya se está llevando el
+  // equipo); en el comprobante de ingreso sigue el aviso de conservar.
+  if (o.paid && (o.amount_paid ?? 0) > 0) {
+    printer.println("Gracias por su confianza!");
+  } else {
+    printer.println("Conserve este comprobante para retirar su equipo.");
+  }
   printer.println("Portal 659 · www.portal659.com.ar");
   printer.println("");
   printer.cut();

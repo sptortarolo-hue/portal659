@@ -172,6 +172,8 @@ export async function POST(request: Request) {
       amount_paid: number | null;
       payment_status: string | null;
       payment_method: string | null;
+      completed_at: string | null;
+      quote_id: string | null;
       equipment_brand: string | null;
       equipment_model: string | null;
       equipment_identifier: string | null;
@@ -182,6 +184,7 @@ export async function POST(request: Request) {
               b.booking_date::text AS booking_date, b.delivery_date::text AS delivery_date,
               b.declared_issue, b.diagnosis, b.deposit_amount, b.deposit_status, b.service_price,
               b.amount_paid, b.payment_status, b.payment_method,
+              b.completed_at::text AS completed_at, b.quote_id,
               e.brand AS equipment_brand, e.model AS equipment_model, e.identifier AS equipment_identifier,
               e.rodado AS equipment_rodado, e.color AS equipment_color
          FROM bookings b
@@ -201,6 +204,22 @@ export async function POST(request: Request) {
       order.equipment_identifier ? `N° ${order.equipment_identifier}` : null,
       order.equipment_color,
     ].filter(Boolean) as string[];
+    // Partidas de la cuenta: del presupuesto vinculado a la orden (repuestos,
+    // mano de obra, materiales). Tolerante a quote_items sin migrar.
+    const cuentaItems = order.quote_id
+      ? (
+          await queryMany<{ kind: string | null; description: string | null; qty: number | string; unit_price: number | string }>(
+            `SELECT kind, description, qty, unit_price
+               FROM quote_items WHERE quote_id = $1 ORDER BY position ASC`,
+            [order.quote_id]
+          ).catch(() => [])
+        ).map((it) => ({
+          kind: it.kind,
+          description: String(it.description || ""),
+          qty: Number(it.qty) || 1,
+          unit_price: Number(it.unit_price) || 0,
+        }))
+      : [];
     const result = await dispatchPrint({
       vendor,
       type,
@@ -220,6 +239,8 @@ export async function POST(request: Request) {
           paid: order.payment_status === "paid",
           amount_paid: order.amount_paid != null ? Number(order.amount_paid) : null,
           payment_method: (order.payment_method as string) || null,
+          completed_date: order.completed_at != null ? String(order.completed_at) : null,
+          items: cuentaItems,
         },
       },
     });

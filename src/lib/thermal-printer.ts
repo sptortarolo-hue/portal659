@@ -84,6 +84,10 @@ export type WorkOrderPrintData = {
   paid?: boolean;
   amount_paid?: number | null;
   payment_method?: string | null;
+  /** Momento en que se retiró el equipo (orden entregada): imprime "Equipo retirado". */
+  completed_date?: string | null;
+  /** Partidas de la cuenta (del presupuesto vinculado): detalle impreso al cobrar. */
+  items?: { kind?: string | null; description: string; qty: number; unit_price: number }[];
 };
 
 /** Datos del presupuesto de oficio para impresión térmica. */
@@ -2129,26 +2133,84 @@ async function composeOrden(
     printer.println(o.diagnosis);
   }
 
+  // Detalle de la cuenta: partidas del presupuesto vinculado a la orden
+  // (repuestos, mano de obra, materiales). Sin partidas queda como siempre.
+  const items = o.items || [];
+  if (items.length > 0) {
+    printer.println("");
+    printer.bold(true);
+    printer.println("DETALLE DE LA CUENTA");
+    printer.bold(false);
+    for (const it of items) {
+      const tag = it.kind === "labor" ? "M.O.: " : it.kind === "repuesto" ? "Repuesto: " : "";
+      const imp = `$${(Number(it.qty) * Number(it.unit_price)).toLocaleString("es-AR")}`;
+      let desc = `${Number(it.qty)}x ${tag}${it.description || ""}`;
+      const maxDesc = width - imp.length - 1;
+      if (desc.length > maxDesc) desc = desc.slice(0, maxDesc);
+      const pad = Math.max(1, width - imp.length - desc.length);
+      printer.println(`${desc}${" ".repeat(pad)}${imp}`);
+    }
+    printer.println(separator);
+  }
+  const itemsTotal = items.length > 0
+    ? items.reduce((s, it) => s + Number(it.qty) * Number(it.unit_price), 0)
+    : 0;
+
   printer.println("");
   printer.println(separator);
   if (o.paid && (o.amount_paid ?? 0) > 0) {
-    // Recibo de pago: la orden ya está cobrada.
+    // Recibo final: la orden ya está cobrada. Sin emojis (el set PC850 de la
+    // impresora térmica los imprime como "?").
+    const total = itemsTotal > 0 ? itemsTotal : Number(o.price) || 0;
+    if (total > 0) {
+      printer.alignRight();
+      printer.bold(true);
+      printer.println(`TOTAL: $${total.toLocaleString("es-AR")}`);
+      printer.bold(false);
+      printer.alignLeft();
+    }
+    if (o.deposit_amount != null && Number(o.deposit_amount) > 0) {
+      printer.println(
+        o.deposit_paid
+          ? `Seña abonada: $${Number(o.deposit_amount).toLocaleString("es-AR")}`
+          : `Seña a abonar al retirar: $${Number(o.deposit_amount).toLocaleString("es-AR")}`
+      );
+    }
     const medio = o.payment_method ? ` · ${o.payment_method}` : "";
     printer.alignCenter();
     printer.bold(true);
-    printer.println(`ABONADO ✅ $${Number(o.amount_paid).toLocaleString("es-AR")}${medio}`);
+    printer.println(`ABONADO $${Number(o.amount_paid).toLocaleString("es-AR")}${medio}`);
     printer.bold(false);
     printer.alignLeft();
-  } else if (o.price != null && Number(o.price) > 0) {
-    printer.alignRight();
-    printer.bold(true);
-    printer.println(`PRESUPUESTO: $${Number(o.price).toLocaleString("es-AR")}`);
-    printer.bold(false);
-    printer.alignLeft();
+    // Saldo (normalmente $0: el cobro cierra la cuenta). Se muestra si quedó algo.
+    const saldo =
+      Math.round((total - (o.deposit_paid ? Number(o.deposit_amount || 0) : 0) - Number(o.amount_paid)) * 100) / 100;
+    if (saldo > 0.009) {
+      printer.println(`Saldo pendiente: $${saldo.toLocaleString("es-AR")}`);
+    }
+  } else {
+    const total = itemsTotal > 0 ? itemsTotal : Number(o.price) || 0;
+    if (total > 0) {
+      printer.alignRight();
+      printer.bold(true);
+      printer.println(`PRESUPUESTO: $${total.toLocaleString("es-AR")}`);
+      printer.bold(false);
+      printer.alignLeft();
+    }
+    if (o.deposit_amount != null && Number(o.deposit_amount) > 0) {
+      printer.println(
+        o.deposit_paid
+          ? `Seña abonada: $${Number(o.deposit_amount).toLocaleString("es-AR")}`
+          : `Seña a abonar al retirar: $${Number(o.deposit_amount).toLocaleString("es-AR")}`
+      );
+    }
   }
-  if (o.deposit_amount != null && Number(o.deposit_amount) > 0) {
-    printer.println(o.deposit_paid ? "Seña abonada ✅" : "Seña a abonar al retirar");
-    printer.println(`$${Number(o.deposit_amount).toLocaleString("es-AR")}`);
+  // Entrega efectiva: el equipo ya fue retirado (orden completed).
+  if (o.completed_date) {
+    printer.println("");
+    printer.bold(true);
+    printer.println(`Equipo retirado: ${fmtOrdenDate(o.completed_date)}`);
+    printer.bold(false);
   }
   printer.println("");
   printer.println("Conserve este comprobante para retirar su equipo.");

@@ -430,6 +430,7 @@ export default function DashboardServicio({
     setSelectedBookingId(highlightBookingId);
   }, [highlightBookingId, bookings]);
   const [editingBooking, setEditingBooking] = useState<any | null>(null);
+  const [editingOrder, setEditingOrder] = useState<any | null>(null);
   const agendaViewInit = useRef(false);
   useEffect(() => {
     if (agendaViewInit.current || !vendor?.id) return;
@@ -1245,7 +1246,10 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
     onNavigate,
     onEditBooking: (b: any) => {
       setSelectedBookingId(null);
-      setEditingBooking(b);
+      // Orden de servicio → formulario de orden (cliente, equipo, falla,
+      // entrega). Turno → formulario de turno (fecha, hora, profesional).
+      if (isOrderBooking(b)) setEditingOrder(b);
+      else setEditingBooking(b);
     },
     editingProductsId,
     setEditingProductsId,
@@ -2404,6 +2408,21 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
           onCreated={(warning) => {
             setEditingBooking(null);
             setMsg(warning || "Turno actualizado");
+            onQuotesChanged?.();
+            reload();
+          }}
+        />
+      )}
+
+      {editingOrder && (
+        <WorkOrderModal
+          key={`edit-order-${editingOrder.id}`}
+          booking={editingOrder}
+          vendorCategory={vendor?.category || ""}
+          onClose={() => setEditingOrder(null)}
+          onCreated={() => {
+            setEditingOrder(null);
+            setMsg("Orden actualizada");
             onQuotesChanged?.();
             reload();
           }}

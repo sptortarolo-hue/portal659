@@ -29,6 +29,7 @@ export function ProductPickCard({
   onAdd,
   isCombo = false,
   comboMembers,
+  vertical,
 }: {
   product: PickProduct;
   hasModifiers: boolean;
@@ -37,6 +38,8 @@ export function ProductPickCard({
   isCombo?: boolean;
   /** Componentes del combo (del GET offers comboItemsByProduct). */
   comboMembers?: { name: string; qty: number }[];
+  /** Vertical del comercio (para el placeholder branded fuera de gastro). */
+  vertical?: string | null;
 }) {
   const p = product;
   const isGift = isGiftProductRow(p);
@@ -51,7 +54,7 @@ export function ProductPickCard({
           src={p.image_url}
           name={p.name}
           category={p.category}
-          vertical={p.vertical ?? "gastronomia"}
+          vertical={vertical ?? p.vertical ?? undefined}
           alt={p.name}
           className="w-full h-full"
           iconClassName="h-10 w-10"

@@ -27,7 +27,7 @@ type TimelineItem = {
   tone: "green" | "amber" | "sky" | "red" | "muted";
 };
 
-type ViewMode = "board" | "list";
+type ViewMode = "board" | "list" | "history";
 
 /**
  * Job board "🛠️ Taller": pantalla principal del taller (patrón del rubro —
@@ -76,6 +76,9 @@ export function TallerJobBoard({
   const [techFilter, setTechFilter] = useState<string>("all");
   const [view, setView] = useState<ViewMode>("list");
   const [search, setSearch] = useState("");
+  // Historial: órdenes cerradas (entregadas y canceladas) con filtros.
+  const [histStatus, setHistStatus] = useState<"all" | "completed" | "cancelled">("all");
+  const [histPeriod, setHistPeriod] = useState<"7" | "30" | "90" | "all">("30");
 
   /** Orden del rubro: por fecha de entrega (vencida primero), "a convenir" al final. */
   function byDelivery(a: any, z: any): number {
@@ -158,6 +161,27 @@ export function TallerJobBoard({
       recibidasHoy: all.filter((b: any) => String(b.booking_date || "").slice(0, 10) === today).length,
     };
   }, [bookings, today]);
+
+  const historyOrders = useMemo(() => {
+    let list = (bookings || []).filter(
+      (b: any) => isOrderBooking(b) && (b.status === "completed" || b.status === "cancelled")
+    );
+    if (histStatus !== "all") list = list.filter((b: any) => b.status === histStatus);
+    if (histPeriod !== "all") {
+      const cutoff = new Date(`${isoTodayAR()}T12:00:00`);
+      cutoff.setDate(cutoff.getDate() - Number(histPeriod));
+      const cutoffISO = cutoff.toISOString().slice(0, 10);
+      list = list.filter((b: any) => String(b.booking_date || "").slice(0, 10) >= cutoffISO);
+    }
+    if (matchesSearch) list = list.filter(matchesSearch);
+    // Más recientes primero (por fecha de cierre o ingreso).
+    return list.slice().sort((a: any, z: any) => {
+      const ac = String(a.completed_at || a.updated_at || a.booking_date || "");
+      const zc = String(z.completed_at || z.updated_at || z.booking_date || "");
+      return ac < zc ? 1 : -1;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookings, histStatus, histPeriod, matchesSearch]);
 
   const timeline = useMemo<TimelineItem[]>(() => {
     const items: TimelineItem[] = [];
@@ -279,6 +303,14 @@ export function TallerJobBoard({
           >
             ☰ Lista
           </button>
+          <button
+            type="button"
+            onClick={() => setView("history")}
+            className={`px-2.5 py-1 text-xs font-medium ${view === "history" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:bg-muted"}`}
+            title="Órdenes entregadas y canceladas"
+          >
+            🕘 Historial
+          </button>
         </div>
         <input
           value={search}
@@ -388,12 +420,22 @@ export function TallerJobBoard({
             );
           })}
         </div>
-      ) : (
+      ) : view === "list" ? (
         /* Lista: tabla densa (RepairDesk), ideal para recepcionar de frente */
         <OrderList
           items={openOrders}
           today={today}
           bookingCardProps={bookingCardProps}
+          onOpenBooking={onOpenBooking}
+        />
+      ) : (
+        /* Historial: órdenes cerradas (entregadas y canceladas) con filtros */
+        <OrderHistory
+          items={historyOrders}
+          status={histStatus}
+          onStatus={setHistStatus}
+          period={histPeriod}
+          onPeriod={setHistPeriod}
           onOpenBooking={onOpenBooking}
         />
       )}
@@ -582,6 +624,135 @@ function OrderList({
 }
 
 void FilterChip;
+
+/**
+ * Historial de órdenes cerradas: entregadas y canceladas. Filtros por estado
+ * y período (por fecha de ingreso) + el buscador del tablero. Cada fila abre
+ * la ficha completa de la orden.
+ */
+function OrderHistory({
+  items,
+  status,
+  onStatus,
+  period,
+  onPeriod,
+  onOpenBooking,
+}: {
+  items: Booking[];
+  status: "all" | "completed" | "cancelled";
+  onStatus: (s: "all" | "completed" | "cancelled") => void;
+  period: "7" | "30" | "90" | "all";
+  onPeriod: (p: "7" | "30" | "90" | "all") => void;
+  onOpenBooking?: (id: string) => void;
+}) {
+  const fdate = (iso: string | null | undefined) => {
+    const d = String(iso || "").slice(0, 10);
+    return d ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(2, 4)}` : "—";
+  };
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <select
+          value={status}
+          onChange={(e) => onStatus(e.target.value as typeof status)}
+          className="h-7 rounded-full border border-border bg-card px-2 text-xs"
+          title="Filtrar por estado"
+        >
+          <option value="all">Todas</option>
+          <option value="completed">Entregadas</option>
+          <option value="cancelled">Canceladas</option>
+        </select>
+        <select
+          value={period}
+          onChange={(e) => onPeriod(e.target.value as typeof period)}
+          className="h-7 rounded-full border border-border bg-card px-2 text-xs"
+          title="Filtrar por fecha de ingreso"
+        >
+          <option value="7">Últimos 7 días</option>
+          <option value="30">Últimos 30 días</option>
+          <option value="90">Últimos 90 días</option>
+          <option value="all">Todo el histórico</option>
+        </select>
+        <span className="text-[11px] text-muted-foreground tabular-nums ml-auto whitespace-nowrap">
+          {items.length} orden(es)
+        </span>
+      </div>
+      <div className="overflow-x-auto rounded-xl border border-border bg-card">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-border text-left text-muted-foreground">
+              <th className="px-2.5 py-2 font-medium">N°</th>
+              <th className="px-2.5 py-2 font-medium">Cliente</th>
+              <th className="px-2.5 py-2 font-medium">Equipo / falla</th>
+              <th className="px-2.5 py-2 font-medium">Estado</th>
+              <th className="px-2.5 py-2 font-medium">Ingreso</th>
+              <th className="px-2.5 py-2 font-medium">Cierre</th>
+              <th className="px-2.5 py-2 font-medium text-right">Cobro</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="px-2.5 py-6 text-center text-muted-foreground">
+                  Sin órdenes en el historial con estos filtros.
+                </td>
+              </tr>
+            ) : (
+              items.map((b: any) => {
+                const closedISO = String(b.completed_at || b.updated_at || "");
+                const subject = orderSubjectLabel(b);
+                const total = Number(b.service_price || 0);
+                const paid = b.payment_status === "paid";
+                return (
+                  <tr
+                    key={b.id}
+                    className="border-b border-border/60 last:border-0 hover:bg-muted/40 cursor-pointer"
+                    onClick={() => onOpenBooking?.(b.id)}
+                  >
+                    <td className="px-2.5 py-2 font-semibold tabular-nums">N° {Number(b.work_order_no) || "—"}</td>
+                    <td className="px-2.5 py-2">
+                      <span className="block max-w-[140px] truncate font-medium">{b.customer_name || "Sin nombre"}</span>
+                      {b.customer_phone && <span className="block text-[10px] text-muted-foreground">{b.customer_phone}</span>}
+                    </td>
+                    <td className="px-2.5 py-2">
+                      <span className="block max-w-[220px] truncate">{subject}</span>
+                      {b.declared_issue && (
+                        <span className="block max-w-[220px] truncate text-[10px] text-muted-foreground">{String(b.declared_issue)}</span>
+                      )}
+                    </td>
+                    <td className="px-2.5 py-2">
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap ${workOrderStateTone(b.status)}`}>
+                        {workOrderStateLabel(b.status)}
+                      </span>
+                    </td>
+                    <td className="px-2.5 py-2 whitespace-nowrap text-muted-foreground">{fdate(b.booking_date)}</td>
+                    <td className="px-2.5 py-2 whitespace-nowrap text-muted-foreground">{fdate(closedISO)}</td>
+                    <td className="px-2.5 py-2 text-right tabular-nums whitespace-nowrap">
+                      {b.status === "cancelled" ? (
+                        <span className="text-[10px] text-muted-foreground">no se cobró</span>
+                      ) : total > 0 ? (
+                        <>
+                          ${total.toLocaleString("es-AR")}
+                          {paid && (
+                            <span className="block text-[10px] text-green-600">
+                              {String(b.payment_method || "cobrado").replace(/_/g, " ")}
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
 function Column({
   state,

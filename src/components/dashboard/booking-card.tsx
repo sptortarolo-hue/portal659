@@ -504,6 +504,23 @@ export function BookingCard({
                 {cobroOpenId === booking.id ? "Cobrando…" : "💰 Cobrar servicio"}
               </Button>
             )}
+            {/* Cancelar la orden (queda en el historial, no se borra). */}
+            {booking.status !== "cancelled" && booking.status !== "completed" && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs text-red-600"
+                title="Cancelar la orden (queda en el historial)"
+                onClick={() => {
+                  const no = Number((booking as any).work_order_no) || 0;
+                  if (window.confirm(no ? `¿Cancelar la orden N° ${no} de ${booking.customer_name || "sin nombre"}?` : `¿Cancelar esta orden?`)) {
+                    handleUpdateBookingStatus(booking.id, "cancelled");
+                  }
+                }}
+              >
+                🚫 Cancelar orden
+              </Button>
+            )}
           </>
         )}
         {booking.status === "completed" && !isOrder && (

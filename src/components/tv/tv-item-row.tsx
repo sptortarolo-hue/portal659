@@ -15,7 +15,7 @@ type Props = {
  * que el cliente escanea de reojo a 3 metros, así que tiene peso visual.
  * La fila mantiene la altura estimada por el motor de layout (foto 96px).
  */
-export function TvItemRow({ item, photoStyle, vertical = "gastronomia" }: Props) {
+export function TvItemRow({ item, photoStyle, vertical }: Props) {
   return (
     <div
       className={`flex items-start gap-4 ${item.soldOut ? "opacity-45" : ""}`}

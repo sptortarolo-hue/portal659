@@ -48,6 +48,8 @@ export function WorkOrderModal({
   initialCustomerName = "",
   initialCustomerPhone = "",
   initialDeclaredIssue = "",
+  /** Orden existente: modo edición (precarga y guarda con PATCH). */
+  booking,
 }: {
   onClose: () => void;
   onCreated: (data: { booking: any; work_order_no: number | null }) => void;
@@ -66,12 +68,29 @@ export function WorkOrderModal({
   initialCustomerPhone?: string;
   /** Falla declarada precargada (al convertir una consulta). */
   initialDeclaredIssue?: string;
+  /** Orden de servicio a editar (modo edición). */
+  booking?: any;
 }) {
-  const [customerName, setCustomerName] = useState(initialCustomerName);
-  const [customerPhone, setCustomerPhone] = useState(initialCustomerPhone);
-  const [equipment, setEquipment] = useState<Equipment | null>(null);
-  const [declaredIssue, setDeclaredIssue] = useState(initialDeclaredIssue);
-  const [deliveryDate, setDeliveryDate] = useState(initialDeliveryDate || defaultDeliveryISO());
+  const isEdit = !!booking;
+  const [customerName, setCustomerName] = useState(isEdit ? String(booking.customer_name || "") : initialCustomerName);
+  const [customerPhone, setCustomerPhone] = useState(isEdit ? String(booking.customer_phone || "").replace(/^\+/, "") : initialCustomerPhone);
+  const [equipment, setEquipment] = useState<Equipment | null>(() => {
+    if (!isEdit) return null;
+    if (!booking.equipment_id) return null;
+    return {
+      id: String(booking.equipment_id),
+      brand: booking.equipment_brand ?? null,
+      model: booking.equipment_model ?? null,
+      identifier: booking.equipment_identifier ?? null,
+      rodado: booking.equipment_rodado != null ? String(booking.equipment_rodado) : null,
+      color: booking.equipment_color ?? null,
+      notes: null,
+    };
+  });
+  const [declaredIssue, setDeclaredIssue] = useState(isEdit ? String(booking.declared_issue || "") : initialDeclaredIssue);
+  const [deliveryDate, setDeliveryDate] = useState(
+    isEdit ? String(booking.delivery_date || "").slice(0, 10) || "" : initialDeliveryDate || defaultDeliveryISO()
+  );
   const [depositAmount, setDepositAmount] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -96,7 +115,20 @@ export function WorkOrderModal({
     setSaving(true);
     try {
       let res: Response;
-      if (convertQuoteId) {
+      if (isEdit) {
+        // Editar la orden: PATCH sobre la fila (cliente, falla, entrega, equipo).
+        res = await fetch(`/api/vendor/bookings/${booking.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            customer_name: customerName.trim(),
+            customer_phone: customerPhone.trim(),
+            declared_issue: declaredIssue.trim(),
+            delivery_date: deliveryDate || null,
+            equipment_id: equipment?.id || null,
+          }),
+        });
+      } else if (convertQuoteId) {
         // Convertir consulta aceptada en orden de servicio vinculada.
         res = await fetch(`/api/vendor/quotes/${convertQuoteId}/convert-to-order`, {
           method: "POST",
@@ -124,10 +156,10 @@ export function WorkOrderModal({
         });
       }
       const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || "No se pudo crear la orden");
-      // Normalizar: el endpoint de conversión devuelve { order }, el de creación devuelve { booking }.
-      const booking = data.booking || data.order || data;
-      onCreated({ booking, work_order_no: booking.work_order_no ?? null });
+      if (!res.ok || data.error) throw new Error(data.error || (isEdit ? "No se pudo guardar la orden" : "No se pudo crear la orden"));
+      // Normalizar: el endpoint de conversión devuelve { order }, el de creación/edición devuelve { booking }.
+      const saved = data.booking || data.order || data;
+      onCreated({ booking: saved, work_order_no: saved.work_order_no ?? null });
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo crear la orden");
     } finally {
@@ -142,9 +174,13 @@ export function WorkOrderModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-5 pb-3 shrink-0">
-          <h3 className="font-display text-lg font-semibold">🛠️ Nueva orden de servicio</h3>
+          <h3 className="font-display text-lg font-semibold">
+            {isEdit ? "✏️ Editar orden de servicio" : "🛠️ Nueva orden de servicio"}
+          </h3>
           <p className="text-xs text-muted-foreground">
-            Ingresá el equipo hoy (sin horario) y estimá una fecha de entrega.
+            {isEdit
+              ? `Orden N° ${Number(booking.work_order_no) || "—"} — actualizá cliente, equipo, falla o entrega.`
+              : "Ingresá el equipo hoy (sin horario) y estimá una fecha de entrega."}
           </p>
         </div>
 
@@ -218,8 +254,8 @@ export function WorkOrderModal({
             />
           </div>
 
-          {/* 4. Entrega estimada */}
-          <div className="grid grid-cols-2 gap-2">
+          {/* 4. Entrega estimada (+ seña solo al crear) */}
+          <div className={isEdit ? "space-y-1.5" : "grid grid-cols-2 gap-2"}>
             <div>
               <Label className="text-xs font-medium">Entrega estimada</Label>
               <Input
@@ -230,18 +266,20 @@ export function WorkOrderModal({
               />
               <p className="text-[10px] text-muted-foreground mt-0.5">Vacío = a convenir.</p>
             </div>
-            <div>
-              <Label className="text-xs font-medium">Seña (opcional)</Label>
-              <Input
-                type="number"
-                min={0}
-                value={depositAmount}
-                onChange={(e) => setDepositAmount(e.target.value)}
-                placeholder="$"
-                className="mt-1 h-9 text-sm"
-              />
-              <p className="text-[10px] text-muted-foreground mt-0.5">Se cobra después.</p>
-            </div>
+            {!isEdit && (
+              <div>
+                <Label className="text-xs font-medium">Seña (opcional)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={depositAmount}
+                  onChange={(e) => setDepositAmount(e.target.value)}
+                  placeholder="$"
+                  className="mt-1 h-9 text-sm"
+                />
+                <p className="text-[10px] text-muted-foreground mt-0.5">Se cobra después.</p>
+              </div>
+            )}
           </div>
 
           {error && <p className="text-sm text-red-600">{error}</p>}
@@ -252,7 +290,7 @@ export function WorkOrderModal({
             Cancelar
           </Button>
           <Button className="flex-1" disabled={saving} onClick={submit}>
-            {saving ? "Guardando..." : "Crear orden"}
+            {saving ? "Guardando..." : isEdit ? "Guardar cambios" : "Crear orden"}
           </Button>
         </div>
       </div>

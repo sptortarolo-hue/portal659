@@ -163,6 +163,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
     return Array.from(map.values());
   }, [orders, liveOrders]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [vendorVertical, setVendorVertical] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [msg, setMsg] = useState("");
@@ -707,6 +708,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
       if (me?.vendor && typeof (me.vendor as any).floor_bg_url !== "undefined") {
         setFloorBg((me.vendor as any).floor_bg_url ?? null);
       }
+      setVendorVertical((me?.vendor?.vertical as string | null) ?? null);
       if (r && r.config) {
         setResConfig(r.config);
         if (r.config.lead_min != null) setResLeadInput(String(r.config.lead_min));
@@ -1989,6 +1991,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
             key={p.id}
             product={p}
             hasModifiers={(modifiersMap[p.id] || []).length > 0}
+            vertical={vendorVertical}
             onAdd={() => addProduct(p)}
           />
         ))}
@@ -2618,6 +2621,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                         key={p.id}
                         product={p}
                         hasModifiers={(modifiersMap[p.id] || []).length > 0}
+                        vertical={vendorVertical}
                         onAdd={() => addProduct(p)}
                       />
                     ))}

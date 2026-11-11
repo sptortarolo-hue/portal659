@@ -350,6 +350,7 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   const [cashPct, setCashPct] = useState(0);
   // Retail (comercio/moda): textos sin referencias a cocina/comida.
   const [isRetail, setIsRetail] = useState(false);
+  const [vendorVertical, setVendorVertical] = useState<string | null>(null);
   // Fiscal ARCA (plan Gestión + config completa): toggle por venta.
   const [fiscalReady, setFiscalReady] = useState(false);
   const [fiscalAutoEmit, setFiscalAutoEmit] = useState(false);
@@ -563,6 +564,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         const pct = normalizeCashPct(me?.vendor?.cash_discount_pct);
         const vertical = (me?.vendor?.vertical as string | undefined) ?? null;
         setCashPct(pct);
+        setVendorVertical(vertical);
         setIsRetail(vertical === "comercio" || vertical === "moda" || vertical === "estetica" || vertical === "salud" || vertical === "taller");
         // Retail: la venta directa es el caso común (retiro con pedido queda opcional).
         if (vertical === "comercio" || vertical === "moda" || vertical === "estetica" || vertical === "salud" || vertical === "taller") {
@@ -2148,6 +2150,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             hasModifiers={(modifiersMap[p.id] || []).length > 0}
             isCombo={(comboMap[p.id] || []).length > 0}
             comboMembers={comboMap[p.id]}
+            vertical={vendorVertical}
             onAdd={() => add(p)}
           />
         ))}

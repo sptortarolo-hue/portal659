@@ -933,7 +933,7 @@ export function CustomersManager({ serviceMode = false, vendorId = null, loyalty
                                         <span className="block truncate">
                                           {b.booking_date} {String(b.booking_time || "").slice(0, 5)}{(b.service_label || b.product_name) ? ` · ${b.service_label || b.product_name}` : ""}{b.staff_label ? ` (${b.staff_label})` : ""} — {b.status}
                                         </span>
-                                        {b.products_used && (
+                                        {!taller && b.products_used && (
                                           <span className="block truncate text-muted-foreground">🧴 {b.products_used}</span>
                                         )}
                                       </span>

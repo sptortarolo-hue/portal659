@@ -141,6 +141,9 @@ export function BookingCard({
     const s = v == null ? "" : String(v);
     return s === "null" || s === "undefined" ? "" : s;
   };
+  // "Productos usados" (texto libre) es de estética: en taller los insumos se
+  // cargan como repuestos reales de la orden, así que el campo no se muestra.
+  const isTaller = (vendor as any)?.vertical === "taller";
   const dateOnly = String(booking.booking_date || "").slice(0, 10);
   const productLabel = nz(booking.product_label || booking.product_name);
   const serviceStaffLabel = [nz(booking.service_label), nz(booking.staff_label)].filter(Boolean).join(" · ");
@@ -308,40 +311,44 @@ export function BookingCard({
           </button>
         );
       })()}
-      {(booking as any).products_used && editingProductsId !== booking.id && (
-        <p className="text-xs text-muted-foreground mb-2">
-          🧴 <span className="italic">{String((booking as any).products_used)}</span>
-        </p>
-      )}
-      {editingProductsId === booking.id ? (
-        <div className="mb-2 space-y-1.5">
-          <Label className="text-[11px] text-muted-foreground">🧴 Productos utilizados (quedan en la ficha)</Label>
-          <Textarea
-            value={productsText}
-            onChange={(e) => setProductsText(e.target.value)}
-            placeholder="Ej: Tinte Koleston 7/0 + oxidante 20v"
-            rows={2}
-            className="text-xs"
-          />
-      <div className="flex flex-wrap gap-2">
-            <Button size="sm" className="h-7 text-xs" disabled={productsBusy} onClick={() => handleSaveProducts(booking.id)}>
-              {productsBusy ? "Guardando..." : "Guardar"}
-            </Button>
-            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setEditingProductsId(null)}>
-              Cerrar
-            </Button>
-          </div>
-        </div>
-      ) : (
-        booking.status === "confirmed" && (
-          <button
-            type="button"
-            onClick={() => { setEditingProductsId(booking.id); setProductsText(String((booking as any).products_used || "")); }}
-            className="text-[11px] text-muted-foreground hover:text-foreground hover:underline mb-2"
-          >
-            {(booking as any).products_used ? "✏️ Editar productos" : "＋ Anotar productos usados"}
-          </button>
-        )
+      {!isTaller && (
+        <>
+          {(booking as any).products_used && editingProductsId !== booking.id && (
+            <p className="text-xs text-muted-foreground mb-2">
+              🧴 <span className="italic">{String((booking as any).products_used)}</span>
+            </p>
+          )}
+          {editingProductsId === booking.id ? (
+            <div className="mb-2 space-y-1.5">
+              <Label className="text-[11px] text-muted-foreground">🧴 Productos utilizados (quedan en la ficha)</Label>
+              <Textarea
+                value={productsText}
+                onChange={(e) => setProductsText(e.target.value)}
+                placeholder="Ej: Tinte Koleston 7/0 + oxidante 20v"
+                rows={2}
+                className="text-xs"
+              />
+          <div className="flex flex-wrap gap-2">
+              <Button size="sm" className="h-7 text-xs" disabled={productsBusy} onClick={() => handleSaveProducts(booking.id)}>
+                {productsBusy ? "Guardando..." : "Guardar"}
+              </Button>
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setEditingProductsId(null)}>
+                Cerrar
+              </Button>
+            </div>
+            </div>
+          ) : (
+            booking.status === "confirmed" && (
+              <button
+                type="button"
+                onClick={() => { setEditingProductsId(booking.id); setProductsText(String((booking as any).products_used || "")); }}
+                className="text-[11px] text-muted-foreground hover:text-foreground hover:underline mb-2"
+              >
+                {(booking as any).products_used ? "✏️ Editar productos" : "＋ Anotar productos usados"}
+              </button>
+            )
+          )}
+        </>
       )}
       <div className="flex flex-wrap gap-2">
         {booking.status === "pending" && (

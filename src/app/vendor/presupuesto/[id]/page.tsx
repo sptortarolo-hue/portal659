@@ -139,7 +139,7 @@ export default function PresupuestoPrintPage() {
           </p>
         )}
         <p className="text-xs text-neutral-500 mt-4">
-          Sin compromiso. Validez: 30 días salvo indicación contraria. Este documento no es comprobante fiscal.
+          Sin compromiso. Validez: 5 días. Este documento no es comprobante fiscal.
         </p>
         <p className="text-xs text-neutral-400 mt-1">Emitido con Portal 659</p>
       </div>

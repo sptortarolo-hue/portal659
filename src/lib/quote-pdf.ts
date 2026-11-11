@@ -177,7 +177,7 @@ export async function buildQuotePdf(data: QuotePdfData): Promise<Buffer> {
     text(sena, M, y, 10, bold);
     y -= 16;
   }
-  text("Sin compromiso. Validez: 30 días salvo indicación contraria.", M, y, 8, font, gray);
+  text("Sin compromiso. Validez: 5 días salvo indicación contraria.", M, y, 8, font, gray);
   y -= 14;
   text("Este documento no es comprobante fiscal.", M, y, 8, font, gray);
 

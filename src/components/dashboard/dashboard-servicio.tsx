@@ -895,21 +895,69 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
     }
   }
 
-  function quoteShareText(q: any): string {
+  /**
+   * Mensaje de WhatsApp del presupuesto: estructurado como el impreso A4
+   * (cliente, equipo, detalle, partidas con importes, total, seña) + link
+   * público para que el cliente lo acepte y siga el estado del trabajo.
+   * Las partidas y el token se traen al vuelo (tolerante: salen sin items
+   * o sin link si la API falla).
+   */
+  async function buildQuoteShareText(q: any): Promise<string> {
+    const [itemsRes, tokenRes] = await Promise.all([
+      fetch(`/api/vendor/quotes/${q.id}/items`).catch(() => null),
+      fetch(`/api/vendor/quotes/${q.id}/token`, { method: "POST" }).catch(() => null),
+    ]);
+    const items: any[] = itemsRes?.ok
+      ? ((await itemsRes.json().catch(() => ({})))?.items || [])
+      : [];
+    const token: string = tokenRes?.ok
+      ? ((await tokenRes.json().catch(() => ({})))?.token || "")
+      : "";
+
+    const title = isEstetica ? "CONSULTA" : "PRESUPUESTO";
     const lines = [
-      `*${isEstetica ? "CONSULTA" : "PRESUPUESTO"} — ${vendor?.store_name || ""}*`,
-      `Para: ${q.customer_name || ""}${q.customer_phone ? ` (${q.customer_phone})` : ""}`,
-      q.service_name ? `Servicio: ${q.service_name}` : "",
-      "",
-      String(q.description || ""),
-      "",
-      q.quoted_price != null ? `*TOTAL: $${Number(q.quoted_price).toLocaleString("es-AR")}*` : "",
-      q.deposit_amount != null && Number(q.deposit_amount) > 0
-        ? `Seña (${q.deposit_pct ?? ""}%): $${Number(q.deposit_amount).toLocaleString("es-AR")}`
-        : "",
-      "Validez: 30 días. Sin compromiso.",
+      `*${vendor?.store_name || ""} — ${title}*`,
+      `Cliente: ${q.customer_name || ""}${q.customer_phone ? ` (${q.customer_phone})` : ""}`,
     ];
+    const eqLabel = [q.equipment_brand, q.equipment_model].filter(Boolean).join(" ");
+    if (q.equipment_kind && eqLabel) {
+      lines.push(
+        `Equipo: ${eqLabel}${q.equipment_rodado ? ` · Rodado ${q.equipment_rodado}` : ""}${q.equipment_identifier ? ` · N° ${q.equipment_identifier}` : ""}${q.equipment_color ? ` · ${q.equipment_color}` : ""}`
+      );
+    } else if (q.service_name) {
+      lines.push(`${isTaller ? "Equipo / Bici" : "Servicio"}: ${q.service_name}`);
+    }
+    if (q.preferred_date) lines.push(`Fecha estimada: ${q.preferred_date}`);
+    lines.push("──────────────");
+    if (q.description) lines.push("*Detalle del trabajo*", String(q.description));
+    if (items.length > 0) {
+      lines.push("", "*Partidas:*");
+      for (const it of items) {
+        const tag = it.kind === "labor" ? "Mano de obra: " : it.kind === "repuesto" ? "Repuesto: " : "";
+        lines.push(`${it.qty}× ${tag}${it.description} — $${(Number(it.qty) * Number(it.unit_price)).toLocaleString("es-AR")}`);
+      }
+    }
+    const total = items.length > 0
+      ? items.reduce((s, it) => s + Number(it.qty) * Number(it.unit_price), 0)
+      : Number(q.quoted_price) || 0;
+    if (total > 0) lines.push("──────────────", `*TOTAL: $${Number(total).toLocaleString("es-AR")}*`);
+    if (q.deposit_amount != null && Number(q.deposit_amount) > 0) {
+      lines.push(`Seña (${q.deposit_pct ?? ""}%): $${Number(q.deposit_amount).toLocaleString("es-AR")}`);
+    }
+    lines.push("Sin compromiso. Validez: 5 días.");
+    if (token) {
+      lines.push("", `✅ Aceptar y seguir tu trabajo: ${window.location.origin}/presupuesto/${token}`);
+    }
     return lines.filter((l) => l !== "").join("\n");
+  }
+
+  async function shareQuoteWa(q: any) {
+    try {
+      const text = await buildQuoteShareText(q);
+      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
+    } catch {
+      setMsg("No se pudo armar el mensaje de WhatsApp.");
+    }
   }
 
   async function handleRespondQuote(id: string, status: string) {
@@ -1173,15 +1221,15 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
     setQuoteModalOpen(true);
   }
 
-  // Enviar el presupuesto vinculado a la orden por WhatsApp (mensaje armado
-  // con el mismo formato de la bandeja de presupuestos).
-  function handleSendOrderQuote(booking: any) {
+  // Enviar el presupuesto vinculado a la orden por WhatsApp (mensaje
+  // estructurado como el impreso, con partidas + link de aceptación).
+  async function handleSendOrderQuote(booking: any) {
     const quote = (quotesProp || quotes || []).find((q: any) => String(q?.id) === String(booking?.quote_id || ""));
     if (!quote) {
       setMsg("No encontré el presupuesto vinculado a esta orden.");
       return;
     }
-    const text = quoteShareText(quote);
+    const text = await buildQuoteShareText(quote);
     const phone = String(quote.customer_phone || booking.customer_phone || "").replace(/\D/g, "");
     if (phone.length < 8) {
       setMsg("El cliente no tiene teléfono para WhatsApp.");
@@ -2025,14 +2073,13 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                           <a href={`/vendor/presupuesto/${q.id}`} target="_blank" rel="noopener noreferrer">
                             <Button size="sm" variant="outline" className="h-7 text-xs">📄 A4 / PDF</Button>
                           </a>
-                          <a
-                            href={`https://wa.me/?text=${encodeURIComponent(quoteShareText(q))}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                          <button
+                            type="button"
+                            onClick={() => void shareQuoteWa(q)}
                             className="inline-flex items-center h-7 px-3 text-xs font-medium rounded-lg border border-border hover:bg-muted text-green-600"
                           >
                             📲 Enviar por WA
-                          </a>
+                          </button>
                           <Button
                             size="sm"
                             variant="outline"

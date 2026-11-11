@@ -48,6 +48,8 @@ export function WorkOrderModal({
   initialCustomerName = "",
   initialCustomerPhone = "",
   initialDeclaredIssue = "",
+  initialEquipment,
+  initialFromNote,
   /** Orden existente: modo edición (precarga y guarda con PATCH). */
   booking,
 }: {
@@ -68,6 +70,10 @@ export function WorkOrderModal({
   initialCustomerPhone?: string;
   /** Falla declarada precargada (al convertir una consulta). */
   initialDeclaredIssue?: string;
+  /** Nota de trazabilidad (ej. "Desde turno del 12/11 15:00"). */
+  initialFromNote?: string;
+  /** Equipo precargado (al generar la orden desde un turno que ya tiene equipo). */
+  initialEquipment?: Equipment | null;
   /** Orden de servicio a editar (modo edición). */
   booking?: any;
 }) {
@@ -75,7 +81,7 @@ export function WorkOrderModal({
   const [customerName, setCustomerName] = useState(isEdit ? String(booking.customer_name || "") : initialCustomerName);
   const [customerPhone, setCustomerPhone] = useState(isEdit ? String(booking.customer_phone || "").replace(/^\+/, "") : initialCustomerPhone);
   const [equipment, setEquipment] = useState<Equipment | null>(() => {
-    if (!isEdit) return null;
+    if (!isEdit) return initialEquipment || null;
     if (!booking.equipment_id) return null;
     return {
       id: String(booking.equipment_id),
@@ -152,6 +158,7 @@ export function WorkOrderModal({
             delivery_date: deliveryDate || null,
             deposit_amount: depositAmount.trim() ? Number(depositAmount) : null,
             equipment_id: equipment?.id || null,
+            notes: initialFromNote?.trim() || null,
           }),
         });
       }

@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { CustomerFormTimeline } from "@/components/dashboard/customer-form-timeline";
+import type { Equipment } from "@/lib/equipment";
+import { equipmentLabel } from "@/lib/equipment";
 
 type Customer = {
   id: string;
@@ -27,6 +29,74 @@ function fmtDate(v: string | null | undefined): string {
   return Number.isNaN(d.getTime()) ? String(v).slice(0, 10) : d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "2-digit" });
 }
 
+/**
+ * Equipos del cliente (solo taller): marca/modelo, N° de cuadro, rodado,
+ * color, trabajos realizados y foto de recepción + recordatorio de service.
+ */
+function EquiposBlock({ phone, customerName }: { phone: string; customerName: string | null }) {
+  const [items, setItems] = useState<Equipment[]>([]);
+  useEffect(() => {
+    const digits = String(phone || "").replace(/\D/g, "");
+    if (digits.length < 8) return;
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch(`/api/vendor/equipment?phone=${encodeURIComponent(digits)}`);
+        if (!res.ok) return;
+        const d = await res.json().catch(() => ({}));
+        if (alive) setItems(Array.isArray(d?.equipment) ? d.equipment : []);
+      } catch {
+        /* silencio: no rompe la ficha */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [phone]);
+  if (items.length === 0) return null;
+  const waDigits = String(phone || "").replace(/\D/g, "");
+  return (
+    <div className="space-y-1.5 mb-3">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">🚲 Equipos</p>
+      {items.map((eq) => {
+        const monthsAgo = eq.last_job_at
+          ? Math.max(0, Math.floor((Date.now() - new Date(eq.last_job_at).getTime()) / (1000 * 60 * 60 * 24 * 30.44)))
+          : null;
+        const reminder = `Hola ${customerName?.split(/\s+/)[0] || ""}! Te recordamos que tu equipo${
+          eq.rodado ? ` (rodado ${eq.rodado})` : ""
+        }${
+          monthsAgo && monthsAgo >= 6 ? ` tuvo su último service hace ${monthsAgo} meses` : " tuvo su último service hace tiempo"
+        }. ¿Le toca una revisión? Escribinos y te anotamos.`;
+        return (
+          <div key={eq.id} className="flex items-start justify-between gap-2 rounded-xl border border-border bg-card px-2.5 py-2">
+            <div className="min-w-0 flex-1 flex items-start gap-2">
+              {eq.photo_url && <img src={eq.photo_url} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />}
+              <div className="min-w-0">
+                <p className="text-sm truncate">🚲 {equipmentLabel(eq) || "Equipo"}</p>
+                <p className="text-[11px] text-muted-foreground">
+                  {eq.jobs && eq.jobs > 0
+                    ? `${eq.jobs} trabajo${eq.jobs === 1 ? "" : "s"}${eq.last_job_at ? ` · último ${new Date(eq.last_job_at).toLocaleDateString("es-AR")}` : ""}`
+                    : "Sin trabajos registrados"}
+                </p>
+              </div>
+            </div>
+            {waDigits.length >= 8 && (
+              <a
+                href={`https://wa.me/${waDigits}?text=${encodeURIComponent(reminder)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 rounded-md bg-green-500 px-2 py-1 text-[11px] font-medium text-white hover:bg-green-600"
+              >
+                🔔 Service
+              </a>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export type BookingFichaModalProps = {
   booking: any;
   open: boolean;
@@ -35,6 +105,8 @@ export type BookingFichaModalProps = {
   vendorId?: string | null;
   /** Fichas dinámicas (customer-form-timeline): solo estética; taller/oficios no las usan. */
   estetica?: boolean;
+  /** Taller: ficha sin datos de estética (cumpleaños/piel/consentimiento) y con los equipos del cliente. */
+  taller?: boolean;
 };
 
 export function BookingFichaModal({
@@ -44,6 +116,7 @@ export function BookingFichaModal({
   onNavigate,
   vendorId,
   estetica = true,
+  taller = false,
 }: BookingFichaModalProps) {
   const phone = booking?.customer_phone ? String(booking.customer_phone) : "";
   const [customer, setCustomer] = useState<Customer | null>(null);
@@ -131,10 +204,10 @@ export function BookingFichaModal({
         name: fName.trim() || null,
         address: fAddress.trim() || null,
         notes: fNotes.trim() || null,
-        allergies: fAllergies.trim() || null,
-        skin_notes: fSkin.trim() || null,
-        birthdate: fBirthdate || null,
-        consent: fConsent,
+        allergies: taller ? null : fAllergies.trim() || null,
+        skin_notes: taller ? null : fSkin.trim() || null,
+        birthdate: taller ? null : fBirthdate || null,
+        consent: taller ? false : fConsent,
       };
       let res: Response;
       if (customer) {
@@ -258,25 +331,25 @@ export function BookingFichaModal({
                       <span className="font-medium text-right">{customer.address}</span>
                     </div>
                   )}
-                  {customer?.birthdate && (
+                  {!taller && customer?.birthdate && (
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Cumpleaños</span>
                       <span className="font-medium">{fmtDate(customer.birthdate)}</span>
                     </div>
                   )}
-                  {customer?.allergies && (
+                  {!taller && customer?.allergies && (
                     <div className="flex justify-between gap-2">
                       <span className="text-muted-foreground">Alergias</span>
                       <span className="font-medium text-right">{customer.allergies}</span>
                     </div>
                   )}
-                  {customer?.skin_notes && (
+                  {!taller && customer?.skin_notes && (
                     <div className="flex justify-between gap-2">
                       <span className="text-muted-foreground">Notas de piel</span>
                       <span className="font-medium text-right">{customer.skin_notes}</span>
                     </div>
                   )}
-                  {customer?.consent_at && (
+                  {!taller && customer?.consent_at && (
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Consentimiento</span>
                       <span className="font-medium">{fmtDate(customer.consent_at)}</span>
@@ -310,26 +383,34 @@ export function BookingFichaModal({
                     <Label className="text-[11px]">Dirección</Label>
                     <Input className="h-8 text-xs" value={fAddress} onChange={(e) => setFAddress(e.target.value)} placeholder="Dirección" />
                   </div>
-                  <div className="space-y-1">
-                    <Label className="text-[11px]">Cumpleaños</Label>
-                    <Input type="date" className="h-8 text-xs" value={fBirthdate} onChange={(e) => setFBirthdate(e.target.value)} />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[11px]">Alergias / contraindicaciones</Label>
-                    <Textarea className="text-xs min-h-[50px]" value={fAllergies} onChange={(e) => setFAllergies(e.target.value)} placeholder="Alergias, contraindicaciones" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[11px]">Notas de piel</Label>
-                    <Textarea className="text-xs min-h-[50px]" value={fSkin} onChange={(e) => setFSkin(e.target.value)} placeholder="Tipo de piel, notas" />
-                  </div>
+                  {!taller && (
+                    <div className="space-y-1">
+                      <Label className="text-[11px]">Cumpleaños</Label>
+                      <Input type="date" className="h-8 text-xs" value={fBirthdate} onChange={(e) => setFBirthdate(e.target.value)} />
+                    </div>
+                  )}
+                  {!taller && (
+                    <div className="space-y-1">
+                      <Label className="text-[11px]">Alergias / contraindicaciones</Label>
+                      <Textarea className="text-xs min-h-[50px]" value={fAllergies} onChange={(e) => setFAllergies(e.target.value)} placeholder="Alergias, contraindicaciones" />
+                    </div>
+                  )}
+                  {!taller && (
+                    <div className="space-y-1">
+                      <Label className="text-[11px]">Notas de piel</Label>
+                      <Textarea className="text-xs min-h-[50px]" value={fSkin} onChange={(e) => setFSkin(e.target.value)} placeholder="Tipo de piel, notas" />
+                    </div>
+                  )}
                   <div className="space-y-1">
                     <Label className="text-[11px]">Notas generales</Label>
-                    <Textarea className="text-xs min-h-[50px]" value={fNotes} onChange={(e) => setFNotes(e.target.value)} placeholder="Notas" />
+                    <Textarea className="text-xs min-h-[50px]" value={fNotes} onChange={(e) => setFNotes(e.target.value)} placeholder={taller ? "Notas (ej: prefiere repuestos originales)" : "Notas"} />
                   </div>
-                  <label className="flex items-center gap-2 text-[11px]">
-                    <input type="checkbox" checked={fConsent} onChange={(e) => setFConsent(e.target.checked)} />
-                    Consentimiento firmado
-                  </label>
+                  {!taller && (
+                    <label className="flex items-center gap-2 text-[11px]">
+                      <input type="checkbox" checked={fConsent} onChange={(e) => setFConsent(e.target.checked)} />
+                      Consentimiento firmado
+                    </label>
+                  )}
 
                   {msg && <p className="text-[11px] text-amber-700">{msg}</p>}
 
@@ -345,7 +426,7 @@ export function BookingFichaModal({
               )}
             </div>
 
-            {estetica && phone && (
+            {estetica && !taller && phone && (
               <CustomerFormTimeline
                 phone={phone}
                 vendorId={vendorId}
@@ -353,6 +434,8 @@ export function BookingFichaModal({
                 onChanged={() => {}}
               />
             )}
+
+            {taller && phone && <EquiposBlock phone={phone} customerName={name} />}
           </>
         )}
 

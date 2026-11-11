@@ -23,13 +23,14 @@ import { PlanLock } from "@/components/vendor/plan-lock";
 import { QuoteManualModal } from "@/components/dashboard/quote-manual-modal";
 import { BookingManualModal } from "@/components/dashboard/booking-manual-modal";
 import { WorkOrderModal } from "@/components/dashboard/work-order-modal";
+import { equipmentFromBooking } from "@/lib/equipment";
 import { OrderExtendModal } from "@/components/dashboard/order-extend-modal";
 import { EsteticaWaitlistManager, type WaitEntry } from "@/components/dashboard/estetica-managers";
 import { StaffManager } from "@/components/vendor/staff-manager";
 import { arToday } from "@/lib/booking-schedule";
 import { bookingReminderMessage, bookingWhenLabel } from "@/lib/booking-message";
 import { isOrderBooking, type AgendaBooking } from "@/lib/agenda";
-import { isoTodayAR, quoteFollowUpText, quoteNeedsFollowUp, workOrderExtensionText, type WorkOrderBoardFilter } from "@/lib/work-order";
+import { isoTodayAR, quoteFollowUpText, quoteNeedsFollowUp, workOrderExtensionText, defaultDeliveryISO, type WorkOrderBoardFilter } from "@/lib/work-order";
 import { loadDraft, saveDraft } from "@/lib/draft";
 import { AgendaView, type AgendaViewMode } from "@/components/dashboard/agenda-view";
 import { EsteticaWeekPlanner } from "@/components/dashboard/estetica-week-planner";
@@ -446,6 +447,8 @@ export default function DashboardServicio({
   }, [highlightBookingId, bookings]);
   const [editingBooking, setEditingBooking] = useState<any | null>(null);
   const [editingOrder, setEditingOrder] = useState<any | null>(null);
+  /** Turno del que se va a generar una orden de servicio (taller). */
+  const [orderFromBooking, setOrderFromBooking] = useState<any | null>(null);
   const agendaViewInit = useRef(false);
   useEffect(() => {
     if (agendaViewInit.current || !vendor?.id) return;
@@ -1308,6 +1311,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
     onPrintOrden: orderCanCreate ? (id: string) => handlePrintOrder(id, "orden") : undefined,
     onPrintEtiqueta: orderCanCreate ? (id: string) => handlePrintOrder(id, "orden_tag") : undefined,
     onExtendDelivery: orderCanCreate ? (b: any) => setExtendOrder(b) : undefined,
+    onGenerateOrder: isTaller && orderCanCreate ? (b: any) => setOrderFromBooking(b) : undefined,
     onQuoteOrder: isTaller && orderCanCreate ? handleQuoteOrder : undefined,
     onSendOrderQuote: isTaller ? handleSendOrderQuote : undefined,
     orderQuotes: isTaller ? (quotesProp || quotes || []) : undefined,
@@ -2471,6 +2475,37 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
         />
       )}
 
+      {/* Generar orden de servicio desde un turno (taller): precarga los
+          datos del turno y deja la trazabilidad en las notas. */}
+      {orderFromBooking && (
+        <WorkOrderModal
+          key={`from-booking-${orderFromBooking.id}`}
+          initialCustomerName={String(orderFromBooking.customer_name || "")}
+          initialCustomerPhone={String(orderFromBooking.customer_phone || "")}
+          initialDeclaredIssue={String(
+            orderFromBooking.declared_issue ||
+              orderFromBooking.product_label ||
+              orderFromBooking.product_name ||
+              ""
+          )}
+          initialEquipment={
+            orderFromBooking.equipment_id ? equipmentFromBooking(orderFromBooking) : null
+          }
+          initialDeliveryDate={defaultDeliveryISO()}
+          initialFromNote={`Desde turno del ${String(orderFromBooking.booking_date || "").slice(8, 10)}/${String(
+            orderFromBooking.booking_date || ""
+          ).slice(5, 7)}${orderFromBooking.booking_time ? ` ${orderFromBooking.booking_time}` : ""}`}
+          vendorCategory={vendor?.category || ""}
+          onClose={() => setOrderFromBooking(null)}
+          onCreated={(data: { booking: any; work_order_no: number | null }) => {
+            const no = Number(data.work_order_no) || 0;
+            setOrderFromBooking(null);
+            setMsg(no ? `Orden N° ${no} generada desde el turno` : "Orden generada desde el turno");
+            reload();
+          }}
+        />
+      )}
+
       {orderModalOpen && (
         <WorkOrderModal
           onClose={() => setOrderModalOpen(false)}
@@ -2553,6 +2588,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
           onNavigate={onNavigate}
           vendorId={vendor?.id}
           estetica={!isTaller}
+          taller={isTaller}
         />
       )}
     </div>

@@ -93,6 +93,8 @@ export type BookingCardProps = {
   orderQuotes?: any[];
   /** Ids con impresión en curso (deshabilita los botones). */
   printBusyId?: string | null;
+  /** Taller: desde un turno, generar una orden de servicio con sus datos. */
+  onGenerateOrder?: (booking: any) => void;
 };
 
 /** Tarjeta de un turno con todas sus acciones (detalle en modal y lista). */
@@ -132,6 +134,7 @@ export function BookingCard({
   onSendOrderQuote,
   orderQuotes,
   printBusyId,
+  onGenerateOrder,
 }: BookingCardProps) {
   // Defensa contra datos basura ("null"/"undefined" de ediciones viejas).
   const nz = (v: unknown): string => {
@@ -389,6 +392,17 @@ export function BookingCard({
                 onClick={() => onCobroBooking(booking.id)}
               >
                 {cobroOpenId === booking.id ? "Cobrando…" : "💰 Cobrar servicio"}
+              </Button>
+            )}
+            {onGenerateOrder && !isOrder && (booking.status === "pending" || booking.status === "confirmed") && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                title="Crear una orden de servicio con los datos de este turno (equipo, cliente y falla)"
+                onClick={() => onGenerateOrder(booking)}
+              >
+                🛠️ Generar orden
               </Button>
             )}
             <Button

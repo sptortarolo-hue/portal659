@@ -206,7 +206,7 @@ export async function POST(request: Request) {
     ].filter(Boolean) as string[];
     // Partidas de la cuenta: del presupuesto vinculado a la orden (repuestos,
     // mano de obra, materiales). Tolerante a quote_items sin migrar.
-    const cuentaItems = order.quote_id
+    const cuentaItems: { kind: string | null; description: string; qty: number; unit_price: number }[] = order.quote_id
       ? (
           await queryMany<{ kind: string | null; description: string | null; qty: number | string; unit_price: number | string }>(
             `SELECT kind, description, qty, unit_price
@@ -220,6 +220,33 @@ export async function POST(request: Request) {
           unit_price: Number(it.unit_price) || 0,
         }))
       : [];
+    // Sin presupuesto: la cuenta se armó en la ficha de la orden con repuestos
+    // del catálogo + mano de obra. Esos datos existen (work_order_parts +
+    // labor_amount): se imprimen igual para que el cliente vea el detalle.
+    if (cuentaItems.length === 0) {
+      const [parts, laborRow] = await Promise.all([
+        queryMany<{ name: string | null; qty: number | string; unit_price: number | string }>(
+          `SELECT name, qty, unit_price FROM work_order_parts
+            WHERE vendor_id = $1 AND booking_id = $2 ORDER BY created_at ASC`,
+          [vendor.id, bookingId]
+        ).catch(() => []),
+        queryOne<{ labor_amount: number | null }>(
+          `SELECT labor_amount FROM bookings WHERE id = $1`,
+          [bookingId]
+        ).catch(() => null),
+      ]);
+      for (const p of parts) {
+        cuentaItems.push({
+          kind: "repuesto",
+          description: String(p.name || "Repuesto"),
+          qty: Number(p.qty) || 1,
+          unit_price: Number(p.unit_price) || 0,
+        });
+      }
+      if (laborRow?.labor_amount != null && Number(laborRow.labor_amount) > 0) {
+        cuentaItems.push({ kind: "labor", description: "Mano de obra", qty: 1, unit_price: Number(laborRow.labor_amount) });
+      }
+    }
     const result = await dispatchPrint({
       vendor,
       type,

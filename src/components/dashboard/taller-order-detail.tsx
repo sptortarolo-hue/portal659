@@ -549,26 +549,9 @@ export function TallerOrderDetail({
                           size="sm"
                           variant="outline"
                           className="h-7 text-xs"
-                          onClick={() => {
-                            const linkedQuotes = ((bookingCardProps.orderQuotes || []) as any[]).filter(
-                              (q: any) => String(q?.booking_id || "") === String(booking.id)
-                            );
-                            if (linkedQuotes.length > 0) {
-                              const ok = window.confirm(
-                                `Esta orden ya tiene ${linkedQuotes.length} presupuesto(s) vinculado(s). ¿Crear uno nuevo y desvincular el actual?`
-                              );
-                              if (!ok) return;
-                              // desvincular el actual antes de crear el nuevo
-                              void fetch(`/api/vendor/bookings/${booking.id}`, {
-                                method: "PATCH",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ quote_id: null }),
-                              });
-                            }
-                            bookingCardProps.onQuoteOrder!(booking);
-                          }}
+                          onClick={() => bookingCardProps.onQuoteOrder!(booking)}
                         >
-                          💰 Presupuestar
+                          💰 Re-cotizar
                         </Button>
                       )}
                       {linked && (

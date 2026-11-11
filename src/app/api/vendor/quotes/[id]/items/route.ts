@@ -22,9 +22,17 @@ export async function GET(
   if (!quote) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
 
   const items = await queryMany<Record<string, unknown>>(
-    `SELECT id, kind, description, qty, unit_price, position
+    `SELECT id, kind, description, qty, unit_price, position, product_id, variant_id
      FROM quote_items WHERE quote_id = $1 ORDER BY position ASC`,
     [id]
-  ).catch(() => []);
+  ).catch(() =>
+    // Sin las columnas product_id/variant_id (migración pendiente): el
+    // editor precarga las partidas sin link de catálogo.
+    queryMany<Record<string, unknown>>(
+      `SELECT id, kind, description, qty, unit_price, position
+       FROM quote_items WHERE quote_id = $1 ORDER BY position ASC`,
+      [id]
+    ).catch(() => [])
+  );
   return NextResponse.json({ items: items || [] });
 }

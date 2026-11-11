@@ -105,16 +105,20 @@ export async function POST(
       }
       if (customPrice) unitPrice = customPrice;
 
+      // El stock de repuestos se descuenta por unidades enteras (las columnas
+      // stock son integer): igual que import-quote. La fila guarda el qty real.
+      const stockQty = Math.max(1, Math.round(Number(qty) || 1));
+
       if (variantId) {
         const rows = await tx.query<{ id: string }>(
           `UPDATE product_variants SET stock = stock - $1 WHERE id = $2 AND stock >= $1 RETURNING id`,
-          [qty, variantId]
+          [stockQty, variantId]
         );
         if (rows.length === 0) throw new Error(`Sin stock suficiente de "${name}"`);
       } else if (stockControl) {
         const rows = await tx.query<{ id: string }>(
           `UPDATE products SET stock = stock - $1 WHERE id = $2 AND stock_control = true AND COALESCE(stock, 0) >= $1 RETURNING id`,
-          [qty, productId]
+          [stockQty, productId]
         );
         if (rows.length === 0) throw new Error(`Sin stock suficiente de "${name}"`);
       }
@@ -133,7 +137,7 @@ export async function POST(
         vendorId: vendor.id,
         product_id: productId,
         variant_id: variantId,
-        qty_delta: -qty,
+        qty_delta: -stockQty,
         reason: "orden",
         ref_booking: id,
       });
@@ -186,12 +190,20 @@ export async function DELETE(
       );
       if (!part) throw new Error("Repuesto no encontrado");
 
+      // work_order_parts.qty es numeric(10,2) → pg lo devuelve como string
+      // ("1.00"). products.stock / product_variants.stock son integer y
+      // Postgres explota con "invalid input syntax for type integer: 1.00"
+      // al reponer con el string crudo (misma clase de bug que import-quote).
+      // Misma regla que el POST e import-quote: unidades enteras, así la
+      // reposición es simétrica al descuento original.
+      const stockQty = Math.max(1, Math.round(Number(part.qty) || 0));
+
       if (part.variant_id) {
-        await tx.queryVoid(`UPDATE product_variants SET stock = stock + $1 WHERE id = $2`, [part.qty, part.variant_id]);
+        await tx.queryVoid(`UPDATE product_variants SET stock = stock + $1 WHERE id = $2`, [stockQty, part.variant_id]);
       } else if (part.product_id) {
         await tx.queryVoid(
           `UPDATE products SET stock = stock + $1 WHERE id = $2 AND stock_control = true`,
-          [part.qty, part.product_id]
+          [stockQty, part.product_id]
         );
       }
 
@@ -199,7 +211,7 @@ export async function DELETE(
         vendorId: vendor.id,
         product_id: part.product_id,
         variant_id: part.variant_id,
-        qty_delta: part.qty,
+        qty_delta: stockQty,
         reason: "orden",
         ref_booking: id,
       });

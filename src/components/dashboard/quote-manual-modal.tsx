@@ -96,6 +96,28 @@ type ManualItem = {
 
 type QuoteVariant = "estetica" | "taller" | "oficios";
 
+/**
+ * Presupuesto existente para el modo edición (re-cotizar una orden de
+ * taller modifica ESTE presupuesto en vez de crear uno nuevo y
+ * desvincular el anterior). Campos espejo de GET /api/vendor/quotes
+ * (incluye el join de equipment_*) + partidas (se cargan por separado).
+ */
+export type QuoteEditPrefill = {
+  id: string;
+  customer_name?: string | null;
+  customer_phone?: string | null;
+  service_name?: string | null;
+  description?: string | null;
+  quoted_price?: number | string | null;
+  equipment_id?: string | null;
+  equipment_kind?: string | null;
+  equipment_brand?: string | null;
+  equipment_model?: string | null;
+  equipment_identifier?: string | null;
+  equipment_rodado?: string | null;
+  equipment_color?: string | null;
+};
+
 export function QuoteManualModal({
   onClose,
   onCreated,
@@ -105,9 +127,10 @@ export function QuoteManualModal({
   initialDeclaredIssue = "",
   initialEquipment = null,
   products = [],
+  initialQuote = null,
 }: {
   onClose: () => void;
-  /** Recibe el presupuesto creado (para vincularlo a la orden y avisar). */
+  /** Recibe el presupuesto creado/editado (para vincularlo a la orden y avisar). */
   onCreated: (data: { quote: any | null }) => void;
   /**
    * estetica: precio directo ("consulta"). taller: partidas (materiales +
@@ -122,17 +145,38 @@ export function QuoteManualModal({
   initialEquipment?: Equipment | null;
   /** Catálogo de productos (repuestos) para agregar partidas de repuesto. */
   products?: { id: string; name: string; price?: number | null; promo_price?: number | null }[];
+  /** Modo edición: presupuesto existente (PATCH en vez de POST). */
+  initialQuote?: QuoteEditPrefill | null;
 }) {
   const isEstetica = variant === "estetica";
   const isTaller = variant === "taller";
-  const [customerName, setCustomerName] = useState(initialCustomerName);
-  const [customerPhone, setCustomerPhone] = useState(initialCustomerPhone);
+  const editing = !!initialQuote;
+  const quoteEquipment: Equipment | null = initialQuote?.equipment_id
+    ? ({
+        id: String(initialQuote.equipment_id),
+        kind: (initialQuote.equipment_kind ?? null) as Equipment["kind"],
+        brand: initialQuote.equipment_brand ?? null,
+        model: initialQuote.equipment_model ?? null,
+        identifier: initialQuote.equipment_identifier ?? null,
+        rodado: initialQuote.equipment_rodado ?? null,
+        color: initialQuote.equipment_color ?? null,
+        notes: null,
+      } as Equipment)
+    : null;
+  const [customerName, setCustomerName] = useState(initialQuote?.customer_name || initialCustomerName);
+  const [customerPhone, setCustomerPhone] = useState(initialQuote?.customer_phone || initialCustomerPhone);
   const [serviceName, setServiceName] = useState("");
   // Ficha de equipo (taller): el presupuesto queda ligado a la bici/equipo.
-  const [equipment, setEquipment] = useState<Equipment | null>(initialEquipment);
-  const [description, setDescription] = useState(initialDeclaredIssue);
+  const [equipment, setEquipment] = useState<Equipment | null>(initialEquipment ?? quoteEquipment);
+  const [description, setDescription] = useState(
+    initialQuote ? (initialQuote.description ?? "") : initialDeclaredIssue
+  );
   // Precio cerrado (taller en modo "cerrado", estética siempre).
-  const [directPrice, setDirectPrice] = useState("");
+  const [directPrice, setDirectPrice] = useState(
+    initialQuote?.quoted_price != null && Number(initialQuote.quoted_price) > 0
+      ? String(Number(initialQuote.quoted_price))
+      : ""
+  );
   // Taller: modo de cotización — partidas (materiales + mano de obra) o precio cerrado.
   const [workshopMode, setWorkshopMode] = useState<"partidas" | "cerrado">("partidas");
   const [items, setItems] = useState<ManualItem[]>([{ kind: "material", description: "", qty: "1", unit_price: "" }]);
@@ -149,6 +193,43 @@ export function QuoteManualModal({
       .then((d) => { if (Array.isArray(d?.materials)) setMatMemory(d.materials); })
       .catch(() => {});
   }, [isEstetica]);
+  // Modo edición: cargar las partidas del presupuesto existente. Con
+  // partidas → modo "partidas" precargadas; sin partidas → modo "cerrado"
+  // con su precio (el default del estado ya trae quoted_price).
+  const [loadingQuote, setLoadingQuote] = useState(editing);
+  useEffect(() => {
+    if (!initialQuote) return;
+    let cancelled = false;
+    fetch(`/api/vendor/quotes/${initialQuote.id}/items`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        const list = Array.isArray(d?.items) ? d.items : [];
+        if (list.length > 0) {
+          setWorkshopMode("partidas");
+          setItems(
+            list.map((it: any) => ({
+              kind: it.kind === "repuesto" ? "repuesto" : it.kind === "labor" ? "labor" : "material",
+              description: String(it.description || ""),
+              qty: String(Number(it.qty) || 0),
+              unit_price: String(Number(it.unit_price) || 0),
+              product_id: it.product_id ?? null,
+              variant_id: it.variant_id ?? null,
+            }))
+          );
+        } else {
+          setWorkshopMode("cerrado");
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoadingQuote(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialQuote?.id]);
 
   const total = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.unit_price) || 0), 0);
 
@@ -206,41 +287,53 @@ export function QuoteManualModal({
     }
     setSaving(true);
     try {
-      const res = await fetch("/api/vendor/quotes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: isEstetica || (isTaller && workshopMode === "cerrado")
-          ? JSON.stringify({
-              customer_name: customerName.trim(),
-              customer_phone: customerPhone.trim(),
-              service_name: isTaller ? equipmentLabel(equipment) || null : serviceName.trim() || null,
-              description: description.trim() || (isTaller && equipment ? equipmentLabel(equipment) : "") || "Presupuesto",
-              quoted_price: Number(directPrice),
-              equipment_id: isTaller ? equipment?.id || null : null,
-            })
-          : JSON.stringify({
-              customer_name: customerName.trim(),
-              customer_phone: customerPhone.trim(),
-              service_name: isTaller ? equipmentLabel(equipment) || null : serviceName.trim() || null,
-              description: description.trim() || (isTaller && equipment ? equipmentLabel(equipment) : "") || "Presupuesto",
-              items: items
-                .filter((it) => it.description.trim() !== "")
-                .map((it) => ({
-                  kind: it.kind,
-                  description: it.description.trim(),
-                  qty: Number(it.qty) || 0,
-                  unit_price: Number(it.unit_price) || 0,
-product_id: it.product_id || null,
-variant_id: it.variant_id || null,
-                })),
-              equipment_id: isTaller ? equipment?.id || null : null,
-            }),
-      });
+      // Payload común (mismos campos en POST y PATCH).
+      const common = {
+        customer_name: customerName.trim(),
+        customer_phone: customerPhone.trim(),
+        service_name: isTaller
+          ? equipmentLabel(equipment) || (initialQuote?.service_name as string | undefined) || null
+          : serviceName.trim() || null,
+        description: description.trim() || (isTaller && equipment ? equipmentLabel(equipment) : "") || "Presupuesto",
+        ...(isTaller ? { equipment_id: equipment?.id || null } : {}),
+      };
+      const itemsPayload = {
+        ...common,
+        items: items
+          .filter((it) => it.description.trim() !== "")
+          .map((it) => ({
+            kind: it.kind,
+            description: it.description.trim(),
+            qty: Number(it.qty) || 0,
+            unit_price: Number(it.unit_price) || 0,
+            product_id: it.product_id || null,
+            variant_id: it.variant_id || null,
+          })),
+      };
+      const res = editing
+        ? // Edición: modifica el presupuesto existente (no genera uno nuevo).
+          await fetch(`/api/vendor/quotes/${initialQuote!.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: isEstetica || (isTaller && workshopMode === "cerrado")
+              ? JSON.stringify({ ...common, quoted_price: Number(directPrice), items: [] })
+              : JSON.stringify(itemsPayload),
+          })
+        : await fetch("/api/vendor/quotes", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: isEstetica || (isTaller && workshopMode === "cerrado")
+              ? JSON.stringify({
+                  ...common,
+                  quoted_price: Number(directPrice),
+                })
+              : JSON.stringify(itemsPayload),
+          });
       const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || "No se pudo crear");
+      if (!res.ok || data.error) throw new Error(data.error || "No se pudo guardar");
       onCreated({ quote: data?.quote ?? null });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo crear");
+      setError(e instanceof Error ? e.message : "No se pudo guardar");
     } finally {
       setSaving(false);
     }
@@ -253,8 +346,16 @@ variant_id: it.variant_id || null,
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-5 pb-3 shrink-0">
-          <h3 className="font-display text-lg font-semibold">{isEstetica ? "＋ Nueva consulta" : "＋ Nuevo presupuesto"}</h3>
-          <p className="text-xs text-muted-foreground">No cuenta para el tope mensual (es trabajo propio).</p>
+          <h3 className="font-display text-lg font-semibold">
+            {editing
+              ? isEstetica ? "✏️ Editar consulta" : "✏️ Editar presupuesto"
+              : isEstetica ? "＋ Nueva consulta" : "＋ Nuevo presupuesto"}
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            {editing
+              ? "Actualiza el presupuesto existente (mismo link de aceptación)."
+              : "No cuenta para el tope mensual (es trabajo propio)."}
+          </p>
         </div>
         <div className="overflow-y-auto px-5 pb-3 space-y-3 flex-1 min-h-0">
           <CustomerPicker name={customerName} phone={customerPhone} onPick={(n, p) => { setCustomerName(n); setCustomerPhone(p); }} />
@@ -390,8 +491,8 @@ variant_id: it.variant_id || null,
         </div>
         <div className="border-t border-border px-5 py-3 shrink-0 bg-card flex gap-2">
           <Button variant="outline" className="flex-1" onClick={onClose}>Cancelar</Button>
-          <Button className="flex-1" disabled={saving} onClick={submit}>
-            {saving ? "Guardando..." : isEstetica ? "Crear consulta" : "Crear presupuesto"}
+          <Button className="flex-1" disabled={saving || loadingQuote} onClick={submit}>
+            {saving ? "Guardando..." : editing ? "Guardar cambios" : isEstetica ? "Crear consulta" : "Crear presupuesto"}
           </Button>
         </div>
       </div>

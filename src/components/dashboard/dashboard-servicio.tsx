@@ -500,6 +500,9 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
   const [extendOrder, setExtendOrder] = useState<any | null>(null);
   // Cotizar una orden: modal de presupuesto con la orden precargada.
   const [orderQuoteFor, setOrderQuoteFor] = useState<any | null>(null);
+  // Re-cotizar una orden ya cotizada: EDITA ese presupuesto (no crea uno
+  // nuevo ni desvincula el anterior).
+  const [editQuoteFor, setEditQuoteFor] = useState<any | null>(null);
   // Convertir una consulta aceptada en orden de servicio.
   const [convertQuoteFor, setConvertQuoteFor] = useState<{ id: string; customer_name: string | null; customer_phone: string | null; description: string } | null>(null);
   // Tab "🛠️ Taller": filtro del job board (todas / recibidas / listas / vencidas).
@@ -1231,9 +1234,21 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
   }
 
   // Cotizar una orden: abre el modal de presupuesto con sus datos.
+  // Si la orden ya tiene presupuesto vinculado (o ligado por quotes.booking_id),
+  // se abre en modo EDICIÓN: re-cotizar modifica el presupuesto existente en
+  // vez de crear uno nuevo y perder el vínculo anterior.
   function handleQuoteOrder(booking: any) {
+    const list = ((quotesProp || quotes || []) as any[]);
+    const linked =
+      list.find((q: any) => String(q?.id || "") === String(booking?.quote_id || "")) ||
+      list.find(
+        (q: any) =>
+          booking?.id && String(q?.booking_id || "") === String(booking.id) && q?.status !== "cancelled"
+      ) ||
+      null;
     setSelectedBookingId(null);
     setOrderQuoteFor(booking);
+    setEditQuoteFor(linked);
     setQuoteModalOpen(true);
   }
 
@@ -2353,21 +2368,29 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                 notes: null,
               } as any)
             : null}
-          onClose={() => { setQuoteModalOpen(false); setOrderQuoteFor(null); }}
+          onClose={() => { setQuoteModalOpen(false); setOrderQuoteFor(null); setEditQuoteFor(null); }}
+          initialQuote={editQuoteFor}
           onCreated={async (data: { quote: any | null }) => {
             setQuoteModalOpen(false);
             const quote = data?.quote ?? null;
             const order = orderQuoteFor;
+            const wasEdit = !!editQuoteFor;
             setOrderQuoteFor(null);
+            setEditQuoteFor(null);
             onQuotesChanged?.();
             reload();
             // Vincular el presupuesto a la orden y pasarla a "Presupuestada".
+            // En edición el vínculo ya existe: no se toca el estado de la
+            // orden (no se revierte una aprobada a "Presupuestada").
             if (order?.id && quote?.id) {
               try {
                 await fetch(`/api/vendor/bookings/${order.id}`, {
                   method: "PATCH",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ quote_id: quote.id, status: "quoted" }),
+                  body: JSON.stringify({
+                    quote_id: quote.id,
+                    ...(wasEdit ? {} : { status: "quoted" }),
+                  }),
                 });
                 // Pasar el presupuesto a la cuenta de la orden (partidas + total).
                 const res = await fetch(`/api/vendor/bookings/${order.id}/import-quote`, {
@@ -2377,13 +2400,15 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                 });
                 if (!res.ok) {
                   const d = await res.json().catch(() => ({}));
-                  setMsg(`Presupuesto creado, pero no se pudo pasar a la cuenta: ${d?.error || "error desconocido"} (podés reintentarlo desde el detalle de la orden).`);
+                  setMsg(`Presupuesto ${wasEdit ? "actualizado" : "creado"}, pero no se pudo pasar a la cuenta: ${d?.error || "error desconocido"} (podés reintentarlo desde el detalle de la orden).`);
                 }
               } catch {
-                setMsg("Presupuesto creado, pero no se pudo pasar a la cuenta (podés reintentarlo desde el detalle de la orden).");
+                setMsg(`Presupuesto ${wasEdit ? "actualizado" : "creado"}, pero no se pudo pasar a la cuenta (podés reintentarlo desde el detalle de la orden).`);
               }
             } else {
-              setMsg("Presupuesto creado (no cuenta para el tope mensual). Mandámelo al cliente por WhatsApp.");
+              setMsg(wasEdit
+                ? "Presupuesto actualizado (mismo link de aceptación). Mandámelo al cliente por WhatsApp."
+                : "Presupuesto creado (no cuenta para el tope mensual). Mandámelo al cliente por WhatsApp.");
             }
           }}
         />

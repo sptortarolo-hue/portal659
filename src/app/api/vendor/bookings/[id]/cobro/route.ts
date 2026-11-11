@@ -53,19 +53,6 @@ export async function POST(
     return NextResponse.json({ error: "El precio final debe ser mayor a 0" }, { status: 400 });
   }
 
-  // Firma digital del cliente (canvas → dataURL jpeg): opcional al cobrar/
-  // entregar. Se valida tamaño y formato antes de guardar.
-  const signatureData = typeof body.signature_data === "string" ? body.signature_data : null;
-  const signatureName = typeof body.signature_name === "string" ? body.signature_name.trim().slice(0, 120) || null : null;
-  if (signatureData !== null) {
-    if (!signatureData.startsWith("data:image/")) {
-      return NextResponse.json({ error: "Firma inválida" }, { status: 400 });
-    }
-    if (signatureData.length > 200_000) {
-      return NextResponse.json({ error: "La firma es muy grande (máx ~150 KB)" }, { status: 400 });
-    }
-  }
-
   const validMethods = ["efectivo", "transferencia", "tarjeta", "mixto", "whatsapp", "fiado"];
   if (!validMethods.includes(paymentMethod)) {
     return NextResponse.json({ error: "Medio de pago inválido" }, { status: 400 });
@@ -206,21 +193,6 @@ export async function POST(
          WHERE id = $3 AND vendor_id = $4 AND status <> 'completed'`,
         [paymentMethod, amountPaid, id, gate.vendor.id]
       );
-      // Firma digital del cliente (opcional, tolerante a migración pendiente).
-      if (signatureData) {
-        const colRows = await tx.query<{ column_name: string }>(
-          `SELECT column_name FROM information_schema.columns
-           WHERE table_schema = 'public' AND table_name = 'bookings'`,
-          []
-        );
-        const has = new Set((colRows || []).map((r) => String(r.column_name)));
-        if (has.has("signature_data")) {
-          await tx.queryVoid(
-            `UPDATE bookings SET signature_data = $1, signature_at = now(), signature_name = $2 WHERE id = $3 AND vendor_id = $4`,
-            [signatureData, signatureName, id, gate.vendor.id]
-          );
-        }
-      }
       // Precio final ("desde"): el snapshot del turno pasa a ser lo realmente
       // cobrado (comisiones y analytics lo siguen). Tolerante si la columna
       // de comisiones no está migrada.
@@ -230,7 +202,7 @@ export async function POST(
           [finalPrice, id, gate.vendor.id]
         ).catch(() => { /* sin columna: se ignora */ });
       }
-      // Event feed (taller v3): cobro y firma quedan en la actividad.
+      // Event feed (taller v3): el cobro queda en la actividad.
       await addBookingEventTx(tx, {
         vendorId: gate.vendor.id,
         bookingId: id,
@@ -248,15 +220,6 @@ export async function POST(
           `UPDATE quotes SET status = 'cobrado', accepted_at = COALESCE(accepted_at, now()) WHERE id = $1`,
           [bq.quote_id]
         ).catch(() => { /* sin migración: se ignora */ });
-      }
-      if (signatureData) {
-        await addBookingEventTx(tx, {
-          vendorId: gate.vendor.id,
-          bookingId: id,
-          kind: "signature",
-          message: `Firma del cliente${signatureName ? ` (${signatureName})` : ""}`,
-          actor: (gate.vendor as { user_id?: string }).user_id || null,
-        });
       }
       // El cobro del turno se registra en la Caja a través de `bookings.paid_at`
       // (computeCashClosing suma bookings por payment_method), igual que

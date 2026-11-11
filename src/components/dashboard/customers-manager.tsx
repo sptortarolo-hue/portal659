@@ -7,6 +7,7 @@ import { WorkOrderModal } from "@/components/dashboard/work-order-modal";
 import { customerMatches } from "@/lib/search-match";
 import { isOrderBooking } from "@/lib/agenda";
 import { cn } from "@/lib/utils";
+import { equipmentAttrLabel, equipmentEmoji } from "@/lib/equipment";
 import { TONE_CHIP, type PanelTone } from "@/components/panel-ui/tones";
 
 type Segment = "frecuente" | "nuevo" | "inactivo" | "ocasional";
@@ -119,10 +120,10 @@ type Equipment = {
 };
 
 /**
- * Ficha de equipos del cliente (bici/moto/electro): historial por equipo
- * (conteo de trabajos + último) y recordatorio de service por WhatsApp con
- * el mensaje precargado según meses transcurridos. Sin migración aparece
- * una sola vez con la nota (auto-ocultable).
+ * Ficha de equipos del cliente (bici/moto/auto/electro/celular/PC): historial
+ * por equipo (conteo de trabajos + último) y recordatorio de service por
+ * WhatsApp con el mensaje precargado según meses transcurridos. Sin migración
+ * aparece una sola vez con la nota (auto-ocultable).
  */
 function CustomerEquipmentSection({ phone, customerName }: { phone: string; customerName: string | null }) {
   const [equipment, setEquipment] = useState<Equipment[]>([]);
@@ -159,13 +160,13 @@ function CustomerEquipmentSection({ phone, customerName }: { phone: string; cust
   const waDigits = phone.replace(/\D/g, "");
   return (
     <div className="space-y-1.5 mb-3">
-      <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">🚲 Equipos</p>
+      <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">🛠️ Equipos</p>
       {equipment.map((eq) => {
         const label = [eq.brand, eq.model].filter(Boolean).join(" ") || "Equipo";
         const monthsAgo = eq.last_job_at
           ? Math.max(0, Math.floor((Date.now() - new Date(eq.last_job_at).getTime()) / (1000 * 60 * 60 * 24 * 30.44)))
           : null;
-        const reminder = `Hola ${customerName?.split(/\s+/)[0] || ""}! Te recordamos que tu ${label}${eq.rodado ? ` (rodado ${eq.rodado})` : ""}${monthsAgo && monthsAgo >= 6 ? ` tuvo su último service hace ${monthsAgo} meses` : " tuvo su último service hace tiempo"}. ¿Le toca una revisión? Escribinos y te anotamos.`;
+        const reminder = `Hola ${customerName?.split(/\s+/)[0] || ""}! Te recordamos que tu ${label}${eq.rodado ? ` (${(equipmentAttrLabel((eq as any).kind) || "rodado").toLowerCase()} ${eq.rodado})` : ""}${monthsAgo && monthsAgo >= 6 ? ` tuvo su último service hace ${monthsAgo} meses` : " tuvo su último service hace tiempo"}. ¿Le toca una revisión? Escribinos y te anotamos.`;
         return (
           <div key={eq.id} className="flex items-start justify-between gap-2 rounded-xl border border-border bg-card px-2.5 py-2">
             <div className="min-w-0 flex-1 flex items-start gap-2">
@@ -174,8 +175,8 @@ function CustomerEquipmentSection({ phone, customerName }: { phone: string; cust
               )}
               <div className="min-w-0">
                 <p className="text-sm truncate">
-                  🚲 {label}
-                  {eq.rodado && <span className="text-muted-foreground"> · rodado {eq.rodado}</span>}
+                  {equipmentEmoji((eq as any).kind)} {label}
+                  {eq.rodado && <span className="text-muted-foreground"> · {(equipmentAttrLabel((eq as any).kind) || "rodado").toLowerCase()} {eq.rodado}</span>}
                   {eq.identifier && <span className="text-muted-foreground"> · N° {eq.identifier}</span>}
                 </p>
                 <p className="text-[11px] text-muted-foreground">
@@ -849,7 +850,7 @@ export function CustomersManager({ serviceMode = false, vendorId = null, loyalty
 
                   <FiadoBlock phone={c.phone} />
 
-                  {serviceMode && (
+                  {taller && serviceMode && (
                     <CustomerEquipmentSection
                       phone={c.phone}
                       customerName={c.name}

@@ -834,7 +834,7 @@ export default async function TiendaPage({
               )}
               {isHybrid && esteticaStaff.some((t) => t.photo_url || t.bio) && (
                 <div className="mb-5">
-                  <h4 className="font-display text-base font-semibold mb-2">{isTaller ? "🛠️ Nuestro equipo" : "💇 Nuestro equipo"}</h4>
+                  <h4 className="font-display text-base font-semibold mb-2">{isTaller ? "🛠️ Nuestro equipo" : isSalud ? "🧘 Nuestro equipo" : "💇 Nuestro equipo"}</h4>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     {esteticaStaff.map((t) => (
                       <div key={t.id} className="rounded-2xl border border-border bg-card p-3 text-center">

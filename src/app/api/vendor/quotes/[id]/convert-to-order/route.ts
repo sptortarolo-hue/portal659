@@ -22,6 +22,16 @@ export async function POST(
     return NextResponse.json({ error: gate.error }, { status: gate.status });
   }
 
+  // Solo flujo de órdenes de servicio (work-orders): talleres, servicios y
+  // estética. Salud/bienestar no tiene órdenes → 403.
+  const vendorVertical = await queryOne<{ vertical: string | null }>(
+    `SELECT vertical FROM vendors WHERE id = $1 LIMIT 1`,
+    [gate.vendor.id]
+  );
+  if (vendorVertical?.vertical !== "taller" && vendorVertical?.vertical !== "servicio" && vendorVertical?.vertical !== "estetica") {
+    return NextResponse.json({ error: "Solo disponible para talleres, servicios y estética" }, { status: 403 });
+  }
+
   const { id } = await params;
   const body = await request.json().catch(() => ({}));
 

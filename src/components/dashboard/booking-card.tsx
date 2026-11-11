@@ -284,18 +284,6 @@ export function BookingCard({
           <p className="bg-card px-2 py-1 text-[10px] text-muted-foreground">📷 Foto de recepción</p>
         </div>
       )}
-      {isOrder && (booking as any).signature_data && (
-        <div className="mb-2 rounded-lg border border-border bg-white p-2">
-          <p className="text-[10px] text-muted-foreground mb-1">
-            ✍️ Firma del cliente{(booking as any).signature_name ? ` · ${(booking as any).signature_name}` : ""}{(booking as any).signature_at ? ` · ${String((booking as any).signature_at).slice(0, 10)}` : ""}
-          </p>
-          <img
-            src={String((booking as any).signature_data)}
-            alt="Firma del cliente"
-            className="max-h-24 w-full object-contain"
-          />
-        </div>
-      )}
       {(() => {
         const alerts = (booking.customer_phone && formAlerts[String(booking.customer_phone)]) || [];
         if (alerts.length === 0) return null;

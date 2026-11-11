@@ -1780,6 +1780,7 @@ function VendorDashboardInner() {
         planSlug={effectivePlan.plan?.slug ?? null}
         canFiscal={effectivePlan.can("fiscal")}
         canInventory={effectivePlan.can("inventory")}
+        canPos={effectivePlan.can("pos")}
         canScreens={effectivePlan.can("screens")}
         configNavSections={sectionsForVertical(vendor?.vertical)}
         activeConfigSection={configSection}

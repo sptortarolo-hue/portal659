@@ -66,7 +66,7 @@ type AnalyticsData = {
   byCategory?: { category: string; count: number; revenue: number }[];
 };
 
-const CHANNEL_LABEL: Record<string, string> = { app: "App / WhatsApp", mostrador: "Mostrador", mesa: "Mesas" };
+const CHANNEL_LABEL: Record<string, string> = { app: "App / WhatsApp", mostrador: "Mostrador", mesa: "Mesas", servicio: "Servicios (turnos/órdenes)" };
 const METHOD_LABEL: Record<string, string> = { pickup: "Retiro", delivery: "Domicilio" };
 
 function StatCard({ label, value, sub, color }: { label: string; value: React.ReactNode; sub?: string; color?: string }) {

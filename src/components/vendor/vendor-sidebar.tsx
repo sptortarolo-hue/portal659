@@ -73,6 +73,8 @@ interface VendorSidebarProps {
   canFiscal?: boolean;
   /** Plan Gestión con inventario (can("inventory")): muestra la pestaña Inventario. */
   canInventory?: boolean;
+  /** Plan Gestión con POS/Caja (can("pos")): muestra Gastos y Caja avanzada. */
+  canPos?: boolean;
   /** Plan Gestión con Pantalla TV (can("screens")): muestra la pestaña Pantalla. */
   canScreens?: boolean;
   // Props heredadas de cuando la sidebar mutaba en Config (ya no se usan,
@@ -285,6 +287,7 @@ export default function VendorSidebar({
   planSlug,
   canFiscal = false,
   canInventory = false,
+  canPos = false,
   canScreens = false,
   isEmployee = false,
   isStaffMember = false,
@@ -529,6 +532,11 @@ export default function VendorSidebar({
             <NavButton active={currentTab === "config"} onClick={() => handleTab("config")} icon={ClipboardList} label="Configuración" />
             <NavButton active={currentTab === "clientes"} onClick={() => handleTab("clientes")} icon={Users} label="Clientes" />
             <NavButton active={currentTab === "promos"} onClick={() => handleTab("promos")} icon={Share} label="Promos" />
+            {/* Gastos: mismo gate que Caja (plan Gestión). El tab se renderiza
+                para todo vertical de servicios (ver page.tsx). */}
+            {canPos && (
+              <NavButton active={currentTab === "gastos"} onClick={() => handleTab("gastos")} icon={Receipt} label="Gastos" />
+            )}
             {isEstetica && (
               <NavButton active={currentTab === "tarjetas"} onClick={() => handleTab("tarjetas")} icon={Gift} label="Tarjetas" />
             )}

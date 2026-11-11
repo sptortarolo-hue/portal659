@@ -82,7 +82,40 @@ export async function GET(request: Request) {
     ),
   ]);
 
-  const completedOrders = orders.filter((o) => o.status === "completed");
+  // Cobros de servicio (turnos y órdenes de servicio): venden igual que un
+  // pedido, así que entran a las estadísticas como ventas de canal
+  // "servicio". Tolerante a migraciones sin aplicar (sin las columnas de
+  // pago en bookings, el vertical de servicios queda fuera como antes).
+  const serviceSales = await queryMany<Record<string, any>>(
+    `SELECT id, kind, service_name, product_name, service_price, amount_paid,
+            payment_status, payment_method, paid_at::text AS paid_at, booking_date::text AS booking_date
+       FROM bookings
+      WHERE vendor_id = $1 AND is_preview = false AND payment_status = 'paid'
+        AND paid_at IS NOT NULL AND paid_at >= $2
+      ORDER BY paid_at DESC`,
+    [vendorId, since]
+  )
+    .catch(() => [])
+    .then((rows) =>
+      (rows || []).map((b: any): Record<string, any> => ({
+        id: b.id,
+        items: [],
+        total: Number(b.amount_paid) || Number(b.service_price) || 0,
+        status: "completed",
+        channel: "servicio",
+        method: "servicio",
+        payment_method: b.payment_method || "efectivo",
+        created_at: b.paid_at,
+      }))
+    );
+
+  // Mezcla para todos los cálculos: los servicios (turnos y órdenes cobrados)
+  // cuentan como pedidos de canal "servicio".
+  const ordersAll = [...orders, ...serviceSales];
+  const completedOrders = [
+    ...orders.filter((o) => o.status === "completed"),
+    ...serviceSales,
+  ];
   const totalRevenue = completedOrders.reduce((s, o) => s + Number(o.total), 0);
   const avgOrderValue = completedOrders.length > 0 ? Math.round(totalRevenue / completedOrders.length) : 0;
   const avgRating = reviews.length > 0 ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length : 0;
@@ -90,7 +123,7 @@ export async function GET(request: Request) {
   // Panel "Hoy"
   const now = new Date();
   const todayKey = dayKey(now);
-  const todayOrders = orders.filter((o) => dayKey(o.created_at) === todayKey);
+  const todayOrders = ordersAll.filter((o) => dayKey(o.created_at) === todayKey);
   const todayCompleted = todayOrders.filter((o) => o.status === "completed");
   const todayRevenue = todayCompleted.reduce((s, o) => s + Number(o.total), 0);
   const today = {
@@ -102,8 +135,8 @@ export async function GET(request: Request) {
   // Comparativo vs semana anterior (solo si hay plan pago)
   const weekAgoStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   const weekAgoEnd = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
-  const thisWeek = orders.filter((o) => o.status === "completed" && new Date(o.created_at) >= weekAgoStart);
-  const prevWeek = orders.filter((o) => o.status === "completed" && new Date(o.created_at) >= weekAgoEnd && new Date(o.created_at) < weekAgoStart);
+  const thisWeek = completedOrders.filter((o) => new Date(o.created_at) >= weekAgoStart);
+  const prevWeek = completedOrders.filter((o) => new Date(o.created_at) >= weekAgoEnd && new Date(o.created_at) < weekAgoStart);
   const thisWeekRevenue = thisWeek.reduce((s, o) => s + Number(o.total), 0);
   const prevWeekRevenue = prevWeek.reduce((s, o) => s + Number(o.total), 0);
   const revenueDelta = prevWeekRevenue > 0 ? Math.round(((thisWeekRevenue - prevWeekRevenue) / prevWeekRevenue) * 100) : null;
@@ -112,8 +145,8 @@ export async function GET(request: Request) {
   // Comparativo mensual: últimos 30 días vs los 30 anteriores (plan pago).
   const monthAgoStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const monthAgoEnd = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
-  const thisMonth = orders.filter((o) => o.status === "completed" && new Date(o.created_at) >= monthAgoStart);
-  const prevMonth = orders.filter((o) => o.status === "completed" && new Date(o.created_at) >= monthAgoEnd && new Date(o.created_at) < monthAgoStart);
+  const thisMonth = completedOrders.filter((o) => new Date(o.created_at) >= monthAgoStart);
+  const prevMonth = completedOrders.filter((o) => new Date(o.created_at) >= monthAgoEnd && new Date(o.created_at) < monthAgoStart);
   const thisMonthRevenue = thisMonth.reduce((s, o) => s + Number(o.total), 0);
   const prevMonthRevenue = prevMonth.reduce((s, o) => s + Number(o.total), 0);
   const monthRevenueDelta = prevMonthRevenue > 0 ? Math.round(((thisMonthRevenue - prevMonthRevenue) / prevMonthRevenue) * 100) : null;
@@ -124,7 +157,7 @@ export async function GET(request: Request) {
 
   // Insight: día pico de la semana (últimos 7 días)
   const dayCounts: Record<string, number> = {};
-  for (const o of orders) {
+  for (const o of ordersAll) {
     if (new Date(o.created_at) < weekAgoStart) continue;
     const dow = new Date(o.created_at).getDay();
     dayCounts[dow] = (dayCounts[dow] || 0) + 1;
@@ -179,8 +212,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ ...responseBase, insights });
   }
 
-  const activeOrders = orders.filter((o) => ["new", "preparing", "ready", "sent"].includes(o.status));
-  const cancelledOrders = orders.filter((o) => o.status === "cancelled");
+  const activeOrders = ordersAll.filter((o) => ["new", "preparing", "ready", "sent"].includes(o.status));
+  const cancelledOrders = ordersAll.filter((o) => o.status === "cancelled");
 
   // Pedidos por día (cap: el loop nunca recorre más de 366 días aunque
   // plan Gestion declare analytics_days=99999 "ilimitado")

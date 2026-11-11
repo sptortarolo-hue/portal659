@@ -488,13 +488,39 @@ function formatItemLine(item: OrderItem, width: number): string[] {
   const nameStr = item.name;
   const priceStr = `$${orderLineTotal(item).toLocaleString("es-AR")}`;
 
-  const availableForName = width - qtyStr.length - 1 - priceStr.length;
-  if (nameStr.length <= availableForName) {
-    lines.push(`${qtyStr} ${padRight(nameStr, availableForName)}${priceStr}`);
+  // El precio SIEMPRE se imprime, aunque el nombre sea largo: si no entra en
+  // la primera línea, se envuelve el nombre y el precio va al final de la
+  // última línea (si entra) o en una línea aparte alineada a la derecha.
+  const firstCap = width - qtyStr.length - 1; // capacidad del nombre en la 1ra línea
+  const availWithPrice = firstCap - priceStr.length;
+  if (nameStr.length <= availWithPrice) {
+    lines.push(`${qtyStr} ${padRight(nameStr, availWithPrice)}${priceStr}`);
+  } else if (nameStr.length <= firstCap) {
+    lines.push(`${qtyStr} ${nameStr}`);
+    lines.push(padLeft(priceStr, width));
   } else {
-    lines.push(`${qtyStr} ${nameStr.slice(0, availableForName)}`);
-    if (nameStr.length > availableForName) {
-      lines.push(`  ${nameStr.slice(availableForName)}`);
+    // Envolver el nombre.
+    let remaining = nameStr.slice(firstCap);
+    const firstLine = `${qtyStr} ${nameStr.slice(0, firstCap)}`;
+    const contCap = width - 2;
+    const wrapped: string[] = [];
+    while (remaining.length > 0) {
+      wrapped.push(remaining.slice(0, contCap));
+      remaining = remaining.slice(contCap);
+    }
+    const lastWrapped = wrapped.pop() ?? "";
+    // Intentar poner el precio en la última línea envuelta.
+    if (lastWrapped.length + 1 + priceStr.length <= contCap) {
+      const base = padRight(lastWrapped, contCap - priceStr.length);
+      lines.push(firstLine);
+      // líneas intermedias
+      for (const w of wrapped) lines.push(`  ${w}`);
+      lines.push(`  ${base}${priceStr}`);
+    } else {
+      lines.push(firstLine);
+      for (const w of wrapped) lines.push(`  ${w}`);
+      lines.push(`  ${lastWrapped}`);
+      lines.push(padLeft(priceStr, width));
     }
   }
 

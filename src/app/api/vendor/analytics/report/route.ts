@@ -10,7 +10,7 @@ import ExcelJS from "exceljs";
 export const dynamic = "force-dynamic";
 
 const TZ_AR = "America/Argentina/Buenos_Aires";
-const CHANNEL_LABEL: Record<string, string> = { app: "App / WhatsApp", mostrador: "Mostrador", mesa: "Mesas" };
+const CHANNEL_LABEL: Record<string, string> = { app: "App / WhatsApp", mostrador: "Mostrador", mesa: "Mesas", servicio: "Servicios (turnos/órdenes)" };
 const METHOD_LABEL: Record<string, string> = { pickup: "Retiro", delivery: "Domicilio" };
 
 const TIPOS = ["ventas", "productos", "cobros", "clientes"] as const;
@@ -54,6 +54,34 @@ async function fetchReportOrders(vendorId: string, sinceISO: string): Promise<Or
     `SELECT id, items, total, status, method, channel, customer_name, customer_phone, customer_id, created_at${extra} FROM orders WHERE vendor_id = $1 AND is_preview = false AND created_at >= $2 ORDER BY created_at DESC`,
     [vendorId, sinceISO]
   );
+}
+
+/**
+ * Cobros de servicio (turnos y órdenes) del período, normalizados con la
+ * misma forma de un pedido: entran a los reportes como canal "servicio".
+ * Tolerante a migración sin aplicar (sin columnas de pago en bookings, []).
+ */
+async function fetchServiceSales(vendorId: string, sinceISO: string): Promise<OrderRow[]> {
+  const rows = await queryMany<OrderRow>(
+    `SELECT id, service_name, customer_name, customer_phone, service_price, amount_paid,
+            payment_status, payment_method, paid_at::text AS paid_at
+       FROM bookings
+      WHERE vendor_id = $1 AND is_preview = false AND payment_status = 'paid'
+        AND paid_at IS NOT NULL AND paid_at >= $2`,
+    [vendorId, sinceISO]
+  ).catch(() => []);
+  return (rows || []).map((b: any) => ({
+    id: b.id,
+    items: [],
+    total: Number(b.amount_paid) || Number(b.service_price) || 0,
+    status: "completed",
+    channel: "servicio",
+    method: "servicio",
+    payment_method: b.payment_method || "efectivo",
+    customer_name: b.customer_name || null,
+    customer_phone: b.customer_phone || null,
+    created_at: b.paid_at,
+  }));
 }
 
 function summarize(orders: OrderRow[]) {
@@ -112,7 +140,9 @@ export async function GET(request: Request) {
   const since = new Date(now.getTime() - lookback * 24 * 60 * 60 * 1000);
   const prevSince = new Date(now.getTime() - 2 * lookback * 24 * 60 * 60 * 1000);
 
-  const orders = await fetchReportOrders(vendor.id, prevSince.toISOString());
+  const serviceSales = await fetchServiceSales(vendor.id, prevSince.toISOString());
+  // Una sola lista: los servicios entran como pedidos canal "servicio".
+  const orders = [...(await fetchReportOrders(vendor.id, prevSince.toISOString())), ...serviceSales];
   const current = orders.filter((o) => new Date(o.created_at) >= since);
   const previous = orders.filter((o) => new Date(o.created_at) < since);
   const sum = summarize(current);

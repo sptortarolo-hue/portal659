@@ -77,10 +77,11 @@ type Product = {
 };
 
 /** Items al formato del ticket de contingencia (modificadores como labels). */
-function toContingencyItems(list: any[]): { qty: number; name: string; modifiers: string[] }[] {
+function toContingencyItems(list: any[]): { qty: number; name: string; price?: number; modifiers: string[] }[] {
   return (list || []).map((i) => ({
     qty: Number(i?.qty) || 1,
     name: String(i?.name || ""),
+    price: Number(i?.price ?? i?.unit_price ?? 0) || 0,
     modifiers: Array.isArray(i?.modifiers)
       ? i.modifiers.map((m: any) => (typeof m === "string" ? m : String(m?.label || ""))).filter(Boolean)
       : [],

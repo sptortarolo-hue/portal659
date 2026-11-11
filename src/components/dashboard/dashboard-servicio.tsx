@@ -36,6 +36,7 @@ import { EsteticaWeekPlanner } from "@/components/dashboard/estetica-week-planne
 import { BookingCard, type BookingCardProps } from "@/components/dashboard/booking-card";
 import { BookingCobroModal } from "@/components/dashboard/booking-cobro-modal";
 import { BookingFichaModal } from "@/components/dashboard/booking-ficha-modal";
+import { TallerOrderHistory } from "@/components/dashboard/taller-order-history";
 import { TallerHoyPanel } from "@/components/dashboard/taller-hoy-panel";
 import { TallerJobBoard } from "@/components/dashboard/taller-job-board";
 import { TallerOrderDetail } from "@/components/dashboard/taller-order-detail";
@@ -254,65 +255,79 @@ function ServicioHistorial({
   quotes,
   bookings,
   isEstetica = false,
+  isTaller = false,
+  onOpenBooking,
 }: {
   quotes: Record<string, unknown>[];
   bookings: Booking[];
   isEstetica?: boolean;
+  /** Taller: suma el historial de órdenes de servicio (entregadas/canceladas). */
+  isTaller?: boolean;
+  onOpenBooking?: (id: string) => void;
 }) {
   const doneQuotes = (quotes || []).filter((q) => q.status === "accepted" || q.status === "cancelled");
-  // Las órdenes de servicio no son turnos: su historial está en el tablero
-  // del taller (y se cobran/cierran desde ahí), no en el historial de turnos.
+  // Los turnos van acá; las órdenes de servicio tienen su propio historial
+  // (abajo, en el tablero del taller y en esta misma pestaña).
   const doneBookings = (bookings || []).filter((b: any) => {
     if (isOrderBooking(b)) return false;
     if (b.status === "cancelled") return true;
     if (b.status !== "confirmed" || !b.booking_date) return false;
     return String(b.booking_date).slice(0, 10) < new Date().toISOString().slice(0, 10);
   });
-  if (doneQuotes.length === 0 && doneBookings.length === 0) {
-    return (
-      <Card className="p-6 text-center">
-        <p className="text-sm text-muted-foreground">Todavía no hay trabajos terminados. Aparecen acá cuando aceptás {isEstetica ? "una consulta" : "un presupuesto"} o pasa un turno confirmado.</p>
-      </Card>
-    );
-  }
   return (
-    <div className="space-y-2">
-      {doneQuotes.map((q: any) => (
-        <Card key={`q-${q.id}`} className="p-3">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <p className="font-medium text-sm truncate">💬 {q.customer_name}{q.service_name ? ` · ${q.service_name}` : ""}</p>
-              <p className="text-xs text-muted-foreground truncate">{String(q.description || "").slice(0, 80)}</p>
-              {q.quoted_price != null && (
-                <p className="text-xs mt-0.5">💰 ${Number(q.quoted_price).toLocaleString("es-AR")}{q.deposit_status === "paid" ? " · seña pagada ✅" : ""}</p>
-              )}
-            </div>
-            <Badge className={`flex-shrink-0 ${q.status === "accepted" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
-              {q.status === "accepted" ? "Aceptado" : "Descartado"}
-            </Badge>
-          </div>
-        </Card>
-      ))}
-      {doneBookings.map((b: any) => (
-        <Card key={`b-${b.id}`} className="p-3">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <p className="font-medium text-sm truncate">📅 {b.customer_name || "Sin nombre"} · {b.booking_date} {b.booking_time || ""}</p>
-              {(b.product_label || b.product_name) && (
-                <p className="text-xs text-muted-foreground truncate">{b.product_label || b.product_name}</p>
-              )}
-              {(b.service_label || b.staff_label || b.location_label) && (
-                <p className="text-xs text-muted-foreground truncate">
-                  {[b.service_label, b.staff_label, b.location_label].filter(Boolean).join(" · ")}
-                </p>
-              )}
-            </div>
-            <Badge className={`flex-shrink-0 ${b.status === "confirmed" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
-              {b.status === "confirmed" ? "Realizado" : "Cancelado"}
-            </Badge>
-          </div>
-        </Card>
-      ))}
+    <div className="space-y-4">
+      {isTaller && (
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold">🛠️ Órdenes de servicio</h3>
+          <TallerOrderHistory bookings={bookings} onOpenBooking={onOpenBooking} />
+        </div>
+      )}
+      {(doneQuotes.length > 0 || doneBookings.length > 0) && (
+        <div className="space-y-2">
+      {isTaller && <h3 className="text-sm font-semibold">💬 {isEstetica && !isTaller ? "Consultas" : "Presupuestos"} y turnos</h3>}
+          {doneQuotes.map((q: any) => (
+            <Card key={`q-${q.id}`} className="p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-medium text-sm truncate">💬 {q.customer_name}{q.service_name ? ` · ${q.service_name}` : ""}</p>
+                  <p className="text-xs text-muted-foreground truncate">{String(q.description || "").slice(0, 80)}</p>
+                  {q.quoted_price != null && (
+                    <p className="text-xs mt-0.5">💰 ${Number(q.quoted_price).toLocaleString("es-AR")}{q.deposit_status === "paid" ? " · seña pagada" : ""}</p>
+                  )}
+                </div>
+                <Badge className={`flex-shrink-0 ${q.status === "accepted" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
+                  {q.status === "accepted" ? "Aceptado" : "Descartado"}
+                </Badge>
+              </div>
+            </Card>
+          ))}
+          {doneBookings.map((b: any) => (
+            <Card key={`b-${b.id}`} className="p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-medium text-sm truncate">📅 {b.customer_name || "Sin nombre"} · {b.booking_date} {b.booking_time || ""}</p>
+                  {(b.product_label || b.product_name) && (
+                    <p className="text-xs text-muted-foreground truncate">{b.product_label || b.product_name}</p>
+                  )}
+                  {(b.service_label || b.staff_label || b.location_label) && (
+                    <p className="text-xs text-muted-foreground truncate">
+                      {[b.service_label, b.staff_label, b.location_label].filter(Boolean).join(" · ")}
+                    </p>
+                  )}
+                </div>
+                <Badge className={`flex-shrink-0 ${b.status === "confirmed" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
+                  {b.status === "confirmed" ? "Realizado" : "Cancelado"}
+                </Badge>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+      {isTaller && doneQuotes.length === 0 && doneBookings.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          Todavía no hay {isEstetica ? "consultas" : "presupuestos"} aceptados ni turnos pasados.
+        </p>
+      )}
     </div>
   );
 }
@@ -2294,6 +2309,8 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
           quotes={quotes}
           bookings={bookings}
           isEstetica={isHybrid}
+          isTaller={isTaller}
+          onOpenBooking={(id: string) => setSelectedBookingId(id)}
         />
       )}
 

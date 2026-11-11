@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -766,6 +766,21 @@ export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable,
 }) {
   const editAnchorRef = useRef<HTMLDivElement>(null);
 
+  // Buscador local del catálogo (nombre, rubro/categoría o SKU). Sin backend:
+  // filtra la lista que el panel ya tiene.
+  const [query, setQuery] = useState("");
+  const filtered: Offer[] = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return offers;
+    return offers.filter((o) => {
+      const hay = [o.name, (o as { category?: string }).category, (o as { sku?: string | null }).sku]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [offers, query]);
+
   useEffect(() => {
     if (!editingId || !editForm) return;
     const t = setTimeout(() => {
@@ -776,10 +791,20 @@ export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable,
 
   return (
     <div className="space-y-3">
-      {offers.length === 0 ? (
-        <p className="text-muted-foreground text-sm text-center py-8">{emptyText}</p>
+      {offers.length >= 4 && (
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Buscar producto, rubro o SKU..."
+          className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm"
+        />
+      )}
+      {filtered.length === 0 ? (
+        <p className="text-muted-foreground text-sm text-center py-8">
+          {offers.length === 0 ? emptyText : "No hay productos que coincidan con la búsqueda."}
+        </p>
       ) : (
-        offers.map((offer) => {
+        filtered.map((offer) => {
           // Tarjetas de regalo: tarjeta informativa, se gestionan en la
           // pestaña Tarjetas (sin edición ni acciones de catálogo).
           const isGift = isGiftProductRow(offer);

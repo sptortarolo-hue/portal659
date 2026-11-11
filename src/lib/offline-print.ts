@@ -18,6 +18,8 @@ export type ContingencyKind = "COMANDA" | "TICKET" | "RETIRO" | "PRECUENTA" | "D
 export type ContingencyItem = {
   qty: number;
   name: string;
+  /** Precio unitario (para imprimir el subtotal por item). */
+  price?: number | null;
   /** Modificadores ya como labels (ej. ["sin cebolla"]) o string unido. */
   modifiers?: string[] | string | null;
   /** Componentes del combo ya como "1× Remera Lisa (Blanca · M)". */
@@ -78,6 +80,14 @@ function sanitizeLine(s: string): string {
   return out;
 }
 
+function padRight(str: string, len: number): string {
+  if (str.length >= len) return str.slice(0, len);
+  return str + " ".repeat(len - str.length);
+}
+function padLeft(str: string, len: number): string {
+  if (str.length >= len) return str.slice(0, len);
+  return " ".repeat(len - str.length) + str;
+}
 function money(n: number): string {
   const v = Number(n) || 0;
   return `$${v.toLocaleString("es-AR", { maximumFractionDigits: 2 })}`;
@@ -176,7 +186,32 @@ export function buildContingencyBytes(doc: ContingencyDoc): Uint8Array {
     const qtyLabel = (item as any).unit === "kg"
       ? `${qty.toLocaleString("es-AR", { maximumFractionDigits: 3 })}kg`
       : `${qty}x`;
-    for (const line of wrap(`${qtyLabel} ${item.name}`, width)) p.text(line);
+    const priceStr = money(Number((item as any).price ?? 0) * qty);
+    const firstCap = width - qtyLabel.length - 1;
+    const name = String(item.name ?? "");
+    if (name.length + qtyLabel.length + 1 + priceStr.length + 1 <= width) {
+      const avail = width - qtyLabel.length - 1 - priceStr.length;
+      for (const line of wrap(`${qtyLabel} ${padRight(name, avail)}${priceStr}`, width)) p.text(line);
+    } else if (name.length <= firstCap) {
+      for (const line of wrap(`${qtyLabel} ${name}`, width)) p.text(line);
+      p.text(padLeft(priceStr, width));
+    } else {
+      for (const line of wrap(`${qtyLabel} ${name.slice(0, firstCap)}`, width)) p.text(line);
+      let rem = name.slice(firstCap);
+      const contCap = width - 2;
+      const chunks: string[] = [];
+      while (rem.length > 0) { chunks.push(rem.slice(0, contCap)); rem = rem.slice(contCap); }
+      const last = chunks.pop() ?? "";
+      if (last.length + 1 + priceStr.length <= contCap) {
+        const base = padRight(last, contCap - priceStr.length);
+        for (const c of chunks) p.text(`  ${c}`);
+        p.text(`  ${base}${priceStr}`);
+      } else {
+        for (const c of chunks) p.text(`  ${c}`);
+        if (last) p.text(`  ${last}`);
+        p.text(padLeft(priceStr, width));
+      }
+    }
     const mods = Array.isArray(item.modifiers)
       ? item.modifiers.filter(Boolean).join(", ")
       : item.modifiers || "";

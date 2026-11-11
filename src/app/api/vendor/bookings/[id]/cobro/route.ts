@@ -1,5 +1,5 @@
 import { gateRequest } from "@/lib/subscription-gate";
-import { query, queryOne, withTransaction } from "@/lib/db";
+import { hasTable, query, queryOne, withTransaction, type Tx } from "@/lib/db";
 import { addBookingEventTx } from "@/lib/booking-events";
 import { getSiteUrl } from "@/lib/site-url";
 import { isPreviewRow } from "@/lib/preview-flag";
@@ -14,12 +14,17 @@ export const dynamic = "force-dynamic";
 /**
  * Cobra el saldo de un turno atendido (servicio / estética / oficios).
  * Cuerpo: { payment_method, amount_paid, wantFiscal?, receptorDocTipo?,
- *   receptorDocNro?, receptorCondIva?, receptorNombre? }
+ *   receptorDocNro?, receptorCondIva?, receptorNombre?,
+ *   cuenta_items?: [{description, qty, unit_price}] }
  *
  * - La seña ya pagada (deposit_status='paid') se descuenta del saldo.
  * - Efectivo: registra movimiento de caja (ingreso) para el cierre Z.
  * - wantFiscal + plan Gestión + fiscal configurado: emite Factura C ARCA
  *   vinculada al turno (booking_id en invoices).
+ * - cuenta_items: detalle de la cuenta cuando el turno NO tiene servicio ni
+ *   orden asociada (se cobra "a mano"). Se guarda como partidas de la cuenta
+ *   (work_order_parts, o texto en el feed si la tabla no existe) y define el
+ *   total cuando el turno no tiene precio de servicio.
  * - Fiado: queda como deuda, no se marca completado.
  */
 export async function POST(
@@ -52,6 +57,34 @@ export async function POST(
   if (finalPrice !== null && (!Number.isFinite(finalPrice) || finalPrice <= 0)) {
     return NextResponse.json({ error: "El precio final debe ser mayor a 0" }, { status: 400 });
   }
+
+  // Detalle de la cuenta (turno sin servicio asociado): partidas libres que
+  // definen el total y quedan guardadas como líneas de la cuenta. Solo para
+  // turnos: una ORDEN ya tiene su ficha de repuestos + mano de obra.
+  type CuentaItem = { description: string; qty: number; unitPrice: number };
+  const rawItems = Array.isArray(body.cuenta_items) ? (body.cuenta_items as unknown[]) : [];
+  if (rawItems.length > 20) {
+    return NextResponse.json({ error: "El detalle admite hasta 20 líneas" }, { status: 400 });
+  }
+  const cuentaItems: CuentaItem[] = [];
+  for (const raw of rawItems) {
+    const it = (raw || {}) as Record<string, unknown>;
+    const description = String(it.description ?? "").trim().slice(0, 100);
+    const qty = Math.round((Number(it.qty) || 0) * 100) / 100;
+    const unitPrice = Math.round((Number(it.unit_price) || 0) * 100) / 100;
+    if (!description || qty <= 0 || unitPrice < 0) {
+      return NextResponse.json({ error: "Revisá las líneas del detalle (descripción, cantidad y precio)" }, { status: 400 });
+    }
+    cuentaItems.push({ description, qty, unitPrice });
+  }
+  const cuentaTotal =
+    cuentaItems.length > 0
+      ? Math.round(cuentaItems.reduce((s, it) => s + it.qty * it.unitPrice, 0) * 100) / 100
+      : 0;
+  const cuentaText =
+    cuentaItems.length > 0
+      ? cuentaItems.map((it) => `${it.qty}x ${it.description} — $${(it.qty * it.unitPrice).toLocaleString("es-AR")}`).join("; ")
+      : "";
 
   const validMethods = ["efectivo", "transferencia", "tarjeta", "mixto", "whatsapp", "fiado"];
   if (!validMethods.includes(paymentMethod)) {
@@ -92,6 +125,14 @@ export async function POST(
     return NextResponse.json({ error: "Este turno ya está atendido y cobrado" }, { status: 400 });
   }
   const isOrder = booking.kind === "orden";
+  // Las órdenes ya tienen su propio detalle (repuestos + mano de obra en la
+  // ficha): no se acepta el detalle libre para no duplicar partidas.
+  if (isOrder && cuentaItems.length > 0) {
+    return NextResponse.json(
+      { error: "Esta es una orden de servicio: el detalle se carga desde su ficha (Repuestos y mano de obra)" },
+      { status: 409 }
+    );
+  }
   // Órdenes: se cobra desde cualquier estado previo a entregar (recibida,
   // diagnosticada, presupuestada, aprobada, en reparación, esperando repuesto,
   // lista o turno confirmado). Turnos: solo desde "confirmed".
@@ -102,7 +143,14 @@ export async function POST(
     return NextResponse.json({ error: isOrder ? "Solo se puede cobrar una orden en curso" : "Solo se puede cobrar un turno confirmado" }, { status: 400 });
   }
 
-  const total = finalPrice != null ? finalPrice : Math.round((Number(booking.service_price) || 0) * 100) / 100;
+  // Total: el precio final enviado (servicio "desde"), el precio del servicio,
+  // o la suma del detalle de la cuenta (turno sin servicio).
+  const servicePrice = Math.round((Number(booking.service_price) || 0) * 100) / 100;
+  const total = finalPrice != null
+    ? finalPrice
+    : servicePrice > 0
+      ? servicePrice
+      : cuentaTotal;
   const depositPaid = booking.deposit_status === "paid" ? Math.round((Number(booking.deposit_amount) || 0) * 100) / 100 : 0;
   const balance = Math.max(0, total - depositPaid);
   // La Factura C refleja lo realmente cobrado del servicio (seña + saldo del acto).
@@ -193,21 +241,53 @@ export async function POST(
          WHERE id = $3 AND vendor_id = $4 AND status <> 'completed'`,
         [paymentMethod, amountPaid, id, gate.vendor.id]
       );
-      // Precio final ("desde"): el snapshot del turno pasa a ser lo realmente
-      // cobrado (comisiones y analytics lo siguen). Tolerante si la columna
-      // de comisiones no está migrada.
-      if (finalPrice != null) {
+      // Precio final ("desde") y detalle de la cuenta (turno sin servicio):
+      // el snapshot del turno pasa a ser lo realmente cobrado (comisiones y
+      // analytics lo siguen). Tolerante si la columna no está migrada.
+      const priceToStore = finalPrice != null
+        ? finalPrice
+        : servicePrice > 0
+          ? null
+          : cuentaTotal > 0
+            ? cuentaTotal
+            : null;
+      if (priceToStore != null) {
         await tx.queryVoid(
           `UPDATE bookings SET service_price = $1 WHERE id = $2 AND vendor_id = $3`,
-          [finalPrice, id, gate.vendor.id]
+          [priceToStore, id, gate.vendor.id]
         ).catch(() => { /* sin columna: se ignora */ });
       }
-      // Event feed (taller v3): el cobro queda en la actividad.
+      // Partidas de la cuenta (turno sin servicio): mismas filas que usa la
+      // ficha de la orden (work_order_parts), con product_id nulo (no
+      // descuentan stock). Tolerante a migrate-taller-v3.sql sin aplicar.
+      if (cuentaItems.length > 0) {
+        const hasParts = await hasTable(tx, "work_order_parts").catch(() => false);
+        if (hasParts) {
+          for (const it of cuentaItems) {
+            await tx.queryVoid(
+              `INSERT INTO work_order_parts (vendor_id, booking_id, name, qty, unit_cost, unit_price, created_by)
+               VALUES ($1, $2, $3, $4, 0, $5, $6)`,
+              [
+                gate.vendor.id,
+                id,
+                it.description,
+                it.qty,
+                it.unitPrice,
+                (gate.vendor as { user_id?: string }).user_id || null,
+              ]
+            ).catch(() => { /* columna faltante: el detalle queda en el feed */ });
+          }
+        }
+      }
+      // Event feed (taller v3): el cobro queda en la actividad. Si no se
+      // pudieron guardar las partidas, el detalle viaja en el mensaje.
       await addBookingEventTx(tx, {
         vendorId: gate.vendor.id,
         bookingId: id,
         kind: "payment",
-        message: `Cobrado $${Number(amountPaid).toLocaleString("es-AR")} · ${paymentMethod}`,
+        message: cuentaText
+          ? `Cobrado $${Number(amountPaid).toLocaleString("es-AR")} · ${paymentMethod} — ${cuentaText}`
+          : `Cobrado $${Number(amountPaid).toLocaleString("es-AR")} · ${paymentMethod}`,
         actor: (gate.vendor as { user_id?: string }).user_id || null,
       });
       // Si la orden tiene un presupuesto vinculado, marcarlo como cobrado.

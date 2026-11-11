@@ -106,7 +106,7 @@ export async function buildQuotePdf(data: QuotePdfData): Promise<Buffer> {
     y -= 14;
   }
   if (quote.service_name) {
-    text(`${vendor.vertical === "taller" ? "Equipo / Bici" : "Servicio"}: ${quote.service_name}`, M, y, 9, font, gray);
+    text(`${vendor.vertical === "taller" ? "Equipo" : "Servicio"}: ${quote.service_name}`, M, y, 9, font, gray);
     y -= 14;
   }
   if (quote.preferred_date) {

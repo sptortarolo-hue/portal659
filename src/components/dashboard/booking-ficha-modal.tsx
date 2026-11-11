@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { CustomerFormTimeline } from "@/components/dashboard/customer-form-timeline";
 import type { Equipment } from "@/lib/equipment";
-import { equipmentLabel } from "@/lib/equipment";
+import { equipmentEmoji, equipmentLabel } from "@/lib/equipment";
 
 type Customer = {
   id: string;
@@ -57,7 +57,7 @@ function EquiposBlock({ phone, customerName }: { phone: string; customerName: st
   const waDigits = String(phone || "").replace(/\D/g, "");
   return (
     <div className="space-y-1.5 mb-3">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">🚲 Equipos</p>
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">🛠️ Equipos</p>
       {items.map((eq) => {
         const monthsAgo = eq.last_job_at
           ? Math.max(0, Math.floor((Date.now() - new Date(eq.last_job_at).getTime()) / (1000 * 60 * 60 * 24 * 30.44)))
@@ -72,7 +72,7 @@ function EquiposBlock({ phone, customerName }: { phone: string; customerName: st
             <div className="min-w-0 flex-1 flex items-start gap-2">
               {eq.photo_url && <img src={eq.photo_url} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />}
               <div className="min-w-0">
-                <p className="text-sm truncate">🚲 {equipmentLabel(eq) || "Equipo"}</p>
+                <p className="text-sm truncate">{equipmentEmoji(eq.kind)} {equipmentLabel(eq) || "Equipo"}</p>
                 <p className="text-[11px] text-muted-foreground">
                   {eq.jobs && eq.jobs > 0
                     ? `${eq.jobs} trabajo${eq.jobs === 1 ? "" : "s"}${eq.last_job_at ? ` · último ${new Date(eq.last_job_at).toLocaleDateString("es-AR")}` : ""}`

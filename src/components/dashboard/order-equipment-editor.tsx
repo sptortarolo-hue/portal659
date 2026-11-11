@@ -5,13 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { orderEquipmentLabel } from "@/lib/equipment";
+import { orderEquipmentLabel, inferEquipmentKind, equipmentAttrLabel } from "@/lib/equipment";
+import { EQUIPMENT_KINDS, equipmentEmoji, equipmentKindLabel, type EquipmentKind } from "@/lib/equipment";
 
 export type OrderForEquipment = {
   id: string;
   customer_name: string | null;
   customer_phone: string | null;
   equipment_id?: string | null;
+  equipment_kind?: string | null;
   equipment_brand?: string | null;
   equipment_model?: string | null;
   equipment_rodado?: string | null;
@@ -41,8 +43,31 @@ export function OrderEquipmentEditor({
   const [identifier, setIdentifier] = useState(String(order.equipment_identifier || ""));
   const [color, setColor] = useState(String(order.equipment_color || ""));
   const [notes, setNotes] = useState(String(order.equipment_notes || ""));
+  // Tipo de equipo: el de la ficha existente, o el inferido del rubro del
+  // comercio al crear una nueva (una gomería crea motos, no bicis).
+  const [kind, setKind] = useState<EquipmentKind>("otro");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  // Tipo inicial: el del equipo vinculado, o el inferido del rubro (una vez).
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/vendor/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (cancelled) return;
+        const fromOrder = (order as { equipment_kind?: string | null }).equipment_kind;
+        const next = fromOrder || inferEquipmentKind(d?.vendor?.category);
+        setKind(next as EquipmentKind);
+      })
+      .catch(() => {
+        if (!cancelled) setKind("otro");
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -80,7 +105,7 @@ export function OrderEquipmentEditor({
     setBusy(true);
     setError("");
     try {
-      const payload = { brand, model, identifier, rodado, color, notes };
+      const payload = { brand, model, identifier, rodado, color, notes, kind };
       const equipmentId = String(order.equipment_id || "");
       if (equipmentId) {
         const res = await fetch(`/api/vendor/equipment/${equipmentId}`, {
@@ -135,7 +160,7 @@ export function OrderEquipmentEditor({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-4 pb-2 border-b border-border">
-          <h3 className="font-display text-base font-semibold">🚲 Ficha del equipo</h3>
+          <h3 className="font-display text-base font-semibold">{equipmentEmoji(kind)} Ficha del equipo</h3>
           <p className="text-xs text-muted-foreground">
             {order.equipment_id
               ? `Editando: ${current || "sin datos"}`
@@ -144,6 +169,18 @@ export function OrderEquipmentEditor({
         </div>
 
         <div className="p-4 space-y-2.5 overflow-y-auto">
+          <div className="flex flex-wrap gap-1">
+            {EQUIPMENT_KINDS.map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setKind(k)}
+                className={`px-2 h-6 rounded-md text-[11px] font-medium ${kind === k ? "bg-primary text-primary-foreground" : "text-muted-foreground border border-border"}`}
+              >
+                {equipmentEmoji(k)} {equipmentKindLabel(k)}
+              </button>
+            ))}
+          </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
               <Label className="text-xs">Marca</Label>
@@ -154,7 +191,11 @@ export function OrderEquipmentEditor({
               <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="XT rodado 29" className="mt-1 h-9 text-sm" />
             </div>
             <div>
-              <Label className="text-xs">N° de cuadro / serie</Label>
+              <Label className="text-xs">{equipmentAttrLabel(kind)}</Label>
+              <Input value={rodado} onChange={(e) => setRodado(e.target.value)} placeholder={equipmentAttrLabel(kind)} className="mt-1 h-9 text-sm" />
+            </div>
+            <div>
+              <Label className="text-xs">{kind === "automotor" ? "N° de motor / VIN" : "N° de cuadro / serie"}</Label>
               <Input value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="ABC123" className="mt-1 h-9 text-sm" />
             </div>
             <div>

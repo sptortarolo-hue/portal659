@@ -278,6 +278,184 @@ export async function POST(request: Request) {
     });
   }
 
+  // Comprobante de un TURNO cobrado (servicio/estética/taller): recibo con el
+  // detalle de la cuenta y, si se facturó, el bloque FACTURA C (CAE + QR).
+  if (type === "turno") {
+    const bookingId = body.bookingId;
+    if (!bookingId) {
+      return NextResponse.json({ ok: false, error: "bookingId requerido" }, { status: 400 });
+    }
+    const turno = await queryOne<{
+      id: string;
+      kind: string | null;
+      customer_name: string | null;
+      customer_phone: string | null;
+      booking_date: string;
+      booking_time: string | null;
+      service_label: string | null;
+      product_name: string | null;
+      service_price: number | null;
+      deposit_amount: number | null;
+      deposit_status: string | null;
+      amount_paid: number | null;
+      payment_status: string | null;
+      payment_method: string | null;
+      paid_at: string | null;
+      quote_id: string | null;
+      labor_amount: number | null;
+      equipment_brand: string | null;
+      equipment_model: string | null;
+      equipment_identifier: string | null;
+      equipment_rodado: string | null;
+      equipment_color: string | null;
+    }>(
+      `SELECT b.id, b.kind, b.customer_name, b.customer_phone,
+              b.booking_date::text AS booking_date, b.booking_time::text AS booking_time,
+              b.service_price::numeric AS service_price, b.deposit_amount, b.deposit_status,
+              b.amount_paid, b.payment_status, b.payment_method, b.paid_at::text AS paid_at,
+              b.quote_id, b.labor_amount, b.product_name,
+              CASE WHEN s.id IS NOT NULL THEN s.name END AS service_label,
+              e.brand AS equipment_brand, e.model AS equipment_model, e.identifier AS equipment_identifier,
+              e.rodado AS equipment_rodado, e.color AS equipment_color
+         FROM bookings b
+         LEFT JOIN services s ON s.id = b.service_id
+         LEFT JOIN equipment e ON e.id = b.equipment_id
+        WHERE b.id = $1 AND b.vendor_id = $2 LIMIT 1`,
+      [bookingId, vendor.id]
+    ).catch(() => undefined);
+    if (!turno) {
+      return NextResponse.json({ ok: false, error: "Turno no encontrado" }, { status: 404 });
+    }
+    if (isOrderBooking(turno as any)) {
+      return NextResponse.json({ ok: false, error: "Esa reserva es una orden de servicio: usá el comprobante de orden" }, { status: 400 });
+    }
+    if (turno.payment_status !== "paid") {
+      return NextResponse.json({ ok: false, error: "El turno todavía no está cobrado" }, { status: 400 });
+    }
+    const eqParts = [
+      [turno.equipment_brand, turno.equipment_model].filter(Boolean).join(" ") || null,
+      turno.equipment_rodado ? `Rodado ${turno.equipment_rodado}` : null,
+      turno.equipment_identifier ? `N° ${turno.equipment_identifier}` : null,
+      turno.equipment_color,
+    ].filter(Boolean) as string[];
+    // Detalle de la cuenta: presupuesto vinculado → partidas guardadas al
+    // cobrar (work_order_parts) + mano de obra → el precio del servicio.
+    const turnoItems: { kind?: string | null; description: string; qty: number; unit_price: number }[] = turno.quote_id
+      ? (
+          await queryMany<{ kind: string | null; description: string | null; qty: number | string; unit_price: number | string }>(
+            `SELECT kind, description, qty, unit_price FROM quote_items WHERE quote_id = $1 ORDER BY position ASC`,
+            [turno.quote_id]
+          ).catch(() => [])
+        ).map((it) => ({
+          kind: it.kind,
+          description: String(it.description || ""),
+          qty: Number(it.qty) || 1,
+          unit_price: Number(it.unit_price) || 0,
+        }))
+      : [];
+    if (turnoItems.length === 0) {
+      const parts = await queryMany<{ name: string | null; qty: number | string; unit_price: number | string }>(
+        `SELECT name, qty, unit_price FROM work_order_parts WHERE vendor_id = $1 AND booking_id = $2 ORDER BY created_at ASC`,
+        [vendor.id, bookingId]
+      ).catch(() => []);
+      for (const p of parts) {
+        turnoItems.push({
+          kind: "repuesto",
+          description: String(p.name || "Repuesto"),
+          qty: Number(p.qty) || 1,
+          unit_price: Number(p.unit_price) || 0,
+        });
+      }
+      if (turno.labor_amount != null && Number(turno.labor_amount) > 0) {
+        turnoItems.push({ kind: "labor", description: "Mano de obra", qty: 1, unit_price: Number(turno.labor_amount) });
+      }
+      if (turnoItems.length === 0 && turno.service_price != null && Number(turno.service_price) > 0) {
+        turnoItems.push({
+          kind: null,
+          description: turno.service_label || turno.product_name || "Servicio",
+          qty: 1,
+          unit_price: Number(turno.service_price),
+        });
+      }
+    }
+    // Factura C del turno (booking_id en invoices): tolerante a la columna o
+    // a la migración fiscal sin aplicar — sin factura, sale sin bloque fiscal.
+    let turnoFiscal: FiscalPrintInfo | null = null;
+    if (vendor.cuit) {
+      const inv = await queryOne<{
+        cbte_tipo: number;
+        punto_venta: number;
+        cbte_nro: number;
+        cae: string;
+        cae_vto: string;
+        total: number;
+        created_at: string;
+        receptor_doc_tipo: number | null;
+        receptor_doc_nro: string | null;
+        receptor_nombre: string | null;
+      }>(
+        `SELECT cbte_tipo, punto_venta, cbte_nro, cae,
+                CASE WHEN pg_typeof(cae_vto) = 'date'::regtype THEN to_char(cae_vto, 'YYYYMMDD') ELSE cae_vto::text END AS cae_vto,
+                total, created_at, receptor_doc_tipo, receptor_doc_nro, receptor_nombre
+           FROM invoices WHERE vendor_id = $1 AND booking_id = $2 ORDER BY created_at ASC LIMIT 1`,
+        [vendor.id, bookingId]
+      ).catch(() => null);
+      if (inv) {
+        const { buildQrUrl } = await import("@/lib/arca/qr");
+        turnoFiscal = {
+          cuit: vendor.cuit,
+          puntoVenta: Number(inv.punto_venta),
+          cbteNro: Number(inv.cbte_nro),
+          cae: String(inv.cae),
+          caeVto: String(inv.cae_vto).replace(/\D/g, ""),
+          fechaEmision: inv.created_at ? new Date(inv.created_at).toISOString() : null,
+          condIva: vendor.fiscal_cond_iva ?? null,
+          docLabel: "FACTURA C",
+          receptorDocTipo: inv.receptor_doc_tipo ?? null,
+          receptorDocNro: inv.receptor_doc_nro ?? null,
+          receptorNombre: inv.receptor_nombre ?? null,
+          asocLabel: null,
+          qrUrl: buildQrUrl({
+            cuit: vendor.cuit,
+            ptoVta: Number(inv.punto_venta),
+            cbteTipo: Number(inv.cbte_tipo) || 11,
+            cbteNro: Number(inv.cbte_nro),
+            importe: Number(inv.total),
+            cae: String(inv.cae),
+            fecha: new Date(),
+          }),
+        };
+      }
+    }
+    const result = await dispatchPrint({
+      vendor,
+      type: "turno",
+      extra: {
+        turno: {
+          booking_date: String(turno.booking_date || ""),
+          booking_time: turno.booking_time ? String(turno.booking_time) : null,
+          customer_name: String(turno.customer_name || ""),
+          customer_phone: (turno.customer_phone as string) || null,
+          service_label: turno.service_label || turno.product_name || null,
+          equipment_label: eqParts.length > 0 ? eqParts.join(" · ") : null,
+          items: turnoItems,
+          total: Number(turno.service_price) || 0,
+          deposit_amount: turno.deposit_amount != null ? Number(turno.deposit_amount) : null,
+          deposit_paid: turno.deposit_status === "paid",
+          amount_paid: turno.amount_paid != null ? Number(turno.amount_paid) : null,
+          payment_method: (turno.payment_method as string) || null,
+          paid_at: turno.paid_at != null ? String(turno.paid_at) : null,
+          fiscal: turnoFiscal,
+        },
+      },
+    });
+    await recordLastPrint(vendor.id, result);
+    return printResponse({
+      ...result,
+      ipFixed: await applyIpFix(vendor.id, vendor.printer_ip, result),
+    });
+  }
+
   // Presupuesto de oficio (servicios): imprime el cotizado guardado. Gatea por
   // quotes_respond (Oficios), no por impresora: el plomero imprime su
   // presupuesto aunque no tenga cocina ni POS.

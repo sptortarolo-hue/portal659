@@ -81,6 +81,8 @@ export type BookingCardProps = {
   cobroOpenId?: string | null;
   /** Orden de servicio: imprime el comprobante del cliente (80mm). */
   onPrintOrden?: (id: string) => void;
+  /** Turno cobrado: imprime el comprobante de servicio (80mm). */
+  onPrintTurno?: (id: string) => void;
   /** Orden de servicio: imprime la etiqueta para el equipo (58mm). */
   onPrintEtiqueta?: (id: string) => void;
   /** Orden de servicio: prorroga la fecha de entrega (modal interna). */
@@ -129,6 +131,7 @@ export function BookingCard({
   cobroOpenId,
   onPrintOrden,
   onPrintEtiqueta,
+  onPrintTurno,
   onExtendDelivery,
   onQuoteOrder,
   onSendOrderQuote,
@@ -561,6 +564,18 @@ export function BookingCard({
                 onClick={() => onNavigate?.("caja")}
               >
                 🧾 Comprobante
+              </Button>
+            )}
+            {onPrintTurno && (booking as any).payment_status === "paid" && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                disabled={printBusyId === booking.id}
+                title="Imprimir el comprobante de servicio (recibo del turno)"
+                onClick={() => onPrintTurno(booking.id)}
+              >
+                {printBusyId === booking.id ? "Imprimiendo..." : "🖨️ Imprimir"}
               </Button>
             )}
           </>

@@ -134,8 +134,8 @@ export function QuoteManualModal({
   onCreated: (data: { quote: any | null }) => void;
   /**
    * estetica: precio directo ("consulta"). taller: partidas (materiales +
-   * mano de obra), como oficios, con campo "Equipo / Bici" y toggle para
-   * precio cerrado. oficios (default): partidas sin "Equipo / Bici".
+   * mano de obra), como oficios, con campo "Equipo" y toggle para
+   * precio cerrado. oficios (default): partidas sin "Equipo".
    */
   variant?: QuoteVariant;
   /** Prefill desde una orden de servicio (cliente + equipo + falla). */

@@ -145,7 +145,7 @@ export default function PresupuestoPublicPage() {
             </p>
           )}
           {quote.service_name && !quote.equipment_kind && (
-            <p className="text-sm text-neutral-600">{vendor.vertical === "taller" ? "Equipo / Bici" : "Servicio"}: {quote.service_name}</p>
+            <p className="text-sm text-neutral-600">{vendor.vertical === "taller" ? "Equipo" : "Servicio"}: {quote.service_name}</p>
           )}
           {quote.preferred_date && <p className="text-sm text-neutral-600">Fecha estimada: {quote.preferred_date}</p>}
         </div>

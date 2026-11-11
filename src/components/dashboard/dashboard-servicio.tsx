@@ -947,7 +947,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
         `Equipo: ${eqLabel}${q.equipment_rodado ? ` · Rodado ${q.equipment_rodado}` : ""}${q.equipment_identifier ? ` · N° ${q.equipment_identifier}` : ""}${q.equipment_color ? ` · ${q.equipment_color}` : ""}`
       );
     } else if (q.service_name) {
-      lines.push(`${isTaller ? "Equipo / Bici" : "Servicio"}: ${q.service_name}`);
+      lines.push(`${isTaller ? "Equipo" : "Servicio"}: ${q.service_name}`);
     }
     if (q.preferred_date) lines.push(`Fecha estimada: ${q.preferred_date}`);
     lines.push("──────────────");
@@ -1196,6 +1196,28 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
     }
   }
 
+  // Turno cobrado: comprobante de servicio (80mm, con Factura C si se emitió).
+  async function handlePrintTurno(id: string) {
+    setPrintBusyId(id);
+    try {
+      const res = await fetch("/api/print", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "turno", bookingId: id }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setMsg(data.error);
+        return;
+      }
+      setMsg("Comprobante de servicio enviado a imprimir");
+    } catch {
+      setMsg("Error de conexión");
+    } finally {
+      setPrintBusyId(null);
+    }
+  }
+
   // Prorroga la entrega: guarda la nueva fecha y ofrece avisar al cliente.
   async function handleExtendSave(id: string, newDate: string, notify: boolean) {    if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) {
       setMsg("Elegí una fecha válida");
@@ -1310,6 +1332,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
     vendor,
     onPrintOrden: orderCanCreate ? (id: string) => handlePrintOrder(id, "orden") : undefined,
     onPrintEtiqueta: orderCanCreate ? (id: string) => handlePrintOrder(id, "orden_tag") : undefined,
+    onPrintTurno: handlePrintTurno,
     onExtendDelivery: orderCanCreate ? (b: any) => setExtendOrder(b) : undefined,
     onGenerateOrder: isTaller && orderCanCreate ? (b: any) => setOrderFromBooking(b) : undefined,
     onQuoteOrder: isTaller && orderCanCreate ? handleQuoteOrder : undefined,

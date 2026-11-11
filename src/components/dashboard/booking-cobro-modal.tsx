@@ -44,8 +44,10 @@ export function BookingCobroModal({
   const [amountToCharge, setAmountToCharge] = useState("");
   const [amountReceived, setAmountReceived] = useState("");
   const [wantFiscal, setWantFiscal] = useState(false);
-  /** Orden de taller: imprimir el comprobante de la orden al confirmar el cobro (best-effort). */
+  /** Imprimir el comprobante al confirmar el cobro (orden de taller o turno). */
   const [printComprobante, setPrintComprobante] = useState(true);
+  /** Turno sin servicio asociado: partidas libres del detalle de la cuenta. */
+  const [CuentaLine, setCuentaLine] = useState<{ description: string; qty: string; unitPrice: string }[]>([]);
   const [receptorTipo, setReceptorTipo] = useState<"cf" | "dni" | "cuit">("cf");
   const [receptorNro, setReceptorNro] = useState("");
   const [receptorNombre, setReceptorNombre] = useState("");
@@ -54,7 +56,20 @@ export function BookingCobroModal({
   const [submitting, setSubmitting] = useState(false);
   const firstInput = useRef<HTMLInputElement>(null);
 
-  const total = fromPricing && Number(finalPrice) > 0 ? Number(finalPrice) : snapshotTotal;
+  const cuentaItems = CuentaLine.map((l) => ({
+    description: l.description.trim(),
+    qty: Number(l.qty) || 1,
+    unitPrice: Number(l.unitPrice) || 0,
+  }));
+  const cuentaTotal = cuentaItems.reduce((s, it) => s + it.qty * it.unitPrice, 0);
+  // Turno sin servicio ni precio asociado (y no es una orden): se cobra con
+  // el detalle de la cuenta cargado a mano.
+  const needCuenta = !isOrder && snapshotTotal <= 0;
+  const total = fromPricing && Number(finalPrice) > 0
+    ? Number(finalPrice)
+    : snapshotTotal > 0
+      ? snapshotTotal
+      : cuentaTotal;
   const balance = Math.max(0, total - depositPaid);
   // Vacío = cobrar el saldo exacto; si el comercio tipea, respeta lo tipeado.
   const amount = amountToCharge === "" ? balance : Number(amountToCharge);
@@ -68,6 +83,7 @@ export function BookingCobroModal({
     setAmountReceived("");
     setWantFiscal(false);
     setPrintComprobante(true);
+    setCuentaLine([]);
     setReceptorTipo("cf");
     setReceptorNro("");
     setReceptorNombre("");
@@ -114,6 +130,16 @@ export function BookingCobroModal({
 
   async function submit() {
     setErr(null);
+    if (needCuenta) {
+      if (cuentaItems.length === 0) {
+        setErr("Cargá al menos una línea del detalle del trabajo");
+        return;
+      }
+      if (cuentaItems.some((it) => !it.description || it.qty <= 0 || it.unitPrice < 0)) {
+        setErr("Revisá las líneas: descripción, cantidad mayor a 0 y precio");
+        return;
+      }
+    }
     if (fromPricing && !(Number(finalPrice) > 0)) {
       setErr("Poné el precio final del servicio");
       return;
@@ -131,6 +157,10 @@ export function BookingCobroModal({
       amount_paid: amount,
     };
     if (fromPricing) body.final_price = Number(finalPrice);
+    if (needCuenta && cuentaItems.length > 0) {
+      body.cuenta_items = cuentaItems;
+      if (!fromPricing) body.final_price = Math.round(cuentaTotal * 100) / 100;
+    }
     if (wantFiscal) {
       body.wantFiscal = true;
       body.receptorNombre = receptorNombre.trim() || undefined;
@@ -160,14 +190,15 @@ export function BookingCobroModal({
         setErr(data.error);
         return;
       }
-      // Orden de taller: comprobante para el cliente (best-effort: si no hay
-      // impresora conectada, el cobro igual quedó hecho).
-      if (isOrder && printComprobante) {
+      // Comprobante impreso para el cliente (best-effort): la orden de taller
+      // imprime su comprobante; un turno cobrado imprime el recibo del
+      // servicio. Si no hay impresora conectada, el cobro igual quedó hecho.
+      if (printComprobante) {
         try {
           await fetch("/api/print", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ type: "orden", bookingId: booking.id }),
+            body: JSON.stringify({ type: isOrder ? "orden" : "turno", bookingId: booking.id }),
           });
         } catch {
           /* sin conexión a impresora: se ignora */
@@ -237,9 +268,67 @@ export function BookingCobroModal({
               )}
             </div>
           )}
+          {needCuenta && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs text-muted-foreground">🧾 Detalle del trabajo</Label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-6 text-[11px]"
+                  disabled={submitting || CuentaLine.length >= 20}
+                  onClick={() => setCuentaLine((prev) => [...prev, { description: "", qty: "1", unitPrice: "" }])}
+                >
+                  ＋ Sumar línea
+                </Button>
+              </div>
+              {CuentaLine.length === 0 && (
+                <p className="text-[11px] text-muted-foreground">
+                  Este turno no tiene servicio asociado: cargá qué se le cobra (repuestos, mano de obra, lo que sea).
+                </p>
+              )}
+              {CuentaLine.map((l, i) => (
+                <div key={i} className="flex items-center gap-1.5">
+                  <Input
+                    value={l.description}
+                    onChange={(e) => setCuentaLine((prev) => prev.map((x, xi) => (xi === i ? { ...x, description: e.target.value } : x)))}
+                    placeholder="Descripción (ej: Plato 36D)"
+                    maxLength={100}
+                    className="h-8 flex-1 text-xs"
+                    disabled={submitting}
+                  />
+                  <Input
+                    value={l.qty}
+                    onChange={(e) => setCuentaLine((prev) => prev.map((x, xi) => (xi === i ? { ...x, qty: e.target.value } : x)))}
+                    inputMode="decimal"
+                    className="h-8 w-12 text-xs"
+                    placeholder="Cant"
+                    disabled={submitting}
+                  />
+                  <Input
+                    value={l.unitPrice}
+                    onChange={(e) => setCuentaLine((prev) => prev.map((x, xi) => (xi === i ? { ...x, unitPrice: e.target.value } : x)))}
+                    inputMode="decimal"
+                    className="h-8 w-20 text-xs"
+                    placeholder="$ unit"
+                    disabled={submitting}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setCuentaLine((prev) => prev.filter((_, xi) => xi !== i))}
+                    className="text-muted-foreground hover:text-red-600 px-1"
+                    title="Quitar línea"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="rounded-lg border border-border bg-muted p-3">
             <div className="flex justify-between text-xs text-muted-foreground mb-1">
-              <span>Total del servicio</span>
+              <span>{needCuenta && cuentaItems.length > 0 ? "Total del detalle" : "Total del servicio"}</span>
               <span className="font-medium">${fmt(total)}</span>
             </div>
             {depositPaid > 0 && (
@@ -309,7 +398,7 @@ export function BookingCobroModal({
             </p>
           )}
 
-          {isOrder && (
+          {isOrder ? (
             <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
               <input
                 type="checkbox"
@@ -318,6 +407,16 @@ export function BookingCobroModal({
                 className="h-3.5 w-3.5"
               />
               🖨️ Imprimir comprobante de la orden al cobrar
+            </label>
+          ) : (
+            <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+              <input
+                type="checkbox"
+                checked={printComprobante}
+                onChange={(e) => setPrintComprobante(e.target.checked)}
+                className="h-3.5 w-3.5"
+              />
+              🖨️ Imprimir comprobante de servicio al cobrar
             </label>
           )}
 

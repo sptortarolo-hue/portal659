@@ -1,5 +1,6 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
 import { queryMany, queryOne, hasTable } from "@/lib/db";
+import { equipmentKindsAllowed, resolveEquipmentKind } from "@/lib/equipment-server";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -8,7 +9,9 @@ const HYBRID = new Set(["servicio", "estetica", "taller"]);
 
 /** Campos editables de la ficha (todos opcionales en el body). */
 const TEXT_FIELDS = ["brand", "model", "identifier", "rodado", "color", "notes"] as const;
-const KINDS = new Set(["bici", "moto", "automotor", "electro", "otro"]);
+/** Tipos que acepta el CHECK ampliado (migrate-equipment-kinds.sql). Sin la
+ *  migración, el resolver cae al equivalente (celular→electro, pc→otro). */
+const KINDS = new Set(["bici", "moto", "automotor", "electro", "celular", "pc", "otro"]);
 const MAX: Record<string, number> = {
   brand: 80,
   model: 80,
@@ -91,7 +94,8 @@ export async function PATCH(
     values.push(raw || null);
   }
 
-  // Tipo de equipo (opcional).
+  // Tipo de equipo (opcional). Tolerante al CHECK: sin la migración de kinds
+  // extendidos, celular/pc caen a su equivalente (nunca rompe el UPDATE).
   if (typeof body?.kind === "string" && KINDS.has(body.kind)) {
     const has = await queryOne<{ e: boolean }>(
       `SELECT EXISTS (
@@ -100,8 +104,12 @@ export async function PATCH(
        ) AS e`
     ).catch(() => ({ e: false }));
     if (has?.e) {
+      const allowed = await equipmentKindsAllowed({
+        query: (sql: string, params?: unknown[]) => queryMany(sql, params),
+      });
+      const kind = resolveEquipmentKind(body.kind, allowed);
       sets.push(`kind = $${values.length + 1}`);
-      values.push(body.kind);
+      values.push(kind);
     }
   }
 

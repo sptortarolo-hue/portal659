@@ -42,7 +42,7 @@ export function BookingManualModal({
   initialLocationId?: string;
   /** Turno existente → modo edición (PATCH en vez de POST). */
   booking?: any | null;
-  /** Taller: muestra el picker de equipo (ficha por bici/moto/electro). */
+  /** Taller: muestra el picker de equipo (ficha por bici/moto/auto/electro/celular/PC). */
   equipment?: boolean;
 }) {
   const editing = !!booking;

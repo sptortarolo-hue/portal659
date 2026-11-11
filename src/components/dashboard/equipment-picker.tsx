@@ -4,8 +4,15 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { Equipment } from "@/lib/equipment";
-import { equipmentLabel } from "@/lib/equipment";
+import type { Equipment, EquipmentKind } from "@/lib/equipment";
+import {
+  EQUIPMENT_KINDS,
+  equipmentAttrLabel,
+  equipmentEmoji,
+  equipmentKindLabel,
+  equipmentLabel,
+  inferEquipmentKind,
+} from "@/lib/equipment";
 
 type Props = {
   /** Teléfono que ya cargó el comercio (o el cliente en el micrositio). */
@@ -16,8 +23,9 @@ type Props = {
 };
 
 /**
- * Picker de equipo (bici/moto/electro) para el turno o presupuesto manual:
- * elegir una bici ya cargada del cliente o crear una nueva al vuelo.
+ * Picker de equipo (bici/moto/auto/electro/celular/PC) para el turno o
+ * presupuesto manual: elegir un equipo ya cargado del cliente o crear uno
+ * nuevo al vuelo (con selector de tipo y default por rubro del comercio).
  * Si el comercio no aplicó la migración `migrate-equipment.sql`, se muestra
  * el aviso y se sigue sin equipo (el resto funciona igual).
  */
@@ -31,6 +39,11 @@ export function EquipmentPicker({ phone, customerName, value, onChange }: Props)
   const [identifier, setIdentifier] = useState("");
   const [color, setColor] = useState("");
   const [notes, setNotes] = useState("");
+  // Tipo de equipo: default inteligente por rubro del comercio (una
+  // bicicletería crea bicis; el resto ya no nace bici). Si el usuario lo
+  // toca a mano, se respeta su elección.
+  const [kind, setKind] = useState<EquipmentKind>("otro");
+  const [kindTouched, setKindTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [photoBusy, setPhotoBusy] = useState(false);
@@ -84,6 +97,22 @@ export function EquipmentPicker({ phone, customerName, value, onChange }: Props)
     return () => window.clearTimeout(t);
   }, [phone, value]);
 
+  // Tipo por default según el rubro del comercio (se pisa si el usuario eligió).
+  useEffect(() => {
+    if (kindTouched) return;
+    let cancelled = false;
+    fetch("/api/vendor/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (cancelled || !d?.vendor?.category) return;
+        setKind(inferEquipmentKind(d.vendor.category));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [kindTouched]);
+
   async function create() {
     setError("");
     if (!brand.trim() && !model.trim() && !identifier.trim() && !rodado.trim() && !color.trim()) {
@@ -98,6 +127,7 @@ export function EquipmentPicker({ phone, customerName, value, onChange }: Props)
         body: JSON.stringify({
           customer_name: customerName || null,
           customer_phone: phone,
+          kind,
           brand,
           model,
           identifier,
@@ -123,7 +153,9 @@ export function EquipmentPicker({ phone, customerName, value, onChange }: Props)
     return (
       <div className="rounded-xl border border-border p-2.5 space-y-2 bg-muted/30">
         <div className="flex items-center gap-2">
-          <span className="text-sm flex-1 min-w-0 truncate">🚲 {equipmentLabel(value)}</span>
+          <span className="text-sm flex-1 min-w-0 truncate">
+            {equipmentEmoji(value.kind)} {equipmentLabel(value)}
+          </span>
           <button type="button" className="text-xs text-muted-foreground hover:text-foreground underline" onClick={() => onChange(null)}>
             Quitar
           </button>
@@ -162,7 +194,7 @@ export function EquipmentPicker({ phone, customerName, value, onChange }: Props)
   return (
     <div className="rounded-xl border border-dashed border-border p-2.5 space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <Label className="text-xs text-muted-foreground">🚲 Equipo (opcional)</Label>
+        <Label className="text-xs text-muted-foreground">{equipmentEmoji(kind)} Equipo (opcional)</Label>
         {!migrationMissing && (
           <div className="flex gap-1">
             <button type="button" onClick={() => setMode("pick")} className={`px-2 h-6 rounded-md text-[11px] font-medium ${mode === "pick" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Elegir</button>
@@ -186,22 +218,39 @@ export function EquipmentPicker({ phone, customerName, value, onChange }: Props)
           <option value="">Elegir equipo del cliente… ({items.length})</option>
           {items.map((i) => (
             <option key={i.id} value={i.id}>
-              {(i.brand || "Equipo") + (i.model ? ` ${i.model}` : "")}{i.rodado ? ` · R${i.rodado}` : ""}{i.identifier ? ` · N° ${i.identifier}` : ""}
+              {equipmentEmoji(i.kind)} {(i.brand || equipmentKindLabel(i.kind)) + (i.model ? ` ${i.model}` : "")}{i.rodado ? ` · ${i.rodado}` : ""}{i.identifier ? ` · N° ${i.identifier}` : ""}
             </option>
           ))}
         </select>
       ) : (
+        <div className="space-y-1.5">
+          <div className="flex flex-wrap gap-1">
+            {EQUIPMENT_KINDS.map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => { setKind(k); setKindTouched(true); }}
+                className={`px-2 h-6 rounded-md text-[11px] font-medium ${kind === k ? "bg-primary text-primary-foreground" : "text-muted-foreground border border-border"}`}
+              >
+                {equipmentEmoji(k)} {equipmentKindLabel(k)}
+              </button>
+            ))}
+          </div>
         <div className="grid grid-cols-2 gap-1.5">
           <Input value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="Marca (ej: Scott)" className="h-8 text-xs" />
           <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="Modelo (ej: XT)" className="h-8 text-xs" />
-          <Input value={rodado} onChange={(e) => setRodado(e.target.value)} placeholder="Rodado / medida" className="h-8 text-xs" />
-          <Input value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="N° de cuadro / serie" className="h-8 text-xs" />
+          <Input value={rodado} onChange={(e) => setRodado(e.target.value)} placeholder={`${equipmentAttrLabel(kind)} (ej: ${kind === "automotor" ? "AB123CD" : kind === "moto" ? "150cc" : kind === "bici" ? "29" : "7 kg"})`} className="h-8 text-xs" />
+          <Input value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder={kind === "automotor" ? "N° de motor / VIN" : "N° de cuadro / serie"} className="h-8 text-xs" />
           <Input value={color} onChange={(e) => setColor(e.target.value)} placeholder="Color" className="h-8 text-xs" />
           <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notas" className="h-8 text-xs" />
           <Button type="button" size="sm" className="h-8 text-xs col-span-2" disabled={busy} onClick={create}>
             {busy ? "Guardando…" : "Guardar equipo"}
           </Button>
           {error && <p className="text-[11px] text-red-600 col-span-2">{error}</p>}
+          </div>
+          <Button type="button" size="sm" className="h-8 text-xs w-full" disabled={busy} onClick={create}>
+            {busy ? "Guardando…" : "Guardar equipo"}
+          </Button>
         </div>
       )}
     </div>

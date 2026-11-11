@@ -1,13 +1,18 @@
 /**
- * Ficha de equipo (bicicleta / moto / electrodoméstico / equipo) — helpers
- * client-safe. El taller/servicio guarda el equipo que interviene en cada
- * trabajo (presupuesto, turno, recepción) separado del cliente, para:
- *  - historial por equipo ("¿qué trabajos tuvo esta bici?")
- *  - recuerdo del cliente en recepción (seleccionar la bici trae su pasado)
+ * Ficha de equipo (bicicleta / moto / auto / electrodoméstico / celular / PC /
+ * equipo genérico) — helpers client-safe. El taller/servicio guarda el equipo
+ * que interviene en cada trabajo (presupuesto, turno, recepción) separado del
+ * cliente, para:
+ *  - historial por equipo ("¿qué trabajos tuvo esta moto?")
+ *  - recuerdo del cliente en recepción (seleccionar el equipo trae su pasado)
  *  - los documentos (A4/PDF) imprimiendo qué equipo se trabajó.
  */
 
-export type EquipmentKind = "bici" | "moto" | "automotor" | "electro" | "otro";
+export type EquipmentKind = "bici" | "moto" | "automotor" | "electro" | "celular" | "pc" | "otro";
+
+/** Todos los tipos (el CHECK de la DB se extiende con migrate-equipment-kinds.sql;
+ *  sin la migración, celular/pc se guardan como 'otro' del lado servidor). */
+export const EQUIPMENT_KINDS: EquipmentKind[] = ["bici", "moto", "automotor", "electro", "celular", "pc", "otro"];
 
 export type Equipment = {
   id: string;
@@ -32,11 +37,18 @@ export type Equipment = {
   last_job_at?: string | null;
 };
 
-/** "Bicicleta Scott XT · Rodado 29 · N° ABC123 · Rojo" (todo opcional). */
+/** "Moto Zanella 150 · N° ABC123 · Rojo" (todo opcional).
+ *  `Rodado`/`Cilindrada`/`Patente` solo aplican según el tipo (ver EQUIPMENT_ATTR_LABEL):
+ *  en un celular o una PC el campo es un dato libre sin prefijo. */
 export function equipmentLabel(e: Equipment | null | undefined): string {
   if (!e) return "";
   const head = [e.brand, e.model].filter(Boolean).join(" ");
-  const bits = [head || null, e.rodado ? `Rodado ${e.rodado}` : null, e.identifier ? `N° ${e.identifier}` : null, e.color].filter(Boolean);
+  const attr = e.rodado
+    ? e.kind && e.kind !== "bici"
+      ? e.rodado
+      : `${EQUIPMENT_ATTR_LABEL[e.kind || "bici"] || "Rodado"} ${e.rodado}`
+    : null;
+  const bits = [head || null, attr, e.identifier ? `N° ${e.identifier}` : null, e.color].filter(Boolean);
   const label = bits.join(" · ");
   return label || (e.id ? "Equipo sin ficha de datos" : "");
 }
@@ -99,7 +111,7 @@ export function equipmentHasContent(e: Pick<Equipment, "brand" | "model" | "iden
   return [e.brand, e.model, e.identifier, e.rodado, e.color].some((v) => String(v || "").trim() !== "");
 }
 
-/** Normaliza a texto corto por si el comercio puso todo junto ("Scott XT #123"). */
+/** Nombre visible de cada tipo ("Bicicleta", "Moto", "Celular"...). */
 export function equipmentKindLabel(kind: string | null | undefined): string {
   switch (kind) {
     case "moto":
@@ -108,11 +120,65 @@ export function equipmentKindLabel(kind: string | null | undefined): string {
       return "Auto";
     case "electro":
       return "Electrodoméstico";
+    case "celular":
+      return "Celular";
+    case "pc":
+      return "PC / Notebook";
     case "otro":
       return "Equipo";
     default:
-      return "Bicicleta";
+      // Sin tipo cargado ya no se asume bici: el vertical sirve para
+      // cualquier taller (moto, auto, electro, celular, PC...).
+      return "Equipo";
   }
+}
+
+/** Prefijo del segundo dato de la ficha (rodado del campo `rodado`) por tipo. */
+const EQUIPMENT_ATTR_LABEL: Partial<Record<EquipmentKind, string>> = {
+  bici: "Rodado",
+  moto: "Cilindrada",
+  automotor: "Patente",
+};
+
+/** Etiqueta del segundo dato para formularios (placeholder). */
+export function equipmentAttrLabel(kind: string | null | undefined): string {
+  return EQUIPMENT_ATTR_LABEL[(kind || "bici") as EquipmentKind] || "Medida / detalle";
+}
+
+/** Emoji representativo del tipo (etiqueta térmica, recordatorios). */
+export function equipmentEmoji(kind: string | null | undefined): string {
+  switch (kind) {
+    case "moto":
+      return "🏍️";
+    case "automotor":
+      return "🚗";
+    case "electro":
+      return "🔌";
+    case "celular":
+      return "📱";
+    case "pc":
+      return "💻";
+    case "bici":
+      return "🚲";
+    default:
+      return "🛠️";
+  }
+}
+
+/**
+ * Tipo de equipo sugerido según el rubro (categoría) del comercio: una
+ * bicicletería crea bicis, una gomería motos, un service de celulares celulares.
+ * Tolera textos varios ("Bicicletería", "bici", "SERVICIO TECNICO CELULARES"...).
+ */
+export function inferEquipmentKind(category: unknown): EquipmentKind {
+  const cat = String(category || "");
+  if (/bici|cycl|bicicle/i.test(cat)) return "bici";
+  if (/moto|gomer/i.test(cat)) return "moto";
+  if (/auto|automotor|mecánic|mecanic|chapa|pintura/i.test(cat)) return "automotor";
+  if (/celular|móvil|movil|smartphone|tablet/i.test(cat)) return "celular";
+  if (/\bpc\b|comput|inform|notebook|macbook/i.test(cat)) return "pc";
+  if (/electrodom|helader|lavar|cocina|microondas|televisor/i.test(cat)) return "electro";
+  return "otro";
 }
 
 /**
@@ -146,5 +212,5 @@ export function equipmentServiceReminderText(opts: {
     const months = Math.floor(ms / (1000 * 60 * 60 * 24 * 30.44));
     if (months >= 1) ago = ` Ya pasaron ${months} ${months === 1 ? "mes" : "meses"} de tu último service.`;
   }
-  return `Hola ${name}! Te escribirnos de ${storeName} 🚲 Tenemos tu ${eqLabel} registrada.${ago} ¿Querés que te anotemos para el próximo service?`;
+  return `Hola ${name}! Te escribe ${storeName} ${equipmentEmoji(equipment.kind)} Tenemos tu ${eqLabel} registrada.${ago} ¿Querés que te anotemos para el próximo service?`;
 }

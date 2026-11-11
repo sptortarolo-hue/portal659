@@ -43,7 +43,8 @@ export type PrintJobType =
   | "label"
   | "shipment_label"
   | "orden"
-  | "orden_tag";
+  | "orden_tag"
+  | "turno";
 
 /** Oblea de envío extendido (Portal 659 Envíos) para impresión térmica. */
 export type ShipmentLabelData = {
@@ -65,7 +66,7 @@ export type WorkOrderPrintData = {
   order_no: number | null;
   customer_name: string;
   customer_phone: string | null;
-  /** "🚲 Bicicleta Scott XT · Rodado 29 · N° ABC123" (etiqueta del equipo). */
+  /** "🛠️ Moto Zanella 150 · N° ABC123" (etiqueta del equipo, emoji por tipo). */
   equipment_label: string | null;
   /** Falla declarada por el cliente. */
   declared_issue: string | null;
@@ -2253,7 +2254,7 @@ async function composeOrden(
 
 /**
  * Etiqueta para el ELEMENTO (58mm): N° de orden grande + cliente + equipo +
- * falla corta + fecha de entrega. Mínima tinta, para atar/pegar en la bici.
+ * falla corta + fecha de entrega. Mínima tinta, para atar/pegar en el equipo.
  */
 async function composeOrdenTag(
   printer: any,
@@ -2351,6 +2352,179 @@ export async function buildOrdenTagBuffer(
   if (!res.ok) return { success: false, error: res.error };
   try {
     await composeOrdenTag(res.printer, vendor, o);
+    const buffer = (await res.printer.getBuffer()) as Buffer;
+    return { success: true, buffer };
+  } catch (e) {
+    return { success: false, error: errorMsg(e) };
+  }
+}
+
+/**
+ * Comprobante de un TURNO cobrado (80mm/58mm): recibo del servicio con el
+ * detalle de la cuenta (partidas), seña, ABONADO con medio de pago y, si el
+ * turno se facturó, el bloque FACTURA C (CAE + QR). Para servicios, estética
+ * y taller que cobran desde la pestaña Turnos.
+ */
+export type TurnoPrintData = {
+  booking_date: string;
+  booking_time: string | null;
+  customer_name: string;
+  customer_phone: string | null;
+  /** Servicio catálogo (o producto) asociado, si tiene. */
+  service_label: string | null;
+  /** "🚲 Bicicleta Scott XT · Rodado 29 · N° ABC123" (etiqueta del equipo). */
+  equipment_label: string | null;
+  /** Partidas de la cuenta (detalle del trabajo cobrado). */
+  items: { kind?: string | null; description: string; qty: number; unit_price: number }[];
+  total: number;
+  deposit_amount: number | null;
+  deposit_paid: boolean;
+  amount_paid: number | null;
+  payment_method: string | null;
+  paid_at: string | null;
+  /** Factura C del turno (bloque fiscal con CAE + QR). */
+  fiscal?: FiscalPrintInfo | null;
+};
+
+function fmtTurnoFecha(t: TurnoPrintData): string {
+  const d = String(t.booking_date || "").slice(0, 10);
+  const dd = d ? `${d.slice(8, 10)}/${d.slice(5, 7)}${d.slice(0, 4) !== "0000" ? `/${d.slice(2, 4)}` : ""}` : "—";
+  const hh = String(t.booking_time || "").slice(0, 5);
+  return hh ? `${dd} ${hh}` : dd;
+}
+
+async function composeTurno(
+  printer: any,
+  vendor: PrinterVendor,
+  t: TurnoPrintData
+): Promise<void> {
+  const width = vendor.paper_size === "58mm" ? 32 : 48;
+  const separator = separatorFor(width);
+
+  printer.alignCenter();
+  await composeStoreHeader(printer, vendor, width);
+  const hasFiscal = !!t.fiscal;
+  printer.bold(true);
+  if (width >= 48) {
+    printer.setTextSize(1, 1);
+    printer.println("COMPROBANTE DE SERVICIO");
+    printer.setTextSize(0, 0);
+  } else {
+    printer.setTextSize(0, 1);
+    printer.println("COMPROBANTE");
+    printer.setTextSize(1, 1);
+    printer.println("DE SERVICIO");
+    printer.setTextSize(0, 0);
+  }
+  printer.bold(false);
+  if (hasFiscal && t.fiscal) {
+    await composeFiscalHeader(printer, width, t.fiscal);
+  } else {
+    printer.println("(no es comprobante fiscal)");
+  }
+  printer.println(separator);
+
+  printer.alignLeft();
+  printer.println(`Fecha: ${fmtTurnoFecha(t)}`);
+  printer.println(`Cliente: ${t.customer_name || "Sin nombre"}`);
+  if (t.customer_phone) printer.println(`Tel: ${t.customer_phone}`);
+  if (t.service_label) {
+    printer.println("");
+    printer.bold(true);
+    printer.println("SERVICIO");
+    printer.bold(false);
+    printer.println(t.service_label);
+  }
+  if (t.equipment_label) {
+    printer.println("");
+    printer.bold(true);
+    printer.println("EQUIPO");
+    printer.bold(false);
+    printer.println(t.equipment_label);
+  }
+
+  // Detalle de la cuenta: partidas del trabajo cobrado.
+  if (t.items.length > 0) {
+    printer.println("");
+    printer.bold(true);
+    printer.println("DETALLE DE LA CUENTA");
+    printer.bold(false);
+    for (const it of t.items) {
+      const tag = it.kind === "labor" ? "M.O.: " : it.kind === "repuesto" ? "Repuesto: " : "";
+      const imp = `$${(Number(it.qty) * Number(it.unit_price)).toLocaleString("es-AR")}`;
+      let desc = `${Number(it.qty)}x ${tag}${it.description || ""}`;
+      const maxDesc = width - imp.length - 1;
+      if (desc.length > maxDesc) desc = desc.slice(0, maxDesc);
+      const pad = Math.max(1, width - imp.length - desc.length);
+      printer.println(`${desc}${" ".repeat(pad)}${imp}`);
+    }
+    printer.println(separator);
+  }
+  const itemsTotal = t.items.length > 0
+    ? t.items.reduce((s, it) => s + Number(it.qty) * Number(it.unit_price), 0)
+    : 0;
+  const total = itemsTotal > 0 ? itemsTotal : Number(t.total) || 0;
+
+  printer.println("");
+  printer.println(separator);
+  if (total > 0) {
+    printer.alignRight();
+    printer.bold(true);
+    printer.println(`TOTAL: $${total.toLocaleString("es-AR")}`);
+    printer.bold(false);
+    printer.alignLeft();
+  }
+  if (t.deposit_amount != null && Number(t.deposit_amount) > 0) {
+    printer.println(
+      t.deposit_paid
+        ? `Seña abonada: $${Number(t.deposit_amount).toLocaleString("es-AR")}`
+        : `Seña a abonar: $${Number(t.deposit_amount).toLocaleString("es-AR")}`
+    );
+  }
+  const medio = t.payment_method ? ` · ${t.payment_method}` : "";
+  printer.alignCenter();
+  printer.bold(true);
+  printer.println(`ABONADO $${Number(t.amount_paid || 0).toLocaleString("es-AR")}${medio}`);
+  printer.bold(false);
+  printer.alignLeft();
+  const saldo = Math.round((total - (t.deposit_paid ? Number(t.deposit_amount || 0) : 0) - Number(t.amount_paid || 0)) * 100) / 100;
+  if (saldo > 0.009) {
+    printer.println(`Saldo pendiente: $${saldo.toLocaleString("es-AR")}`);
+  }
+  if (hasFiscal && t.fiscal) {
+    await composeFiscalBlock(printer, width, t.fiscal);
+  }
+  printer.println("");
+  printer.println("Gracias por su confianza!");
+  printer.println("Portal 659 · www.portal659.com.ar");
+  printer.println("");
+  printer.cut();
+}
+
+export async function printTurno(
+  vendor: PrinterVendor,
+  t: TurnoPrintData
+): Promise<{ success: boolean; error?: string }> {
+  const res = await createPrinter(vendor);
+  if (!res.ok) return { success: false, error: res.error };
+  if (!vendor.printer_ip) return { success: false, error: "IP de impresora no configurada" };
+  try {
+    await composeTurno(res.printer, vendor, t);
+    await res.printer.execute();
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: errorMsg(e) };
+  }
+}
+
+export async function buildTurnoBuffer(
+  vendor: PrinterVendor,
+  t: TurnoPrintData
+): Promise<BufferResult> {
+  const res = await createPrinter(vendor);
+  if (!res.ok) return { success: false, error: res.error };
+  try {
+    await composeTurno(res.printer, vendor, t);
     const buffer = (await res.printer.getBuffer()) as Buffer;
     return { success: true, buffer };
   } catch (e) {
@@ -2624,6 +2798,8 @@ export async function dispatchPrint(params: {
     shipmentLabel?: ShipmentLabelData;
     /** Orden de servicio (taller): comprobante del cliente / etiqueta del equipo. */
     workOrder?: WorkOrderPrintData;
+    /** Comprobante de un turno cobrado (servicio/estética/taller). */
+    turno?: TurnoPrintData;
     /** Factura electrónica ARCA (bloque fiscal con CAE + QR en ticket). */
     fiscal?: FiscalPrintInfo | null;
   };
@@ -2743,9 +2919,24 @@ export async function dispatchPrint(params: {
     return { ok: r.success, mode, error: r.error };
   }
 
+  // Turno cobrado (servicio/estética/taller): comprobante con el detalle de
+  // la cuenta + bloque fiscal si el turno tiene Factura C. No es un pedido.
+  if (params.type === "turno") {
+    const t = params.extra?.turno;
+    if (!t) return { ok: false, mode, error: "Turno requerido" };
+    if (mode === "app" || mode === "usb") {
+      const built = await buildTurnoBuffer(vendor, t);
+      if (!built.success) return { ok: false, mode, error: built.error };
+      const pushed = await pushToBridge(vendor.print_token, bridgeJob("turno", built.buffer, vendor));
+      return { ok: pushed.ok, mode, offline: pushed.offline, error: pushed.error, printerIpUsed: pushed.printerIpUsed ?? null, autoFixed: pushed.autoFixed === true };
+    }
+    if (!vendor.printer_ip) return { ok: true, mode, skipped: true };
+    const r = await printTurno(vendor, t);
+    return { ok: r.success, mode, error: r.error };
+  }
+
   // Presupuesto de oficio: no es un pedido; imprime el cotizado guardado.
-  if (params.type === "presupuesto") {
-    const quote = params.extra?.quote;
+  if (params.type === "presupuesto") {    const quote = params.extra?.quote;
     if (!quote) return { ok: false, mode, error: "Presupuesto requerido" };
     if (mode === "app" || mode === "usb") {
       const built = await buildPresupuestoBuffer(vendor, quote);

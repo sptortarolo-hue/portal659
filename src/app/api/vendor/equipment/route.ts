@@ -1,6 +1,7 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
 import { queryMany, queryOne, withTransaction, hasTable } from "@/lib/db";
-import { phoneVariants } from "@/lib/equipment";
+import { phoneVariants, inferEquipmentKind } from "@/lib/equipment";
+import { equipmentKindsAllowed, resolveEquipmentKind } from "@/lib/equipment-server";
 import { toE164 } from "@/lib/phone";
 import { NextResponse } from "next/server";
 
@@ -100,7 +101,16 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const phoneNorm = toE164(String(body.customer_phone || "")) || String(body.customer_phone || "").trim();
   const customerName = String(body.customer_name || "").trim().slice(0, 120) || null;
-  const kind = ["bici", "moto", "automotor", "electro", "otro"].includes(String(body.kind)) ? String(body.kind) : "bici";
+  // Tipo: el pedido si el CHECK de la base lo acepta; si no, el equivalente
+  // (celular→electro, pc→otro). Sin tipo → se infiere del rubro del comercio
+  // (una bicicletería crea bicis; el resto ya NO nace bici por default).
+  const kindsAllowed = await equipmentKindsAllowed({
+    query: (sql: string, params?: unknown[]) => queryMany(sql, params),
+  });
+  const kind = resolveEquipmentKind(
+    body.kind ?? inferEquipmentKind((gate.vendor as { category?: string | null }).category),
+    kindsAllowed
+  );
   const brand = String(body.brand || "").trim().slice(0, 80) || null;
   const model = String(body.model || "").trim().slice(0, 80) || null;
   const identifier = String(body.identifier || "").trim().slice(0, 80) || null;

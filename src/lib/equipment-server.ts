@@ -16,6 +16,56 @@ const clean = (v: unknown, max: number): string | null => {
   return s || null;
 };
 
+/** Tipos base (CHECK de migrate-equipment.sql). */
+const KINDS_LEGACY = ["bici", "moto", "automotor", "electro", "otro"];
+/** Con migrate-equipment-kinds.sql aplicada. */
+const KINDS_EXTENDED = [...KINDS_LEGACY.slice(0, 4), "celular", "pc", "otro"];
+
+/** Querier mínimo (Tx, pool o lo que sea que consulte). */
+type Queryable = {
+  query: <T extends { [k: string]: unknown }>(sql: string, params?: unknown[]) => Promise<T[]>;
+};
+
+/**
+ * Tipos que acepta el CHECK de `equipment.kind` HOY en esta base: si la
+ * migración extendió el constraint a celular/pc, devuelve los 7; si no,
+ * los 5originales (y el llamador cae a un fallback equivalente).
+ */
+export async function equipmentKindsAllowed(tx: Queryable): Promise<string[]> {
+  try {
+    const rows = await tx.query<{ def: string | null }>(
+      `SELECT pg_get_constraintdef(c.oid) AS def
+         FROM pg_constraint c
+        WHERE c.conrelid = 'equipment'::regclass
+          AND c.contype = 'c'
+          AND pg_get_constraintdef(c.oid) ILIKE '%kind%'
+        LIMIT 1`
+    );
+    if ((rows[0]?.def || "").includes("'celular'")) return [...KINDS_EXTENDED];
+  } catch {
+    /* sin catálogo de constraints: se asumen los base */
+  }
+  return [...KINDS_LEGACY];
+}
+
+/**
+ * Kind a guardar: el pedido si es válido en esta base; si no, el fallback
+ * equivalente (celular→electro, pc→otro) para que NUNCA explote el CHECK.
+ * Sin kind válido ni inferible → 'otro' (ya no se asume bici: el vertical
+ * sirve para motos, autos, electro, celulares y PC).
+ */
+export function resolveEquipmentKind(
+  requested: unknown,
+  allowed: string[],
+  fallback: "electro" | "otro" = "otro"
+): string {
+  const k = String(requested || "").trim();
+  if (allowed.includes(k)) return k;
+  if (k === "celular") return "electro";
+  if (k === "pc") return "otro";
+  return fallback;
+}
+
 /**
  * Crea o reutiliza equipo del taller del comercio. Dedupe por serie única
  * parcial (mismo vendor + teléfono + n° equipo): si ya existe, se reusa y se
@@ -29,7 +79,7 @@ export async function upsertEquipmentTx(
   input: EquipmentInput & { customer_name?: string | null; customer_phone?: string | null }
 ): Promise<string | undefined> {
   if (!(await hasTable(tx, "equipment"))) return undefined;
-  const kind = ["bici", "moto", "automotor", "electro", "otro"].includes(String(input.kind)) ? String(input.kind) : "bici";
+  const kind = resolveEquipmentKind(input.kind, await equipmentKindsAllowed(tx));
   const brand = clean(input.brand, 80);
   const model = clean(input.model, 80);
   const identifier = clean(input.identifier, 80);

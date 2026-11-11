@@ -5,7 +5,7 @@ import { isPreviewRow } from "@/lib/preview-flag";
 import { hasColumn, hasTable, queryMany, queryOne, query, withTransaction } from "@/lib/db";
 import { toE164 } from "@/lib/phone";
 import { resolveEquipmentForWorkTx, hasEquipmentColumnTx } from "@/lib/equipment-server";
-import { computeBookingWarnings, computeStartsEnds, isISODate, resolveBookingRefs, toMinutes } from "@/lib/vendor-booking";
+import { computeBookingWarnings, computeStartsEnds, isISODate, recalcServicePriceTx, resolveBookingRefs, toMinutes } from "@/lib/vendor-booking";
 import { addBookingEventTx } from "@/lib/booking-events";
 import { normalizeChecklist, workOrderStateLabel } from "@/lib/work-order";
 import { NextResponse } from "next/server";
@@ -383,6 +383,9 @@ export async function PATCH(
         }
         if (laborAmount !== undefined && has.has("labor_amount")) {
           await tx.queryVoid(`UPDATE bookings SET labor_amount = $1 WHERE id = $2`, [laborAmount, id]);
+          // El total a cobrar sigue a la cuenta: cambiar la mano de obra
+          // recalcula service_price (nunca se escribe a mano).
+          await recalcServicePriceTx(tx, id);
         }
       }
       // Vínculo con el presupuesto (orden de servicio cotizada): se guarda

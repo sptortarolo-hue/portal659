@@ -1,5 +1,34 @@
-import { queryMany, queryOne } from "@/lib/db";
+import { queryMany, queryOne, hasTable, type Tx } from "@/lib/db";
 import { fitsInRanges, shiftsFromHoursText, staffRangesForDate } from "@/lib/booking-schedule";
+
+/**
+ * Recalcula y guarda el "Total a cobrar" de la orden = suma de partidas
+ * (precio de venta) + mano de obra. Se llama SIEMPRE dentro de la misma tx
+ * que cambió la cuenta (agregar/quitar repuesto, editar mano de obra,
+ * sincronizar presupuesto), así el usuario nunca ve dos números que puedan
+ * discrepar: el total es lo que suman las partidas, y punto.
+ * Tolerante a migraciones: sin tabla de partidas, solo suma la mano de obra.
+ */
+export async function recalcServicePriceTx(tx: Tx, bookingId: string): Promise<number> {
+  let partsTotal = 0;
+  const hasParts = await hasTable(tx, "work_order_parts").catch(() => false);
+  if (hasParts) {
+    const row = await tx.queryOne<{ total: string | null }>(
+      `SELECT COALESCE(SUM(unit_price * qty), 0)::text AS total
+         FROM work_order_parts WHERE booking_id = $1`,
+      [bookingId]
+    );
+    partsTotal = Number(row?.total) || 0;
+  }
+  const laborRow = await tx.queryOne<{ labor_amount: string | null }>(
+    `SELECT labor_amount::text AS labor_amount FROM bookings WHERE id = $1 LIMIT 1`,
+    [bookingId]
+  );
+  const labor = Number(laborRow?.labor_amount) || 0;
+  const total = Math.round((partsTotal + labor) * 100) / 100;
+  await tx.queryVoid(`UPDATE bookings SET service_price = $1 WHERE id = $2`, [total, bookingId]);
+  return total;
+}
 
 /** "09:30" → 570 (minutos desde medianoche). Null si no parsea. */
 export function toMinutes(t: string): number | null {

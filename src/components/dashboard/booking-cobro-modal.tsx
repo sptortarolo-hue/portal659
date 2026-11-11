@@ -83,6 +83,38 @@ export function BookingCobroModal({
     if (firstInput.current) firstInput.current.focus();
   }, [open, snapshotTotal, depositPaid]);
 
+  // Orden de taller: traer el detalle (repuestos + mano de obra) para mostrar
+  // de qué está compuesto el total antes de cobrar (mismo dato que el detalle
+  // de la orden: GET /api/vendor/bookings/[id]).
+  const [orderParts, setOrderParts] = useState<{ name: string; qty: number; unit_price: number }[]>([]);
+  const [orderLabor, setOrderLabor] = useState(0);
+  useEffect(() => {
+    if (!open || !isOrder || !booking?.id) {
+      setOrderParts([]);
+      setOrderLabor(0);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/vendor/bookings/${booking.id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (cancelled || !d) return;
+        const list = Array.isArray(d.parts) ? d.parts : [];
+        setOrderParts(
+          list.map((p: any) => ({
+            name: String(p.name || "Repuesto"),
+            qty: Number(p.qty) || 0,
+            unit_price: Number(p.unit_price) || 0,
+          }))
+        );
+        setOrderLabor(Number(d.booking?.labor_amount) || 0);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [open, isOrder, booking?.id]);
+
   function sigPos(e: React.PointerEvent<HTMLCanvasElement>) {
     const canvas = sigRef.current;
     if (!canvas) return { x: 0, y: 0 };
@@ -242,6 +274,28 @@ export function BookingCobroModal({
                 className="h-9 text-xs"
                 disabled={submitting}
               />
+            </div>
+          )}
+          {isOrder && (orderParts.length > 0 || orderLabor > 0) && (
+            <div className="rounded-lg border border-border bg-muted/40 p-2.5 space-y-1">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                🛠️ Detalle de la orden
+              </p>
+              {orderParts.map((p, i) => (
+                <div key={i} className="flex justify-between text-xs gap-2">
+                  <span className="min-w-0 flex-1 truncate">
+                    {p.name}
+                    {p.qty !== 1 ? ` × ${String(p.qty).replace(/\.00$/, "")}` : ""}
+                  </span>
+                  <span className="tabular-nums shrink-0">${fmt(p.unit_price * p.qty)}</span>
+                </div>
+              ))}
+              {orderLabor > 0 && (
+                <div className="flex justify-between text-xs">
+                  <span>Mano de obra</span>
+                  <span className="tabular-nums">${fmt(orderLabor)}</span>
+                </div>
+              )}
             </div>
           )}
           <div className="rounded-lg border border-border bg-muted p-3">

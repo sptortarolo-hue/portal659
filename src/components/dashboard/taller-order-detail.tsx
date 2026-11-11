@@ -560,6 +560,14 @@ export function TallerOrderDetail({
                           variant="outline"
                           className="h-7 text-xs"
                           onClick={async () => {
+                            // Reemplaza la cuenta: avisar solo si hay partidas
+                            // cargadas (a mano o de un import anterior).
+                            if (parts.length > 0) {
+                              const ok = window.confirm(
+                                `La cuenta quedará igual al presupuesto: se reemplazan ${parts.length} partida${parts.length === 1 ? "" : "s"} actuales (el stock se repone). ¿Continuar?`
+                              );
+                              if (!ok) return;
+                            }
                             try {
                               const res = await fetch(`/api/vendor/bookings/${booking.id}/import-quote`, {
                                 method: "POST",
@@ -568,16 +576,16 @@ export function TallerOrderDetail({
                               });
                               if (!res.ok) {
                                 const d = await res.json().catch(() => ({}));
-                                throw new Error(d?.error || "No se pudo importar");
+                                throw new Error(d?.error || "No se pudo sincronizar");
                               }
                               await loadDetail();
                               onEquipmentChanged?.();
                             } catch (e) {
-                              alert(e instanceof Error ? e.message : "No se pudo importar");
+                              alert(e instanceof Error ? e.message : "No se pudo sincronizar");
                             }
                           }}
                         >
-                          📥 Pasar a cuenta
+                          🔄 Sincronizar cuenta
                         </Button>
                       )}
                       {(() => {
@@ -742,20 +750,27 @@ export function TallerOrderDetail({
 
             {partError && <p className="text-xs text-red-600">{partError}</p>}
 
-            {/* Resumen de costo/margen */}
+            {/* Detalle del total a cobrar = repuestos + mano de obra */}
             {(parts.length > 0 || Number(labor) > 0 || Number(booking.service_price) > 0) && (
               <div className="rounded-lg bg-muted/40 px-2.5 py-1.5 text-[11px] space-y-0.5">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Repuestos (costo)</span>
-                  <span className="tabular-nums">${money(summary.partsCost)}</span>
+                  <span className="text-muted-foreground">Repuestos ({parts.length})</span>
+                  <span className="tabular-nums">${money(summary.partsPrice)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Mano de obra</span>
                   <span className="tabular-nums">${money(summary.labor)}</span>
                 </div>
-                <div className="flex justify-between font-semibold">
-                  <span>{Number(booking.service_price) > 0 ? `Presupuestado` : "Cobro estimado"}</span>
-                  <span className="tabular-nums">${money(summary.revenue)}</span>
+                <div className="flex justify-between font-semibold text-xs">
+                  <span>Total a cobrar</span>
+                  <span className="tabular-nums">${money(Number(summary.partsPrice) + Number(summary.labor))}</span>
+                </div>
+                <p className="text-[10px] text-muted-foreground pt-0.5">
+                  Se calcula solo de las partidas. Para cobrar otro monto, editá la mano de obra.
+                </p>
+                <div className="flex justify-between pt-1 border-t border-border/60">
+                  <span className="text-muted-foreground">Costo de repuestos</span>
+                  <span className="tabular-nums">${money(summary.partsCost)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Margen estimado</span>
@@ -763,28 +778,6 @@ export function TallerOrderDetail({
                     ${money(summary.margin)}
                   </span>
                 </div>
-               <Button
-                 size="sm"
-                 variant="outline"
-                 className="h-7 text-xs w-full mt-1.5"
-                 onClick={async () => {
-                   const newTotal = Math.round((summary.partsPrice + summary.labor) * 100) / 100;
-                   try {
-                     const res = await fetch(`/api/vendor/bookings/${booking.id}`, {
-                       method: "PATCH",
-                       headers: { "Content-Type": "application/json" },
-                       body: JSON.stringify({ service_price: newTotal }),
-                     });
-                     if (!res.ok) throw new Error("No se pudo actualizar");
-                     await loadDetail();
-                     onEquipmentChanged?.();
-                   } catch (e) {
-                     alert(e instanceof Error ? e.message : "No se pudo actualizar");
-                   }
-                 }}
-               >
-                 Recalcular total desde partidas
-               </Button>
               </div>
             )}
           </div>

@@ -2,15 +2,19 @@ import { getVendorByRequest } from "@/lib/vendor-utils";
 import { hasTable, queryMany, queryOne, withTransaction, type Tx } from "@/lib/db";
 import { logStockMovement } from "@/lib/stock-ledger";
 import { addBookingEventTx } from "@/lib/booking-events";
+import { recalcServicePriceTx } from "@/lib/vendor-booking";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Importa un presupuesto vinculado a la cuenta de la orden: copia las
- * partidas (repuestos/material → work_order_parts, mano de obra → labor_amount)
- * y fija service_price = quoted_price. Idempotente: si ya hay partidas, no
- * duplica; solo completa lo que falte.
+ * Sincroniza la cuenta de la orden con el presupuesto vinculado: la cuenta
+ * queda IGUAL al presupuesto (reemplaza, no suma). Borra las partidas
+ * actuales reponiendo stock (misma regla de unidades enteras que el DELETE
+ * de repuestos) y carga las partidas del presupuesto desde cero
+ * (repuestos/material → work_order_parts, mano de obra → labor_amount); un
+ * presupuesto a precio cerrado pasa como mano de obra. El "Total a cobrar"
+ * (service_price) se recalcula como suma de la cuenta.
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { vendor } = await getVendorByRequest(request);
@@ -60,22 +64,47 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         `SELECT kind, description, qty, unit_price, product_id, variant_id FROM quote_items WHERE quote_id = $1 ORDER BY position ASC`,
         [quoteId]
       );
+      const quotePrice = quote.quoted_price != null ? Number(quote.quoted_price) : null;
 
-      // Partidas ya existentes (por nombre) para no duplicar en re-importaciones.
-      const existingPartNames = new Set(
-        (await tx.query<{ name: string | null }>(`SELECT name FROM work_order_parts WHERE booking_id = $1`, [id]))
-          .map((r) => String(r.name || "").trim().toLowerCase())
+      // REEMPLAZAR (no sumar): la cuenta queda igual al presupuesto. Primero
+      // se borran las partidas actuales reponiendo stock (misma regla de
+      // unidades enteras que el DELETE de repuestos) y kardex inverso; después
+      // se cargan las del presupuesto desde cero.
+      const current = await tx.query<{ id: string; product_id: string | null; variant_id: string | null; name: string | null; qty: number }>(
+        `SELECT id, product_id, variant_id, name, qty FROM work_order_parts WHERE booking_id = $1 AND vendor_id = $2`,
+        [id, vendor.id]
       );
+      for (const old of current) {
+        const stockQty = Math.max(1, Math.round(Number(old.qty) || 0));
+        if (old.variant_id) {
+          await tx.queryVoid(`UPDATE product_variants SET stock = stock + $1 WHERE id = $2`, [stockQty, old.variant_id]);
+        } else if (old.product_id) {
+          await tx.queryVoid(
+            `UPDATE products SET stock = stock + $1 WHERE id = $2 AND stock_control = true`,
+            [stockQty, old.product_id]
+          );
+        } else {
+          continue; // material suelto: nunca movió stock
+        }
+        await logStockMovement(tx, {
+          vendorId: vendor.id,
+          product_id: old.product_id,
+          variant_id: old.variant_id,
+          qty_delta: stockQty,
+          reason: "orden",
+          ref_booking: id,
+        });
+      }
+      if (current.length > 0) {
+        await tx.queryVoid(`DELETE FROM work_order_parts WHERE booking_id = $1 AND vendor_id = $2`, [id, vendor.id]);
+      }
 
       let laborTotal = 0;
-      let addedAny = false;
       for (const it of items) {
         if (it.kind === "labor") {
           laborTotal += Number(it.qty) * Number(it.unit_price);
           continue;
         }
-        const nameKey = String(it.description || "").trim().toLowerCase();
-        if (existingPartNames.has(nameKey) && nameKey) continue; // ya existe, no duplicar
         // repuesto o material
         if (it.kind === "repuesto" && it.product_id) {
           // quote_items.qty es numeric → pg lo devuelve como string ("1.00"),
@@ -110,14 +139,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
               reason: "orden",
               ref_booking: id,
             });
-            addedAny = true;
           } else {
             await tx.queryVoid(
               `INSERT INTO work_order_parts (vendor_id, booking_id, product_id, variant_id, name, qty, unit_cost, unit_price, created_by)
                VALUES ($1, $2, NULL, NULL, $3, $4, 0, $5, NULL)`,
               [vendor.id, id, it.description, Number(it.qty), Number(it.unit_price)]
             );
-            addedAny = true;
           }
         } else {
           // material libre
@@ -126,19 +153,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
              VALUES ($1, $2, NULL, NULL, $3, $4, 0, $5, NULL)`,
             [vendor.id, id, it.description, Number(it.qty), Number(it.unit_price)]
           );
-          addedAny = true;
         }
       }
-      // labor_amount: sumar labor si no había (o si está vacío)
-      if (laborTotal > 0 && (booking.labor_amount == null || Number(booking.labor_amount) === 0)) {
+      // Mano de obra: la del presupuesto manda. Si el presupuesto es a precio
+      // cerrado (sin partidas), pasa como mano de obra para que la cuenta
+      // refleje el precio que aceptó el cliente. Si trae repuestos pero
+      // ninguna partida de mano de obra, se conserva la cargada en la orden.
+      if (laborTotal > 0) {
         await tx.queryVoid(`UPDATE bookings SET labor_amount = $1 WHERE id = $2`, [laborTotal, id]);
+      } else if (items.length === 0 && quotePrice != null && quotePrice > 0) {
+        await tx.queryVoid(`UPDATE bookings SET labor_amount = $1 WHERE id = $2`, [quotePrice, id]);
       }
 
-      // service_price: actualizar con el presupuesto (el presupuesto manda).
-      const price = quote.quoted_price != null ? Number(quote.quoted_price) : null;
-      if (price != null && price > 0) {
-        await tx.queryVoid(`UPDATE bookings SET service_price = $1 WHERE id = $2`, [price, id]);
-      }
+      // El total a cobrar es SIEMPRE la suma de la cuenta (partidas + mano de
+      // obra): se recalcula acá, nunca se escribe a mano.
+      await recalcServicePriceTx(tx, id);
 
       await tx.queryVoid(`UPDATE bookings SET quote_id = $1 WHERE id = $2`, [quoteId, id]);
 
@@ -146,7 +175,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         vendorId: vendor.id,
         bookingId: id,
         kind: "quote_linked",
-        message: `Presupuesto importado a la cuenta (${items.length} partida${items.length === 1 ? "" : "s"})`,
+        message: `Cuenta sincronizada desde el presupuesto (reemplazada): ${items.length} partida${items.length === 1 ? "" : "s"}${current.length > 0 ? `, ${current.length} anteriores repuestas` : ""}`,
       });
     });
 

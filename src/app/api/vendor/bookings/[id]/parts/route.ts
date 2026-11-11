@@ -2,6 +2,7 @@ import { getVendorByRequest } from "@/lib/vendor-utils";
 import { hasTable, queryMany, queryOne, withTransaction, type Tx } from "@/lib/db";
 import { logStockMovement } from "@/lib/stock-ledger";
 import { addBookingEventTx } from "@/lib/booking-events";
+import { recalcServicePriceTx } from "@/lib/vendor-booking";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -149,6 +150,10 @@ export async function POST(
         message: `Repuesto usado: ${name} × ${qty}`,
       });
 
+      // El total a cobrar es siempre la suma de la cuenta (partidas + mano
+      // de obra): se recalcula acá, no hay botón para eso.
+      await recalcServicePriceTx(tx, id);
+
       return inserted;
     });
 
@@ -224,6 +229,10 @@ export async function DELETE(
       });
 
       await tx.queryVoid(`DELETE FROM work_order_parts WHERE id = $1 AND vendor_id = $2`, [partId, vendor.id]);
+
+      // El total a cobrar sigue a la cuenta: sin el repuesto, baja solo.
+      await recalcServicePriceTx(tx, id);
+
       return part;
     });
     return NextResponse.json({ ok: true, removed: removed?.id || null });

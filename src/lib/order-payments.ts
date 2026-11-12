@@ -11,8 +11,7 @@
  * Server-only (usa `pg` directo). Los componentes client hablan con
  * `payment-split.tsx` / `cash-tender.ts`, no con este módulo.
  */
-import { hasTable, type Tx } from "@/lib/db";
-import { queryMany } from "@/lib/db";
+import { hasTable, queryMany, queryOne, type Tx } from "@/lib/db";
 
 /** Medios que se pueden combinar en un cobro (los manuales del mostrador). */
 export const SPLIT_METHODS = ["efectivo", "transferencia", "tarjeta"] as const;
@@ -42,6 +41,8 @@ export type SplitPayment = {
   amount: number;
   /** Efectivo: lo que entregó el cliente (>= amount). NULL = no se cargó. */
   tendered?: number | null;
+  /** Cuenta destino cuando method === 'transferencia' (multi-cuenta). */
+  bankAccountId?: string | null;
 };
 
 type Querier = {
@@ -95,7 +96,10 @@ export function normalizeSplitPayments(raw: unknown, total: number): SplitPaymen
       m === "efectivo" && Number.isFinite(tenderedRaw) && tenderedRaw > 0
         ? Math.round(tenderedRaw * 100) / 100
         : null;
-    rows.push({ method: m, amount, tendered: tendered != null && tendered >= amount ? tendered : null });
+    const bankRaw = (r as Record<string, unknown>).bankAccountId ?? (r as Record<string, unknown>).bank_account_id;
+    const bankAccountId =
+      m === "transferencia" && typeof bankRaw === "string" && bankRaw.trim() ? bankRaw.trim() : null;
+    rows.push({ method: m, amount, tendered: tendered != null && tendered >= amount ? tendered : null, bankAccountId });
   }
   if (rows.length === 0) return null;
   if (rows.length > MAX_SPLIT_PAYMENTS) return null;
@@ -188,30 +192,59 @@ export async function insertOrderPayments(tx: Tx, opts: InsertPaymentsOpts): Pro
     if (!prof) createdBy = null;
   }
 
+  // Si la migración de multi-cuenta se aplicó, persistimos la cuenta destino
+  // (solo transferencia). Si no se aplicó, se omite silenciosamente.
+  let hasBankCol = false;
+  try {
+    const col = await tx.queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'order_payments' AND column_name = 'bank_account_id') AS exists`
+    );
+    hasBankCol = col?.exists === true;
+  } catch {
+    hasBankCol = false;
+  }
+
   for (const p of opts.payments) {
     const tendered =
       p.method === "efectivo" && p.tendered != null && p.tendered >= p.amount
         ? p.tendered
         : null;
+    const bankAccountId =
+      hasBankCol && p.method === "transferencia" && p.bankAccountId ? p.bankAccountId : null;
     // ON CONFLICT DO NOTHING: si un reintento concurrente (o una colisión de
     // client_key) ya insertó la fila, no reventamos la venta. La fila existente
     // queda con los datos del primer intento (que es el mismo pago).
+    const cols = [
+      "vendor_id",
+      "order_id",
+      "table_id",
+      "method",
+      "amount",
+      "tendered",
+      "kind",
+      "client_key",
+      "created_by",
+    ];
+    const vals: unknown[] = [
+      opts.vendorId,
+      opts.orderId ?? null,
+      opts.tableId ?? null,
+      p.method,
+      p.amount,
+      tendered,
+      kind,
+      opts.clientKey ?? null,
+      createdBy,
+    ];
+    if (hasBankCol) {
+      cols.push("bank_account_id");
+      vals.push(bankAccountId);
+    }
+    const placeholders = vals.map((_, i) => `$${i + 1}`).join(", ");
     await tx.query(
-      `INSERT INTO order_payments
-         (vendor_id, order_id, table_id, method, amount, tendered, kind, client_key, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       ON CONFLICT (vendor_id, client_key) WHERE client_key IS NOT NULL DO NOTHING`,
-      [
-        opts.vendorId,
-        opts.orderId ?? null,
-        opts.tableId ?? null,
-        p.method,
-        p.amount,
-        tendered,
-        kind,
-        opts.clientKey ?? null,
-        createdBy,
-      ],
+      `INSERT INTO order_payments (${cols.join(", ")}) VALUES (${placeholders})
+        ON CONFLICT (vendor_id, client_key) WHERE client_key IS NOT NULL DO NOTHING`,
+      vals
     );
   }
 }
@@ -228,13 +261,23 @@ export async function fetchOrderPayments(
   const out: Record<string, SplitPayment[]> = {};
   if (ids.length === 0) return out;
   try {
+    let hasBankCol = false;
+    try {
+      const col = await queryOne<{ exists: boolean }>(
+        `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'order_payments' AND column_name = 'bank_account_id') AS exists`
+      );
+      hasBankCol = col?.exists === true;
+    } catch {
+      hasBankCol = false;
+    }
     const rows = await queryMany<{
       order_id: string;
       method: string;
       amount: number;
       tendered: number | null;
+      bank_account_id: string | null;
     }>(
-      `SELECT order_id, method, amount, tendered
+      `SELECT order_id, method, amount, tendered${hasBankCol ? ", bank_account_id" : ""}
        FROM order_payments
        WHERE vendor_id = $1 AND order_id = ANY($2) AND kind = 'cobro'
        ORDER BY created_at ASC, method ASC`,
@@ -248,6 +291,7 @@ export async function fetchOrderPayments(
         method: r.method,
         amount: Number(r.amount) || 0,
         tendered: r.tendered != null ? Number(r.tendered) || null : null,
+        bankAccountId: (r as { bank_account_id?: string | null }).bank_account_id ?? null,
       });
     }
   } catch {

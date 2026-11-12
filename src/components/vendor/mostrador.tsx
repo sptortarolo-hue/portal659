@@ -8,6 +8,8 @@ import { ModifierPicker } from "@/components/offers/modifier-picker";
 import { ProductPickCard } from "@/components/vendor/product-pick-card";
 import { CustomerPicker, type LookupCustomer } from "@/components/vendor/customer-picker";
 import { cashAppliesToItem, normalizeCashPct } from "@/lib/cash-discount";
+import { bankAccountLabel, needsAccountPicker, pickDefaultAccount } from "@/lib/bank-accounts";
+import { BankAccountPickerModal } from "@/components/vendor/bank-account-picker";
 import { tenderState } from "@/lib/cash-tender";
 import { mirrorVolume } from "@/lib/volume-mirror";
 import type { CartItem, CartVolumeGroup } from "@/lib/cart";
@@ -47,6 +49,7 @@ import { CashTender } from "@/components/vendor/cash-tender";
 import {
   PaymentSplit,
   splitCoversTotal,
+  splitNeedsAccount,
   splitPayload,
   type SplitRow,
 } from "@/components/vendor/payment-split";
@@ -189,6 +192,9 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   const [cashAmount, setCashAmount] = useState("");
   // Pago combinado (split): líneas medio + monto. Vacío = medio único.
   const [splitPayments, setSplitPayments] = useState<SplitRow[]>([]);
+  const [bankAccounts, setBankAccounts] = useState<any[] | null>(null);
+  const [transferAccountId, setTransferAccountId] = useState<string | null>(null);
+  const [accountPickerOpen, setAccountPickerOpen] = useState(false);
   const [customerName, setCustomerName] = useState("");
   // Canje de giftcard en mostrador (pagos en el acto): se valida y se
   // descuenta del total en vivo; si no nada cambia.
@@ -509,7 +515,13 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
   const cashToSend = cashTender.ok && payment === "efectivo" ? cashTender.amount : undefined;
   // Pago combinado: se arma solo con el medio "Combinado" y se habilita el
   // cobro únicamente cuando el desglose cubre el total.
-  const splitOk = payment === "mixto" && splitCoversTotal(splitPayments, payableTotal);
+  // Auto-asignar la cuenta principal cuando hay una sola cuenta activa.
+  useEffect(() => {
+    const active = (bankAccounts || []).filter((a: any) => a.active !== false);
+    if (active.length === 1) setTransferAccountId(active[0].id);
+  }, [bankAccounts]);
+
+  const splitOk = payment === "mixto" && splitCoversTotal(splitPayments, payableTotal) && !splitNeedsAccount(splitPayments, bankAccounts);
   const splitToSend = splitOk ? splitPayload(splitPayments) : undefined;
   const paymentBlocked = payment === "mixto" && !splitOk;
 
@@ -565,6 +577,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         const vertical = (me?.vendor?.vertical as string | undefined) ?? null;
         setCashPct(pct);
         setVendorVertical(vertical);
+        setBankAccounts(Array.isArray(me?.bank_accounts) ? me.bank_accounts : []);
         setIsRetail(vertical === "comercio" || vertical === "moda" || vertical === "estetica" || vertical === "salud" || vertical === "taller");
         // Retail: la venta directa es el caso común (retiro con pedido queda opcional).
         if (vertical === "comercio" || vertical === "moda" || vertical === "estetica" || vertical === "salud" || vertical === "taller") {
@@ -1490,6 +1503,17 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
   async function chargeInner(payment: string, withReceipt: boolean, defer?: boolean) {
     if (items.length === 0) return;
 
+    // Multi-cuenta: si hay 2+ cuentas activas y se cobra por transferencia
+    // (medio único), pedir elegir la cuenta antes de seguir.
+    if (
+      payment === "transferencia" &&
+      needsAccountPicker(bankAccounts) &&
+      !transferAccountId
+    ) {
+      setAccountPickerOpen(true);
+      return;
+    }
+
     // Venta directa: retail sin pedido (nace cerrada). Retiro/delivery = pedido.
     const direct = method === "direct";
     // Fiscal: check por venta (con fiscal = Factura ARCA, sin = ticket no fiscal).
@@ -1546,6 +1570,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       // Pago combinado: una fila por medio. El server valida la suma contra
       // el total real; si no cierra, la venta sale con medio único.
       payments: splitToSend,
+      bankAccountId: payment === "transferencia" ? transferAccountId : undefined,
       client_key: newClientKey(),
       occurred_at: new Date().toISOString(),
     };
@@ -2732,6 +2757,32 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
               </button>
             ))}
           </div>
+          {payment === "transferencia" && needsAccountPicker(bankAccounts) && (
+            <div className="flex items-center gap-2 pt-1">
+              {transferAccountId ? (
+                <button
+                  type="button"
+                  onClick={() => setAccountPickerOpen(true)}
+                  className="rounded-full border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-muted"
+                >
+                  🏦 {bankAccountLabel((bankAccounts || []).find((a: any) => a.id === transferAccountId))} · cambiar
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setAccountPickerOpen(true)}
+                  className="rounded-full border border-destructive/40 bg-destructive/10 px-2.5 py-1 text-[11px] font-bold text-destructive hover:bg-destructive/20"
+                >
+                  ⚠️ Elegir cuenta
+                </button>
+              )}
+            </div>
+          )}
+          {payment === "transferencia" && !needsAccountPicker(bankAccounts) && (bankAccounts || []).filter((a: any) => a.active).length === 1 && (
+            <div className="pt-1 text-[10px] text-muted-foreground">
+              🏦 {(bankAccounts || []).filter((a: any) => a.active)[0]?.label}
+            </div>
+          )}
           {mpConfigured && items.length > 0 && (
             <button
               onClick={() => charge(true, "mercadopago", true)}
@@ -2786,10 +2837,24 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
               subject="la venta"
               disabled={saving}
               compact
+              accounts={bankAccounts}
             />
           )}
         </div>
 
+        {accountPickerOpen && (
+          <BankAccountPickerModal
+            accounts={bankAccounts}
+            open={accountPickerOpen}
+            onClose={() => setAccountPickerOpen(false)}
+            onPick={(acc) => {
+              setTransferAccountId(acc.id);
+              setAccountPickerOpen(false);
+            }}
+            title="¿A qué cuenta va la transferencia?"
+            hint="La cuenta elegida queda registrada en el cobro y en los informes."
+          />
+        )}
         {restored && (
           <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
             <p className="text-xs font-medium text-primary">Recuperamos tu venta en curso</p>

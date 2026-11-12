@@ -5,6 +5,8 @@ import { readScaleFromPort, requestScalePort, getCachedScalePort, isWebSerialSup
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { useBankAccounts, BankAccountPickerModal } from "@/components/vendor/bank-account-picker";
+import { bankAccountLabel, needsAccountPicker } from "@/lib/bank-accounts";
 import { apartadoInfo } from "@/lib/apartado";
 import {
   ORDER_STATUS_COLORS,
@@ -134,6 +136,13 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
   // Un solo botón: con el bot vinculado sale por bot; sin bot (o si el bot se
   // cae al apretar) se abre el WhatsApp del comercio con los datos listos.
   const [payBusy, setPayBusy] = useState(false);
+  const { accounts: bankAccounts } = useBankAccounts();
+  const [chosenAccountId, setChosenAccountId] = useState<string | null>((order as any)?.bank_account_id || null);
+  const [accountPickerOpen, setAccountPickerOpen] = useState(false);
+  const chosenAccount = (bankAccounts || []).find((a: any) => a.id === chosenAccountId) || null;
+  const effectiveTransfer = chosenAccount
+    ? { alias: chosenAccount.alias, cbu: chosenAccount.cbu, holder: chosenAccount.holder }
+    : transfer;
   const [payMsg, setPayMsg] = useState("");
   const [botFailed, setBotFailed] = useState(false);
   // Cancelación con motivo (M4.1): primer toque muestra opciones rápidas;
@@ -276,17 +285,27 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
   // es cobrar el saldo (no aceptar directo). Se reemplaza el botón primario.
   const apartadoUnpaidAccept = ap.isApartado && !ap.fullyPaid && ap.active && nextStatusFor(order.status as OrderStatus, order.method, isRetail, order.channel, orderNeedsKitchen(order)) === "confirmed";
 
-  async function handleSendPaymentData() {
+  async function handleSendPaymentData(preferredId?: string | null) {
     if (payBusy) return;
+    const idToUse = preferredId || chosenAccountId;
+    if (needsAccountPicker(bankAccounts) && !idToUse) {
+      setAccountPickerOpen(true);
+      return;
+    }
     setPayBusy(true);
     setPayMsg("");
     try {
-      const res = await fetch(`/api/vendor/orders/${order.id}/send-payment-data`, { method: "POST" });
+      const res = await fetch(`/api/vendor/orders/${order.id}/send-payment-data`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bankAccountId: idToUse }),
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setPayMsg(data?.error || "No se pudo enviar.");
         return;
       }
+      if (data?.bankAccountId) setChosenAccountId(data.bankAccountId);
       if (data.sent === true) setPayMsg("✅ Datos de pago enviados por WhatsApp.");
       else if (data.reason === "sin_relay") {
         // Bot caído a mitad de sesión: el bloque conmuta al WA manual.
@@ -376,9 +395,9 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
         customerName: order.customer_name,
         orderId: order.id,
         total: Number(order.total),
-        alias: transfer?.alias || "",
-        cbu: transfer?.cbu || undefined,
-        holder: transfer?.holder || "",
+        alias: effectiveTransfer?.alias || "",
+        cbu: effectiveTransfer?.cbu || undefined,
+        holder: effectiveTransfer?.holder || "",
         blocked: blockUnpaid,
       })
     : null;
@@ -548,7 +567,7 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
   // El bloque de pago muestra UNA sola vía: bot vinculado → bot; sin bot (o
   // bot que se cayera al apretar) → WhatsApp manual del comercio.
   const useBotSend = botState === "linked" && !botFailed;
-  const transferHasData = !!(transfer?.alias || transfer?.cbu);
+  const transferHasData = !!(effectiveTransfer?.alias || effectiveTransfer?.cbu);
   const manualPayUrl =
     isTransferAppPending && isCounterChannel === false && customerPhone && transferHasData && transferInstructions
       ? `https://wa.me/${customerPhone}?text=${encodeURIComponent(transferInstructions)}`
@@ -1411,6 +1430,20 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
               {isTransferAppPending && (
                 <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   <p className="font-semibold">🕐 Pago pendiente ({order.payment_status})</p>
+                  {isTransferAppPending && chosenAccount && (
+                    <p className="text-[11px] text-amber-700">
+                      🏦 Se le pasaron los datos de: <span className="font-semibold">{bankAccountLabel(chosenAccount)}</span>
+                    </p>
+                  )}
+                  {isTransferAppPending && needsAccountPicker(bankAccounts) && !chosenAccountId && (
+                    <button
+                      type="button"
+                      onClick={() => setAccountPickerOpen(true)}
+                      className="rounded-full border border-destructive/40 bg-destructive/10 px-2.5 py-1 text-[11px] font-bold text-destructive hover:bg-destructive/20"
+                    >
+                      ⚠️ Elegir cuenta para compartir
+                    </button>
+                  )}
                   <p className="text-amber-700">
                     {weightPending
                       ? "El total se define cuando peses y confirmes el peso real. Recién ahí se habilita el pago y los datos para transferirle al cliente."
@@ -1455,7 +1488,7 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
                         variant="outline"
                         className="w-full border-primary/40 text-primary hover:bg-primary/10"
                         disabled={payBusy}
-                        onClick={handleSendPaymentData}
+                        onClick={() => handleSendPaymentData()}
                       >
                         {payBusy ? "Enviando..." : "💳 Enviar datos de pago por WhatsApp"}
                       </Button>
@@ -1772,6 +1805,20 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
           )}
         </div>
       </div>
+    {accountPickerOpen && (
+      <BankAccountPickerModal
+        accounts={bankAccounts}
+        open={accountPickerOpen}
+        onClose={() => setAccountPickerOpen(false)}
+        onPick={(acc) => {
+          setChosenAccountId(acc.id);
+          setAccountPickerOpen(false);
+          handleSendPaymentData(acc.id);
+        }}
+        title="¿A qué cuenta va la transferencia?"
+        hint="La cuenta elegida queda registrada en el pedido y en los informes."
+      />
+    )}
     </div>
   );
 }

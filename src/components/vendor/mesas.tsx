@@ -22,9 +22,12 @@ import { describePrintError, dispatchOfflinePrint, markPrintsDone } from "@/lib/
 import { SYNC_COMPLETED_EVENT } from "@/lib/sync-engine";
 import { useCashShift } from "@/lib/use-cash-shift";
 import { CashTender } from "@/components/vendor/cash-tender";
+import { bankAccountLabel, needsAccountPicker, pickDefaultAccount } from "@/lib/bank-accounts";
+import { BankAccountPickerModal } from "@/components/vendor/bank-account-picker";
 import {
   PaymentSplit,
   splitCoversTotal,
+  splitNeedsAccount,
   splitPayload,
   type SplitRow,
 } from "@/components/vendor/payment-split";
@@ -492,6 +495,17 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
   const [cashAmount, setCashAmount] = useState("");
   // Pago combinado (split): líneas medio + monto contra el SALDO de la mesa.
   const [splitPayments, setSplitPayments] = useState<SplitRow[]>([]);
+  const [bankAccounts, setBankAccounts] = useState<any[] | null>(null);
+  const [transferAccountId, setTransferAccountId] = useState<string | null>(null);
+  const [partialTransferAccountId, setPartialTransferAccountId] = useState<string | null>(null);
+  const [accountPickerOpen, setAccountPickerOpen] = useState<"close" | "partial" | null>(null);
+  useEffect(() => {
+    const active = (bankAccounts || []).filter((a: any) => a.active !== false);
+    if (active.length === 1) {
+      setTransferAccountId(active[0].id);
+      setPartialTransferAccountId(active[0].id);
+    }
+  }, [bankAccounts]);
   // Mobile: la mesa se divide en 2 pantallas — "catalog" (sticky buscador +
   // pastillas + grilla) y "detail" (cuenta: consumiciones, precuenta, cobro).
   const [mobileView, setMobileView] = useState<"catalog" | "detail">("catalog");
@@ -710,6 +724,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
         setFloorBg((me.vendor as any).floor_bg_url ?? null);
       }
       setVendorVertical((me?.vendor?.vertical as string | null) ?? null);
+      setBankAccounts(Array.isArray(me?.bank_accounts) ? me.bank_accounts : []);
       if (r && r.config) {
         setResConfig(r.config);
         if (r.config.lead_min != null) setResLeadInput(String(r.config.lead_min));
@@ -1379,6 +1394,10 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
 
   async function closeTable() {
     if (!selected) return;
+    if (payment === "transferencia" && needsAccountPicker(bankAccounts) && !transferAccountId) {
+      setAccountPickerOpen("close");
+      return;
+    }
     const tableId = selected.id;
     const tableName = selected.name;
     const adds = localAdds.filter((a) => a.tableId === tableId);
@@ -1408,6 +1427,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
       occurred_at: new Date().toISOString(),
       expected_keys,
       payments: splitToSend,
+      bankAccountId: payment === "transferencia" ? transferAccountId : undefined,
       // "¿Con cuánto paga?" (efectivo, opcional): validado por el servidor
       // contra el total real de la cuenta.
       cashAmount: cashToSend,
@@ -1517,7 +1537,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
       res = await fetch(`/api/vendor/tables/${tableId}/close`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paymentMethod: payment, manualDiscount: tableManualPayload, cashAmount: cashToSend, payments: splitToSend }),
+        body: JSON.stringify({ paymentMethod: payment, manualDiscount: tableManualPayload, cashAmount: cashToSend, payments: splitToSend, bankAccountId: payment === "transferencia" ? transferAccountId : undefined }),
       });
     } catch (e) {
       if (isNetworkError(e)) {
@@ -1648,6 +1668,10 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
 
   async function doPartialPayment() {
     if (!selected) return;
+    if (partialPayMethod === "transferencia" && needsAccountPicker(bankAccounts) && !partialTransferAccountId) {
+      setAccountPickerOpen("partial");
+      return;
+    }
     let amount = Number(partialPayAmount);
     if (partialPayMode === "items") {
       amount = openOrders
@@ -1683,6 +1707,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
           amount,
           paymentMethod: partialPayMethod,
           items,
+          bankAccountId: partialPayMethod === "transferencia" ? partialTransferAccountId : undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -1751,7 +1776,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
   const mesaPendiente = Math.max(0, Math.round((mesaPayTotal - partialPaid) * 100) / 100);
   // Pago combinado (split): se habilita el cierre solo cuando el desglose
   // cubre el saldo pendiente.
-  const splitOk = payment === "mixto" && splitCoversTotal(splitPayments, mesaPendiente);
+  const splitOk = payment === "mixto" && splitCoversTotal(splitPayments, mesaPendiente) && !splitNeedsAccount(splitPayments, bankAccounts);
   const splitToSend = splitOk ? splitPayload(splitPayments) : undefined;
   const paymentBlocked = payment === "mixto" && !splitOk;
   /** Payload de descuento manual para consumición/cierre (undefined = sin descuento). */
@@ -2464,6 +2489,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                     onChange={setSplitPayments}
                     subject="la mesa"
                     compact
+                    accounts={bankAccounts}
                     className="flex-shrink-0"
                   />
                 )}
@@ -2725,6 +2751,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                       onChange={setSplitPayments}
                       subject="la mesa"
                       compact
+                      accounts={bankAccounts}
                     />
                   )}
                   {mesaCash.cashDiscount > 0 && (
@@ -3138,6 +3165,20 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
           </div>
         </div>
       )}
+    {accountPickerOpen && (
+      <BankAccountPickerModal
+        accounts={bankAccounts}
+        open={true}
+        onClose={() => setAccountPickerOpen(null)}
+        onPick={(acc) => {
+          if (accountPickerOpen === "close") setTransferAccountId(acc.id);
+          else if (accountPickerOpen === "partial") setPartialTransferAccountId(acc.id);
+          setAccountPickerOpen(null);
+        }}
+        title="¿A qué cuenta va la transferencia?"
+        hint="La cuenta elegida queda registrada en el cobro y en los informes."
+      />
+    )}
     </div>
   );
 }

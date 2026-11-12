@@ -15,6 +15,7 @@ import { isGiftProductRow } from "@/lib/gift-card-share";
 import { GiftcardManageButton } from "@/components/dashboard/giftcard-manage-button";
 import { saveDraft, loadDraft, clearDraft } from "@/lib/draft";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
+import { BankAccountsManager } from "@/components/dashboard/bank-accounts-manager";
 import { SupplierSelect } from "@/components/dashboard/supplier-select";
 import { expiryLabel } from "@/lib/expiry";
 import {
@@ -1049,47 +1050,18 @@ export function TransferConfig({
   vendor: any;
   saveVendor: (data: Record<string, unknown>) => Promise<void>;
 }) {
-  const [alias, setAlias] = useState<string>(vendor?.transfer_alias || "");
-  const [cbu, setCbu] = useState<string>(vendor?.transfer_cbu || "");
-  const [holder, setHolder] = useState<string>(vendor?.transfer_holder || "");
   const [block, setBlock] = useState<boolean>(!!vendor?.block_unpaid_orders);
 
   return (
     <div className="space-y-3 rounded-xl border border-border p-3">
       <div>
-        <Label>Alias (CBU)</Label>
+        <Label>Cuentas para transferencias</Label>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Lo ves en tu home banking. Ej: super.mi.barrio
+          Hasta 3 cuentas. Si cargás más de una, al cobrar o compartir los datos te pregunta cuál usar,
+          y la Caja y las Estadísticas desglosan por cuenta.
         </p>
-        <Input
-          className="mt-1"
-          value={alias}
-          onChange={(e) => setAlias(e.target.value)}
-          onBlur={() => saveVendor({ transfer_alias: alias || null })}
-        />
       </div>
-      <div>
-        <Label>CBU</Label>
-        <Input
-          className="mt-1"
-          value={cbu}
-          onChange={(e) => setCbu(e.target.value)}
-          onBlur={() => saveVendor({ transfer_cbu: cbu || null })}
-          placeholder="0000000000000000000000"
-        />
-      </div>
-      <div>
-        <Label>Titular de la cuenta</Label>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Nombre y apellido o razón social a nombre del cual se hace la transferencia
-        </p>
-        <Input
-          className="mt-1"
-          value={holder}
-          onChange={(e) => setHolder(e.target.value)}
-          onBlur={() => saveVendor({ transfer_holder: holder || null })}
-        />
-      </div>
+      <BankAccountsManager />
       <div className="flex items-center justify-between pt-1 border-t border-border">
         <div>
           <Label>Bloquear hasta confirmar pago</Label>

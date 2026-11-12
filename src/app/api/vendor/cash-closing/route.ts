@@ -130,9 +130,9 @@ export async function POST(request: Request) {
     try {
       row = await tx.queryOne<{ id: string; closed_at: string }>(
         `INSERT INTO cash_closings
-          (vendor_id, closed_at, since, orders_count, gross_total, discounts_total, net_total, by_method, cash_declared, cash_difference, notes, created_by,
+          (vendor_id, closed_at, since, orders_count, gross_total, discounts_total, net_total, by_method, by_account, cash_declared, cash_difference, notes, created_by,
            shift_id, opening_amount, movements, expected_cash)
-         VALUES ($1, now(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+         VALUES ($1, now(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
          RETURNING id, closed_at`,
         [
           gate.vendor.id,
@@ -142,6 +142,7 @@ export async function POST(request: Request) {
           summary.discountsTotal,
           summary.netTotal,
           JSON.stringify(summary.byMethod),
+          JSON.stringify(summary.transferByAccount ?? []),
           cashDeclared,
           cashDifference,
           notes,
@@ -171,6 +172,7 @@ export async function POST(request: Request) {
           summary.discountsTotal,
           summary.netTotal,
           JSON.stringify(summary.byMethod),
+          JSON.stringify(summary.transferByAccount ?? []),
           cashDeclared,
           cashDifference,
           notes,

@@ -15,6 +15,7 @@ type ClosingSummary = {
   discountsTotal: number;
   netTotal: number;
   byMethod: Record<string, MethodTotals>;
+  transferByAccount?: { accountId: string; label: string; count: number; total: number }[];
   cashTotal: number;
   avgTicket: number;
   senasTotal?: number;
@@ -649,11 +650,23 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
         ) : (
           <div className="space-y-2">
             {methods.map(([m, d]) => (
-              <div key={m} className="flex justify-between text-sm">
-                <span className={m === "efectivo" ? "font-medium" : "text-muted-foreground"}>
-                  {CASH_METHOD_LABELS[m] || m} <span className="text-xs text-muted-foreground">({d.count})</span>
-                </span>
-                <span className={`tabular-nums ${m === "efectivo" ? "font-medium" : ""}`}>{money(d.total)}</span>
+              <div key={m} className="space-y-1">
+                <div className="flex justify-between text-sm">
+                  <span className={m === "efectivo" ? "font-medium" : "text-muted-foreground"}>
+                    {CASH_METHOD_LABELS[m] || m} <span className="text-xs text-muted-foreground">({d.count})</span>
+                  </span>
+                  <span className={`tabular-nums ${m === "efectivo" ? "font-medium" : ""}`}>{money(d.total)}</span>
+                </div>
+                {m === "transferencia" && Array.isArray(summary.transferByAccount) && summary.transferByAccount.length > 0 && (
+                  <div className="pl-3 space-y-0.5">
+                    {summary.transferByAccount.map((a) => (
+                      <div key={a.accountId} className="flex justify-between text-[11px] text-muted-foreground">
+                        <span>↳ {a.label} <span className="text-[10px]">({a.count})</span></span>
+                        <span className="tabular-nums">{money(a.total)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -976,11 +989,23 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
             {methods.length > 0 && (
               <div className="rounded-xl border border-border p-3 space-y-1.5 text-sm">
                 {methods.map(([m, d]) => (
-                  <div key={m} className="flex justify-between">
-                    <span className="text-muted-foreground">
-                      {CASH_METHOD_LABELS[m] || m} <span className="text-xs">({d.count})</span>
-                    </span>
-                    <span className="tabular-nums">{money(d.total)}</span>
+                  <div key={m} className="space-y-0.5">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">
+                        {CASH_METHOD_LABELS[m] || m} <span className="text-xs">({d.count})</span>
+                      </span>
+                      <span className="tabular-nums">{money(d.total)}</span>
+                    </div>
+                    {m === "transferencia" && Array.isArray(summary.transferByAccount) && summary.transferByAccount.length > 0 && (
+                      <div className="pl-3 space-y-0.5">
+                        {summary.transferByAccount.map((a) => (
+                          <div key={a.accountId} className="flex justify-between text-[11px] text-muted-foreground">
+                            <span>↳ {a.label} ({a.count})</span>
+                            <span className="tabular-nums">{money(a.total)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1127,11 +1152,23 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
                     <p className="text-muted-foreground">Sin cobros en el turno.</p>
                   ) : (
                     methods.map(([m, d]) => (
-                      <div key={m} className="flex justify-between">
-                        <span className="text-muted-foreground">
-                          {CASH_METHOD_LABELS[m] || m} <span className="text-xs">({d.count})</span>
-                        </span>
-                        <span className="tabular-nums">{money(d.total)}</span>
+                      <div key={m} className="space-y-0.5">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">
+                            {CASH_METHOD_LABELS[m] || m} <span className="text-xs">({d.count})</span>
+                          </span>
+                          <span className="tabular-nums">{money(d.total)}</span>
+                        </div>
+                        {m === "transferencia" && Array.isArray(summary.transferByAccount) && summary.transferByAccount.length > 0 && (
+                          <div className="pl-3 space-y-0.5">
+                            {summary.transferByAccount.map((a) => (
+                              <div key={a.accountId} className="flex justify-between text-[11px] text-muted-foreground">
+                                <span>↳ {a.label} ({a.count})</span>
+                                <span className="tabular-nums">{money(a.total)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))
                   )}

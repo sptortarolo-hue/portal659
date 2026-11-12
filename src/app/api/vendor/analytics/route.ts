@@ -283,6 +283,119 @@ export async function GET(request: Request) {
     /* sin tabla/columna: queda en 0 */
   }
 
+  // Transferencias desglosadas por cuenta (multi-cuenta): mismo criterio que
+  // la Caja, pero sobre el rango del reporte. Tolerante a migración sin aplicar.
+  const transferByAccountMap = new Map<string, { label: string; count: number; total: number }>();
+  try {
+    const hasBankCol = await (async () => {
+      try {
+        const r = await queryOne<{ exists: boolean }>(
+          `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'order_payments' AND column_name = 'bank_account_id') AS exists`
+        );
+        return r?.exists === true;
+      } catch { return false; }
+    })();
+    if (hasBankCol) {
+      const cobro = await queryMany<{ bank_account_id: string; label: string | null; total: number | string; cnt: number | string }>(
+        `SELECT p.bank_account_id, a.label, SUM(p.amount) AS total, COUNT(*)::int AS cnt
+         FROM order_payments p JOIN orders o ON o.id = p.order_id
+         LEFT JOIN vendor_bank_accounts a ON a.id = p.bank_account_id
+         WHERE p.vendor_id = $1 AND p.method = 'transferencia' AND p.kind = 'cobro'
+           AND p.bank_account_id IS NOT NULL
+           AND o.created_at >= $2 AND o.status != 'cancelled'
+         GROUP BY p.bank_account_id, a.label`,
+        [vendorId, since]
+      );
+      for (const r of cobro || []) {
+        const id = String(r.bank_account_id);
+        const cur = transferByAccountMap.get(id) || { label: r.label || "Cuenta", count: 0, total: 0 };
+        cur.count += Number(r.cnt) || 0;
+        cur.total += Number(r.total) || 0;
+        if (r.label) cur.label = r.label;
+        transferByAccountMap.set(id, cur);
+      }
+      const parcial = await queryMany<{ bank_account_id: string; label: string | null; total: number | string; cnt: number | string }>(
+        `SELECT p.bank_account_id, a.label, SUM(p.amount) AS total, COUNT(*)::int AS cnt
+         FROM order_payments p LEFT JOIN vendor_bank_accounts a ON a.id = p.bank_account_id
+         WHERE p.vendor_id = $1 AND p.method = 'transferencia' AND p.kind = 'parcial'
+           AND p.bank_account_id IS NOT NULL AND p.created_at >= $2
+         GROUP BY p.bank_account_id, a.label`,
+        [vendorId, since]
+      );
+      for (const r of parcial || []) {
+        const id = String(r.bank_account_id);
+        const cur = transferByAccountMap.get(id) || { label: r.label || "Cuenta", count: 0, total: 0 };
+        cur.count += Number(r.cnt) || 0;
+        cur.total += Number(r.total) || 0;
+        if (r.label) cur.label = r.label;
+        transferByAccountMap.set(id, cur);
+      }
+    }
+  } catch { /* sin migración */ }
+  try {
+    const hasOrdersBankCol = await (async () => {
+      try {
+        const r = await queryOne<{ exists: boolean }>(
+          `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'bank_account_id') AS exists`
+        );
+        return r?.exists === true;
+      } catch { return false; }
+    })();
+    if (hasOrdersBankCol) {
+      const rows = await queryMany<{ bank_account_id: string; label: string | null; total: number; cnt: number }>(
+        `SELECT o.bank_account_id, a.label, SUM(o.total) AS total, COUNT(*)::int AS cnt
+         FROM orders o LEFT JOIN vendor_bank_accounts a ON a.id = o.bank_account_id
+         WHERE o.vendor_id = $1 AND o.payment_method = 'transferencia' AND o.bank_account_id IS NOT NULL
+           AND o.created_at >= $2 AND o.status != 'cancelled'
+           AND COALESCE(o.paid_via_payments, false) = false
+         GROUP BY o.bank_account_id, a.label`,
+        [vendorId, since]
+      );
+      for (const r of rows || []) {
+        const id = String(r.bank_account_id);
+        const cur = transferByAccountMap.get(id) || { label: r.label || "Cuenta", count: 0, total: 0 };
+        cur.count += Number(r.cnt) || 0;
+        cur.total += Number(r.total) || 0;
+        if (r.label) cur.label = r.label;
+        transferByAccountMap.set(id, cur);
+      }
+    }
+  } catch { /* sin migración */ }
+  try {
+    const hasBookingsBankCol = await (async () => {
+      try {
+        const r = await queryOne<{ exists: boolean }>(
+          `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'bookings' AND column_name = 'bank_account_id') AS exists`
+        );
+        return r?.exists === true;
+      } catch { return false; }
+    })();
+    if (hasBookingsBankCol) {
+      const rows = await queryMany<{ bank_account_id: string; label: string | null; amount: number }>(
+        `SELECT b.bank_account_id, a.label, b.amount_paid AS amount
+         FROM bookings b LEFT JOIN vendor_bank_accounts a ON a.id = b.bank_account_id
+         WHERE b.vendor_id = $1 AND b.payment_method = 'transferencia' AND b.bank_account_id IS NOT NULL
+           AND b.created_at >= $2 AND COALESCE(b.payment_status,'')='paid'
+           AND COALESCE(b.amount_paid,0) > 0 AND COALESCE(b.status,'') <> 'cancelled'`,
+        [vendorId, since]
+      );
+      for (const r of rows || []) {
+        const id = String(r.bank_account_id);
+        const cur = transferByAccountMap.get(id) || { label: r.label || "Cuenta", count: 0, total: 0 };
+        cur.count += 1;
+        cur.total += Number(r.amount) || 0;
+        if (r.label) cur.label = r.label;
+        transferByAccountMap.set(id, cur);
+      }
+    }
+  } catch { /* sin migración */ }
+  const transferByAccount = Array.from(transferByAccountMap.entries()).map(([accountId, v]) => ({
+    accountId,
+    label: v.label,
+    count: v.count,
+    total: Math.round(v.total * 100) / 100,
+  })).sort((a, b) => b.total - a.total);
+
   const topProducts = Object.values(productSales)
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 10);

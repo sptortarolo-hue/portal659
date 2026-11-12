@@ -179,7 +179,7 @@ export async function POST(
             vendorId: gate.vendor.id,
             tableId: id,
             kind: "parcial",
-            payments: [{ method: paymentMethod as SplitMethod, amount, tendered: null }],
+            payments: [{ method: paymentMethod as SplitMethod, amount, tendered: null, bankAccountId: body?.bankAccountId || null }],
             createdBy: userId,
             replace: false,
           })

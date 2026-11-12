@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { isFromPricing } from "@/lib/service-price";
+import { useBankAccounts, BankAccountPickerModal } from "@/components/vendor/bank-account-picker";
+import { bankAccountLabel, needsAccountPicker } from "@/lib/bank-accounts";
 
 export type BookingCobroModalProps = {
   booking: any;
@@ -56,6 +58,10 @@ export function BookingCobroModal({
   const [submitting, setSubmitting] = useState(false);
   const firstInput = useRef<HTMLInputElement>(null);
 
+  const { accounts: bankAccounts } = useBankAccounts();
+  const [transferAccountId, setTransferAccountId] = useState<string | null>(null);
+  const [accountPickerOpen, setAccountPickerOpen] = useState(false);
+
   const cuentaItems = CuentaLine.map((l) => ({
     description: l.description.trim(),
     qty: Number(l.qty) || 1,
@@ -88,6 +94,7 @@ export function BookingCobroModal({
     setReceptorNro("");
     setReceptorNombre("");
     setReceptorCond("6");
+    setTransferAccountId(null);
     if (firstInput.current) firstInput.current.focus();
   }, [open, snapshotTotal, depositPaid]);
 
@@ -122,6 +129,10 @@ export function BookingCobroModal({
       cancelled = true;
     };
   }, [open, isOrder, booking?.id]);
+  useEffect(() => {
+    const active = (bankAccounts || []).filter((a: any) => a.active !== false);
+    if (active.length === 1) setTransferAccountId(active[0].id);
+  }, [bankAccounts]);
 
   if (!open) return null;
 
@@ -152,9 +163,14 @@ export function BookingCobroModal({
       setErr(`Monto insuficiente: el saldo es $${balance.toLocaleString("es-AR")}`);
       return;
     }
+    if (paymentMethod === "transferencia" && needsAccountPicker(bankAccounts) && !transferAccountId) {
+      setAccountPickerOpen(true);
+      return;
+    }
     const body: Record<string, unknown> = {
       payment_method: paymentMethod,
       amount_paid: amount,
+      bankAccountId: paymentMethod === "transferencia" ? transferAccountId : undefined,
     };
     if (fromPricing) body.final_price = Number(finalPrice);
     if (needCuenta && cuentaItems.length > 0) {
@@ -359,6 +375,29 @@ export function BookingCobroModal({
             </select>
           </div>
 
+          {paymentMethod === "transferencia" && needsAccountPicker(bankAccounts) && (
+            <div className="flex items-center gap-2">
+              {transferAccountId ? (
+                <button
+                  type="button"
+                  onClick={() => setAccountPickerOpen(true)}
+                  className="rounded-full border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-muted"
+                  disabled={submitting}
+                >
+                  🏦 {bankAccountLabel((bankAccounts || []).find((a: any) => a.id === transferAccountId))} · cambiar
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setAccountPickerOpen(true)}
+                  className="rounded-full border border-destructive/40 bg-destructive/10 px-2.5 py-1 text-[11px] font-bold text-destructive hover:bg-destructive/20"
+                  disabled={submitting}
+                >
+                  ⚠️ Elegir cuenta
+                </button>
+              )}
+            </div>
+          )}
           {paymentMethod === "efectivo" && (
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">Monto a cobrar</Label>
@@ -488,6 +527,19 @@ export function BookingCobroModal({
           )}
 
           {err && <p className="text-xs text-red-600">{err}</p>}
+
+          {accountPickerOpen && (
+            <BankAccountPickerModal
+              accounts={bankAccounts}
+              open={accountPickerOpen}
+              onClose={() => setAccountPickerOpen(false)}
+              onPick={(acc) => {
+                setTransferAccountId(acc.id);
+                setAccountPickerOpen(false);
+              }}
+              title="¿A qué cuenta va la transferencia?"
+            />
+          )}
         </div>
 
         <div className="mt-4 flex gap-2">

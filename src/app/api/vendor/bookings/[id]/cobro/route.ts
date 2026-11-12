@@ -237,9 +237,9 @@ export async function POST(
     await withTransaction(async (tx) => {
       await tx.queryVoid(
         `UPDATE bookings
-          SET status = 'completed', payment_status = 'paid', payment_method = $1, amount_paid = $2, paid_at = now(), completed_at = now()
+          SET status = 'completed', payment_status = 'paid', payment_method = $1, amount_paid = $2, paid_at = now(), completed_at = now(), bank_account_id = $5
          WHERE id = $3 AND vendor_id = $4 AND status <> 'completed'`,
-        [paymentMethod, amountPaid, id, gate.vendor.id]
+        [paymentMethod, amountPaid, id, gate.vendor.id, (body as any)?.bankAccountId || null]
       );
       // Precio final ("desde") y detalle de la cuenta (turno sin servicio):
       // el snapshot del turno pasa a ser lo realmente cobrado (comisiones y

@@ -1,6 +1,7 @@
 import { getAuthUser } from "@/lib/auth";
 import { query, queryMany, queryOne } from "@/lib/db";
 import { getVendorByRequest, seedDefaultCategories } from "@/lib/vendor-utils";
+import { listVendorBankAccounts } from "@/lib/bank-accounts-server";
 import { NextResponse } from "next/server";
 
 function slugify(text: string): string {
@@ -23,7 +24,10 @@ export async function GET(request: Request) {
       `SELECT * FROM vendors WHERE id = $1 LIMIT 1`,
       [resolved.id]
     );
-    return NextResponse.json({ vendor, staffRole, staffLevel, userId: null, preview: true });
+    // Cuentas de transferencia (vacío sin migración): el picker del cobro y
+    // el de compartir datos funcionan también en la vista prueba.
+    const bankAccounts = await listVendorBankAccounts(resolved.id);
+    return NextResponse.json({ vendor, bank_accounts: bankAccounts, staffRole, staffLevel, userId: null, preview: true });
   }
 
   const user = await getAuthUser(request);
@@ -75,6 +79,8 @@ export async function GET(request: Request) {
     vendor,
     vendors: ownedVendors,
     impersonating,
+    // Cuentas de transferencia del comercio (vacío sin migración).
+    bank_accounts: await listVendorBankAccounts(resolved.id),
     staffRole,
     staffLevel,
     userId: user.id,

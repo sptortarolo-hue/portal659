@@ -61,6 +61,15 @@ export async function POST(
   // el cierre solo registra el SALDO, así la Caja no cuenta dos veces la
   // plata que ya entró al cajón (los parciales se cuentan por su fecha).
   const hasPaymentsTable = await hasOrderPaymentsTable();
+  let hasBankAccountCol = false;
+  try {
+    const col = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'bank_account_id') AS exists`
+    );
+    hasBankAccountCol = col?.exists === true;
+  } catch {
+    hasBankAccountCol = false;
+  }
 
   // Descuento manual al cobrar ($ o % con motivo). Si no viene, se conserva
   // el ya guardado en cada cuenta (recalculado sobre la cuenta final).
@@ -413,7 +422,7 @@ export async function POST(
     (hasPaymentsTable && remainder > 0.01 && paymentMethod === "efectivo" && cashAmountIn >= remainder - 0.001
       ? [{ method: "efectivo", amount: remainder, tendered: Math.round(cashAmountIn * 100) / 100 }]
       : hasPaymentsTable && remainder > 0.01 && SPLIT_METHODS.includes(paymentMethod)
-        ? [{ method: paymentMethod, amount: remainder, tendered: null }]
+        ? [{ method: paymentMethod, amount: remainder, tendered: null, bankAccountId: (body as any)?.bankAccountId || null }]
         : null);
   // Vuelto de la parte en efectivo del cierre (incluye el "entregó" tipeado).
   const closeCashRow = closeSplit?.find((p) => p.method === "efectivo") ?? null;
@@ -469,6 +478,13 @@ export async function POST(
         list.map((o) => o.id),
       ]);
     }
+    if (hasBankAccountCol && closeSplit) {
+      const acct = closeSplit.find((p) => p.method === "transferencia")?.bankAccountId ?? null;
+      await tx.query(`UPDATE orders SET bank_account_id = $1 WHERE id = ANY($2)`, [
+        acct,
+        list.map((o) => o.id),
+      ]).catch(() => {});
+    }
 
     await tx.query(`UPDATE tables SET status = 'libre' WHERE id = $1`, [table.id]);
 
@@ -507,6 +523,7 @@ export async function POST(
                 // viaja en la respuesta del cierre y en el ticket de la mesa,
                 // no en la fila de cada consumición.
                 tendered: null,
+                bankAccountId: p.bankAccountId ?? null,
               },
             ],
             createdBy: gate.previewSession ? null : gate.user?.id ?? null,

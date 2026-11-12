@@ -119,11 +119,28 @@ export async function GET(request: Request) {
   let opening = 0;
   let ingresos = 0;
   let retiros = 0;
+  const byAccount: Record<string, { label: string; count: number; total: number }> = {};
   for (const r of rows) {
     for (const [m, d] of Object.entries((r.by_method || {}) as Record<string, any>)) {
       if (!byMethod[m]) byMethod[m] = { count: 0, total: 0 };
       byMethod[m].count += Number(d?.count) || 0;
       byMethod[m].total += Number(d?.total) || 0;
+    }
+    // Desglose por cuenta (multi-cuenta): viene en by_account (jsonb).
+    let rawAcct: unknown = r.by_account;
+    if (typeof rawAcct === "string") {
+      try { rawAcct = JSON.parse(rawAcct); } catch { rawAcct = null; }
+    }
+    if (Array.isArray(rawAcct)) {
+      for (const a of rawAcct as Record<string, any>[]) {
+        const id = String(a?.accountId ?? a?.account_id ?? "");
+        if (!id) continue;
+        const label = String(a?.label || "Cuenta");
+        if (!byAccount[id]) byAccount[id] = { label, count: 0, total: 0 };
+        byAccount[id].count += Number(a?.count) || 0;
+        byAccount[id].total += Number(a?.total) || 0;
+        if (a?.label) byAccount[id].label = String(a.label);
+      }
     }
     gross += Number(r.gross_total) || 0;
     discounts += Number(r.discounts_total) || 0;
@@ -141,6 +158,7 @@ export async function GET(request: Request) {
     retiros += Number(r.movements?.retiros) || 0;
   }
   for (const d of Object.values(byMethod)) d.total = round2(d.total);
+  for (const d of Object.values(byAccount)) d.total = round2(d.total);
 
   const payload = {
     from: from.toISOString(),
@@ -148,6 +166,7 @@ export async function GET(request: Request) {
     count: rows.length,
     orders,
     byMethod,
+    byAccount,
     gross: round2(gross),
     discounts: round2(discounts),
     net: round2(net),
@@ -173,6 +192,11 @@ export async function GET(request: Request) {
   const methodRows = Object.entries(byMethod).map(([m, d]) => ({
     medio: CASH_METHOD_LABELS[m] || m,
     count: d.count,
+    total: d.total,
+  }));
+  const accountRows = Object.entries(byAccount).map(([id, d]) => ({
+    cuenta: d.label,
+    pedidos: d.count,
     total: d.total,
   }));
   const detailRows = rows.map((r) => {
@@ -249,6 +273,13 @@ export async function GET(request: Request) {
       { header: "Pedidos", key: "count", width: 12 },
       { header: "Total", key: "total", numFmt: moneyFmt },
     ], methodRows);
+    if (accountRows.length > 0) {
+      table("Por cuenta", [
+        { header: "Cuenta", key: "cuenta", width: 24 },
+        { header: "Pedidos", key: "pedidos", width: 12 },
+        { header: "Total", key: "total", numFmt: moneyFmt },
+      ], accountRows);
+    }
     table("Detalle", [
       { header: "Cierre", key: "cierre", width: 18 },
       { header: "Abierta por", key: "abiertaPor", width: 22 },
@@ -308,6 +339,13 @@ export async function GET(request: Request) {
     ["Medio", "Pedidos", "Total"].map(cell).join(";"),
     ...methodRows.map((r) => [r.medio, r.count, r.total].map(cell).join(";")),
     "",
+    ...(accountRows.length > 0
+      ? [
+          ["Cuenta", "Pedidos", "Total"].map(cell).join(";"),
+          ...accountRows.map((r) => [r.cuenta, r.pedidos, r.total].map(cell).join(";")),
+          "",
+        ]
+      : []),
     ["Cierre", "Abierta por", "Entregada a", "Pedidos", "Neto", "Esperado", "Contado", "Dif."].map(cell).join(";"),
     ...detailRows.map((r) => [r.cierre, r.abiertaPor, r.entregadaA, r.pedidos, r.neto, r.esperado, r.contado, r.dif].map(cell).join(";")),
     ...(movementRows.length > 0

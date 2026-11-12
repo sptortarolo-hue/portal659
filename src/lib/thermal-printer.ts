@@ -115,6 +115,7 @@ export type CashClosingPrintData = {
   discounts_total: number;
   net_total: number;
   by_method: Record<string, { count: number; total: number }> | null;
+  by_account?: unknown;
   cash_declared: number | null;
   cash_difference: number | null;
   notes: string | null;
@@ -1361,6 +1362,16 @@ async function composeCashClose(
     const countStr = `(${d.count})`;
     const totalStr = `$${Number(d.total).toLocaleString("es-AR")}`;
     printer.println(`${padRight(label, width - countStr.length - totalStr.length - 1)}${countStr} ${padLeft(totalStr, totalStr.length)}`);
+    if (m === "transferencia") {
+      const ba = Array.isArray(closing.by_account) ? closing.by_account : (typeof closing.by_account === "string" ? JSON.parse(closing.by_account || "[]") : []);
+      if (Array.isArray(ba)) {
+        for (const a of ba) {
+          const al = `  ${a?.label || "Cuenta"}`;
+          const at = `${Number(a?.total || 0).toLocaleString("es-AR")}`;
+          printer.println(`${padRight(al, width - at.length)}${padLeft(at, at.length)}`);
+        }
+      }
+    }
   }
   if (entries.length === 0) {
     printer.println("Sin cobros en el periodo");
@@ -1421,6 +1432,7 @@ export type CashSnapshotData = {
   discounts_total: number;
   net_total: number;
   by_method: Record<string, { count: number; total: number }> | null;
+  by_account?: unknown;
   opening_amount: number | null;
   opened_at: string | null;
   opened_by_name: string | null;
@@ -1466,6 +1478,16 @@ async function composeCashSnapshot(
     const countStr = `(${d.count})`;
     const totalStr = `$${Number(d.total).toLocaleString("es-AR")}`;
     printer.println(`${padRight(label, width - countStr.length - totalStr.length - 1)}${countStr} ${padLeft(totalStr, totalStr.length)}`);
+    if (m === "transferencia") {
+      const ba = Array.isArray(snap.by_account) ? snap.by_account : (typeof snap.by_account === "string" ? JSON.parse(snap.by_account || "[]") : []);
+      if (Array.isArray(ba)) {
+        for (const a of ba) {
+          const al = `  ${a?.label || "Cuenta"}`;
+          const at = `${Number(a?.total || 0).toLocaleString("es-AR")}`;
+          printer.println(`${padRight(al, width - at.length)}${padLeft(at, at.length)}`);
+        }
+      }
+    }
   }
   if (entries.length === 0) {
     printer.println("Sin cobros en el periodo");

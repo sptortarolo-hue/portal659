@@ -2,6 +2,7 @@ import { queryOne } from "@/lib/db";
 import { getSiteUrl } from "@/lib/site-url";
 import { isMpEnabled } from "@/lib/mp-oauth";
 import { buildWeighedOrderMessage } from "@/lib/whatsapp-message";
+import { resolveEffectiveAccount } from "@/lib/bank-accounts-server";
 
 /**
  * Flujo de pesada (modo "confirmar"): mensaje al cliente con el pedido
@@ -51,6 +52,7 @@ type OrderRow = {
   method: string;
   weight_confirmed_at: string | null;
   weight_estimated_total: number | string | null;
+  bank_account_id: string | null;
 };
 
 export async function sendWeighedOrder(args: {
@@ -65,7 +67,9 @@ export async function sendWeighedOrder(args: {
             CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'weight_confirmed_at')
               THEN weight_confirmed_at ELSE NULL END AS weight_confirmed_at,
             CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'weight_estimated_total')
-              THEN weight_estimated_total ELSE NULL END AS weight_estimated_total
+              THEN weight_estimated_total ELSE NULL END AS weight_estimated_total,
+            CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'bank_account_id')
+              THEN bank_account_id ELSE NULL END AS bank_account_id
      FROM orders WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
     [orderId, vendorId]
   );
@@ -97,17 +101,21 @@ export async function sendWeighedOrder(args: {
 
   const vendorRow = await queryOne<{
     store_name: string;
-    transfer_alias: string | null;
-    transfer_cbu: string | null;
-    transfer_holder: string | null;
     mp_user_id: number | null;
   }>(
-    `SELECT store_name, transfer_alias, transfer_cbu, transfer_holder, mp_user_id FROM vendors WHERE id = $1 LIMIT 1`,
+    `SELECT store_name, mp_user_id FROM vendors WHERE id = $1 LIMIT 1`,
     [vendorId]
   ).catch(() => null);
   // MP conectada (llave global + cuenta OAuth del comercio): los pedidos
   // "a coordinar" ofrecen el link de pago antes que la transferencia.
   const mpEnabled = isMpEnabled() && vendorRow?.mp_user_id != null;
+
+  // Cuenta efectiva: la del pedido (si la eligieron al compartir datos) →
+  // la principal → el espejo legacy. Así el WA de pesada usa la misma cuenta.
+  const resolved = await resolveEffectiveAccount(vendorId, order.bank_account_id);
+  const alias = resolved.account?.alias ?? resolved.legacy?.alias ?? null;
+  const cbu = resolved.account?.cbu ?? resolved.legacy?.cbu ?? null;
+  const holder = resolved.account?.holder ?? resolved.legacy?.holder ?? null;
 
   const items = Array.isArray(order.items) ? (order.items as any[]) : [];
   const total = Number(order.total) || 0;
@@ -129,9 +137,9 @@ export async function sendWeighedOrder(args: {
     })),
     total,
     paymentMethod: order.payment_method,
-    alias: vendorRow?.transfer_alias ?? null,
-    cbu: vendorRow?.transfer_cbu ?? null,
-    holder: vendorRow?.transfer_holder ?? null,
+    alias: alias,
+    cbu: cbu,
+    holder: holder,
     trackUrl,
     mpEnabled,
     changedFromEstimate: estimated > 0 && Math.abs(total - estimated) > 0.01,

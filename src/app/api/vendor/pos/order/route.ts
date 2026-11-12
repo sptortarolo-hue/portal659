@@ -73,6 +73,7 @@ export async function POST(request: Request) {
     deliveryManualFee,
     cashAmount,
     payments,
+    bankAccountId,
     deferPayment,
   } = body;
 
@@ -264,6 +265,16 @@ export async function POST(request: Request) {
   // Desglose de pago combinado (migrate-order-payments.sql, tolerante a
   // migración sin aplicar): sin la tabla la venta sale con medio único.
   const hasPaymentsTable = await hasOrderPaymentsTable();
+  // Multi-cuenta: la columna puede no existir si la migración no se aplicó.
+  let hasBankAccountCol = false;
+  try {
+    const col = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'bank_account_id') AS exists`
+    );
+    hasBankAccountCol = col?.exists === true;
+  } catch {
+    hasBankAccountCol = false;
+  }
 
   const now = new Date().toISOString();
 
@@ -543,6 +554,7 @@ const entries: Array<[string, unknown]> = [
       entries.push(["giftcard_discount", giftcardApplied]);
     }
     if (hasCashAmountCol) entries.push(["cash_amount", cashAmountFinal]);
+    if (hasBankAccountCol && payment === "transferencia") entries.push(["bank_account_id", bankAccountId || null]);
 
     const cols = entries.map(([c]) => c);
     const vals = entries.map(([, v]) => v);
@@ -562,6 +574,14 @@ const entries: Array<[string, unknown]> = [
         clientKey: clientKey ?? null,
         createdBy: gate.previewSession ? null : gate.user?.id ?? null,
       });
+      // Con desglose, el pedido no se cuenta por payment_method (la Caja usa
+      // las filas): se marca para no duplicar. Tolerante a migración sin
+      // columna (en ese caso insertOrderPayments no corrió).
+      try {
+        await tx.queryVoid(`UPDATE orders SET paid_via_payments = true WHERE id = $1`, [order.id]);
+      } catch {
+        /* columna sin migrar: se ignora */
+      }
     }
 
     // Emisión automática de giftcards vendidas (F2): al cobrar en el acto

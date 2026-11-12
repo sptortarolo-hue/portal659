@@ -138,6 +138,7 @@ async function processAction(
         // Pago combinado: el desglose viaja tal cual (lo valida el server
         // contra el saldo real de la mesa).
         payments: p.payments,
+        bankAccountId: p.bankAccountId,
       });
       if (r.status === 401) return { done: false, auth: true };
       // Faltan consumiciones por sincronizar: se reintenta más tarde (las

@@ -100,7 +100,7 @@ export function EsteticaScheduleSection({
   setMsg,
 }: {
   vendor: Vendor | null;
-  saveVendor: (patch: Record<string, unknown>) => Promise<unknown>;
+  saveVendor: (patch: Record<string, unknown>) => Promise<void>;
   setMsg: (m: string) => void;
 }) {
   const [mode, setMode] = useState<string>((vendor as any)?.booking_schedule_mode === "grid" ? "grid" : "hours");

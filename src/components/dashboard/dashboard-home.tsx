@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import {
   DollarSign,
   ClipboardList,
@@ -70,9 +70,6 @@ type Props = {
   /** Empleado/encargado (login "Soy del equipo"): no ve la vista previa del
    *  micrositio — no navega el sitio público (ver src/proxy.ts). */
   isStaffMember?: boolean;
-  /** Tarjeta "Cómo va tu comercio" (solo comercios nuevos). La arma el page
-   *  con los datos del vendor: el home solo la ubica arriba de todo. */
-  setupCard?: ReactNode;
 };
 
 const STATUS_TONE: Record<Order["status"], BadgeTone> = {
@@ -181,7 +178,6 @@ export function DashboardHome({
   onChanged,
   isPreview = false,
   isStaffMember = false,
-  setupCard,
 }: Props) {
   const sellsOrders = isGastro || isModa || isComercio;
   // Retail (moda/comercio): flow con aceptación + empaque ("Por aceptar", "Empaquetando").
@@ -299,7 +295,6 @@ export function DashboardHome({
 
   return (
     <div className="space-y-5">
-      {setupCard}
       {!isStaffMember && (
         <StorePreviewCard vendor={vendor} onChanged={onChanged} canManageTokens={!isPreview} />
       )}

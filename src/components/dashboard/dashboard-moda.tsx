@@ -61,7 +61,7 @@ type Props = {
   msg: string;
   setMsg: (m: string) => void;
   reload: () => void;
-  saveVendor: (data: Record<string, unknown>) => Promise<unknown>;
+  saveVendor: (data: Record<string, unknown>) => Promise<void>;
   uploading: boolean;
   onCrop: (target: "cover" | "logo" | "offer", src?: string) => void;
   variants: ProductVariant[];
@@ -894,7 +894,7 @@ const EXPIRY_OPTIONS = [
   { v: 48, label: "48 horas" },
 ];
 
-function TransferExpiryCard({ vendor, saveVendor }: { vendor: any; saveVendor: (data: Record<string, unknown>) => Promise<unknown> }) {
+function TransferExpiryCard({ vendor, saveVendor }: { vendor: any; saveVendor: (data: Record<string, unknown>) => Promise<void> }) {
   const current = Number(vendor?.transfer_expiry_hours) || 0;
   return (
     <div className="rounded-xl border border-border px-3 py-2.5">

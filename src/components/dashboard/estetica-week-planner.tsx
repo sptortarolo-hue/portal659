@@ -47,7 +47,7 @@ export function EsteticaWeekPlanner({
   setMsg,
 }: {
   vendor: Vendor | null;
-  saveVendor: (patch: Record<string, unknown>) => Promise<unknown>;
+  saveVendor: (patch: Record<string, unknown>) => Promise<void>;
   setMsg: (m: string) => void;
 }) {
   const today = useMemo(() => arToday(), []);

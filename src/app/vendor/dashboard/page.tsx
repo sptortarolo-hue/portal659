@@ -54,9 +54,6 @@ import { StatusDot, configEnterState } from "@/components/dashboard/config-secti
 import { NotificationBell } from "@/components/nav/notification-bell";
 import { UserMenu } from "@/components/nav/user-menu";
 import { DashboardHome } from "@/components/dashboard/dashboard-home";
-import { SetupProgressCard } from "@/components/dashboard/setup-progress";
-import { VendorSetupWizard } from "@/components/dashboard/onboarding/vendor-setup-wizard";
-import { isNewVendor } from "@/lib/setup-steps";
 import { OrdersKanban } from "@/components/dashboard/orders-kanban";
 import { useKeyboardShortcuts } from "@/lib/use-keyboard-shortcuts";
 import { buildClientWhatsAppUrl, ORDER_STATUS_COLORS, RETAIL_STATUS_LABELS, flowSteps, orderCondition, orderReadyLabel, orderNeedsKitchen, isSameBusinessDay, CONDITION_META } from "@/lib/order-utils";
@@ -178,13 +175,10 @@ function ConfigDesktopNav({
   vendor,
   configSection,
   onSelect,
-  offerCount = 0,
 }: {
   vendor: Vendor | null;
   configSection: string;
   onSelect: (id: string) => void;
-  /** Productos cargados: alimenta el dot de la sección Catálogo/Menú. */
-  offerCount?: number;
 }) {
   return (
     <nav className="hidden md:block w-56 flex-shrink-0 md:sticky md:top-24 self-start rounded-xl border border-border bg-card p-3 space-y-4">
@@ -201,7 +195,7 @@ function ConfigDesktopNav({
             <div className="space-y-0.5">
               {items.map((id) => {
                 const Icon = configSectionIcon(id);
-                const st = getConfigSectionStatus(id, vendor, { offers: offerCount });
+                const st = getConfigSectionStatus(id, vendor);
                 return (
                   <button
                     key={id}
@@ -378,14 +372,6 @@ function VendorDashboardInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  // --- Paso a paso de arranque (onboarding del comercio) ---
-  // Solo para comercios nuevos: `altaOpen` mantiene el wizard a pantalla
-  // completa después de que el comercio se crea (paso 1), `altaClosed` marca
-  // que el usuario salió a propósito (no se reabre al recargar).
-  const [altaOpen, setAltaOpen] = useState(false);
-  const [altaClosed, setAltaClosed] = useState(false);
-  // Modal "completar" (tienda Nº2 recién creada, o desde la tarjeta de Hoy).
-  const [setupOpen, setSetupOpen] = useState(false);
   // Modo riel (desktop): la sidebar izquierda se estrecha a íconos y los
   // grupos abren en flyout. Persiste por navegadora; default = riel.
   const [rail, setRail] = useState(true);
@@ -502,27 +488,6 @@ function VendorDashboardInner() {
     if (t === "clientes" && phone) setClientHighlight({ phone, nonce: Date.now() });
   }, [enterConfigTab]);
   const openOrderDetail = useCallback((o: Order) => setSelectedOrder(o), []);
-  // Paso a paso de arranque: cerrarlo (alta a pantalla completa o modal) y
-  // llevarlo a la pestaña/sección que el usuario tocó dentro del wizard.
-  const closeSetup = useCallback(() => {
-    setAltaOpen(false);
-    setAltaClosed(true);
-    setSetupOpen(false);
-  }, []);
-  const setupGoTab = useCallback(
-    (t: string) => {
-      closeSetup();
-      handleTabChange(t as DashTab);
-    },
-    [closeSetup, handleTabChange]
-  );
-  const setupGoSection = useCallback(
-    (s: string) => {
-      closeSetup();
-      handleConfigSection(s);
-    },
-    [closeSetup, handleConfigSection]
-  );
   // Atajo Mostrador/Mesas → pestaña Caja (banner "abrí la caja").
   useEffect(() => {
     const handler = () => handleTabChange("caja");
@@ -1006,9 +971,7 @@ function VendorDashboardInner() {
     return () => stopRepeatAlert();
   }, [hasNewOrders]);
 
-  // Devuelve el resultado para que el paso a paso del alta detecte errores y
-  // sepa que el comercio ya existe (los callers históricos lo ignoran).
-  const saveVendor = useCallback(async (data: Record<string, unknown>): Promise<{ error?: string; vendor?: Vendor }> => {
+  const saveVendor = useCallback(async (data: Record<string, unknown>) => {
     setMsg("");
     const res = await fetch("/api/vendor/me", {
       method: "POST",
@@ -1018,7 +981,6 @@ function VendorDashboardInner() {
     const result = await res.json().catch(() => ({ error: "Error de conexión" }));
     if (result.error) setMsg(result.error);
     else { setVendor(result.vendor); setMsg("Guardado"); }
-    return result as { error?: string; vendor?: Vendor };
   }, []);
 
   async function updateOrderStatus(order: Order, status: Order["status"], reason?: string) {
@@ -1304,49 +1266,7 @@ function VendorDashboardInner() {
     isRetail,
   }), [vendor, offers, categories, modifiers, gallery, bookings, msg, loadData, saveVendor, openCrop, isRetail]);
 
-  // Tarjeta "Cómo va tu comercio": solo para comercios nuevos (los que ya
-  // están operativos no ven nada) y nunca en sesión de prueba ni para el
-  // equipo del local (ellos no configuran).
-  const setupCardNode = useMemo(() => {
-    if (!vendor || previewSession || staffRole === "staff") return null;
-    if (!isNewVendor(vendor)) return null;
-    return (
-      <SetupProgressCard
-        vendor={vendor}
-        offerCount={offers.length}
-        onGoTab={setupGoTab}
-        onGoSection={setupGoSection}
-        onOpenWizard={() => setSetupOpen(true)}
-      />
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vendor, offers.length, previewSession, staffRole]);
-
   if (loading) return <main className="container mx-auto px-4 py-8"><p className="text-muted-foreground">Cargando...</p></main>;
-
-  // Paso a paso de arranque: ?setup=1 (tienda Nº2 recién creada) abre el
-  // modal "completar"; si el usuario salió a mitad del alta y recargó, se
-  // reanuda desde el borrador de 24h (solo comercios nuevos).
-  useEffect(() => {
-    if (!vendor) return;
-    try {
-      const url = new URL(window.location.href);
-      if (url.searchParams.get("setup") === "1") {
-        url.searchParams.delete("setup");
-        window.history.replaceState(window.history.state, "", url.toString());
-        setSetupOpen(true);
-      }
-    } catch {
-      /* noop */
-    }
-    if (altaClosed || altaOpen) return;
-    if (!isNewVendor(vendor)) return;
-    try {
-      if (loadDraft(vendor.id, "setup")) setAltaOpen(true);
-    } catch {
-      /* sin storage: no se reanuda */
-    }
-  }, [vendor, altaClosed, altaOpen]);
 
   // Repartidor: vista acotada solo al módulo de entrega.
   if (staffRole === "delivery") {
@@ -1372,42 +1292,12 @@ function VendorDashboardInner() {
     );
   }
 
-  // Alta del comercio (o reanudación del paso a paso tras recargar): el wizard
-  // ocupa la pantalla hasta terminar o salir a propósito. Los comercios que ya
-  // están operativos nunca entran acá.
-  if (!vendor && altaClosed) {
-    // Salió del paso a paso sin crear el comercio: queda el formulario
-    // completo de siempre (nunca se deja al usuario sin salida).
+  if (!vendor) {
     return (
       <main className="container mx-auto px-4 py-8 max-w-lg">
         <h1 className="font-display text-2xl font-semibold mb-1">Tu comercio en Portal 659</h1>
-        <p className="text-muted-foreground text-sm mb-6">
-          Completá los datos para armar tu vidriera.{" "}
-          <button type="button" className="font-semibold text-primary hover:underline" onClick={() => setAltaClosed(false)}>
-            Volver al paso a paso
-          </button>
-        </p>
+        <p className="text-muted-foreground text-sm mb-6">Completá los datos para armar tu vidriera.</p>
         <DashboardGenerico vendor={null} offers={[]} categories={[]} msg={msg} setMsg={setMsg} reload={loadData} saveVendor={saveVendor} uploading={false} onCrop={openCrop} />
-      </main>
-    );
-  }
-  if (!vendor || (altaOpen && !altaClosed)) {
-    return (
-      // `.ts-ui` = mismos tokens del panel si el navegador está en modo tasty
-      // (no-op en clásico).
-      <main className="ts-ui min-h-screen bg-background">
-        <VendorSetupWizard
-          mode="alta"
-          vendor={vendor}
-          offers={offers}
-          categories={categories}
-          saveVendor={saveVendor}
-          reload={loadData}
-          onCreated={() => setAltaOpen(true)}
-          onDone={closeSetup}
-          onGoTab={setupGoTab}
-          onGoSection={setupGoSection}
-        />
       </main>
     );
   }
@@ -2154,14 +2044,14 @@ function VendorDashboardInner() {
                 </TabErrorBoundary>
               ) : isHybrid && tab === "config" ? (
               <div className="flex gap-4 items-start">
-                <ConfigDesktopNav vendor={vendor} configSection={configSection} onSelect={handleConfigSection} offerCount={offers.length} />
+                <ConfigDesktopNav vendor={vendor} configSection={configSection} onSelect={handleConfigSection} />
                 <div className="flex-1 min-w-0 space-y-4">
                   <TabErrorBoundary tab="config">{configContent}</TabErrorBoundary>
                 </div>
               </div>
               ) : tab === "config" ? (
               <div className="flex gap-4 items-start">
-                <ConfigDesktopNav vendor={vendor} configSection={configSection} onSelect={handleConfigSection} offerCount={offers.length} />
+                <ConfigDesktopNav vendor={vendor} configSection={configSection} onSelect={handleConfigSection} />
                 <div className="flex-1 min-w-0 space-y-4">
                   <DashboardServicio
                     {...dashboardProps}
@@ -2274,7 +2164,7 @@ function VendorDashboardInner() {
                   {/* Segunda columna de secciones (estilo Fudo): solo desktop.
                       El menú principal queda intacto en la sidebar.
                       En mobile mandan el drawer + el drill-down de Config. */}
-                    <ConfigDesktopNav vendor={vendor} configSection={configSection} onSelect={handleConfigSection} offerCount={offers.length} />
+                    <ConfigDesktopNav vendor={vendor} configSection={configSection} onSelect={handleConfigSection} />
                   <div className="flex-1 min-w-0 space-y-4">
                     {/* Alertas push: en gastro/comercio/moda/estética vive como sección
                         "Alertas" del menú de Configuración; servicio puro la muestra
@@ -2529,7 +2419,6 @@ function VendorDashboardInner() {
                     onChanged={loadData}
                     isPreview={previewSession}
                     isStaffMember={staffRole === "staff"}
-                    setupCard={setupCardNode}
                   />
                   </TabErrorBoundary>
                 </div>
@@ -2850,22 +2739,6 @@ function VendorDashboardInner() {
 
       {cropOpen && cropImageSrc && (
         <ImageCropModal imageSrc={cropImageSrc} aspect={cropAspect} title={cropTitle} onCropComplete={handleCropComplete} onCancel={() => { setCropOpen(false); if (cropImageSrc) URL.revokeObjectURL(cropImageSrc); }} />
-      )}
-
-      {/* Paso a paso "completar" (tienda Nº2 recién creada o desde la tarjeta
-          de Hoy): modal sobre el panel, descartable. */}
-      {setupOpen && vendor && !altaOpen && (
-        <VendorSetupWizard
-          mode="completar"
-          vendor={vendor}
-          offers={offers}
-          categories={categories}
-          saveVendor={saveVendor}
-          reload={loadData}
-          onDone={closeSetup}
-          onGoTab={setupGoTab}
-          onGoSection={setupGoSection}
-        />
       )}
 
       {selectedOrder && (

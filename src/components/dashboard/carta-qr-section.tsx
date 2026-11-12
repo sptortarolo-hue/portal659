@@ -8,7 +8,7 @@ import type { Vendor } from "@/types/database";
 
 type Props = {
   vendor: Vendor | null;
-  saveVendor: (data: Record<string, unknown>) => Promise<unknown>;
+  saveVendor: (data: Record<string, unknown>) => Promise<void>;
   setMsg: (m: string) => void;
   /** Verticales no-gastronómicos: se habla de catálogo, no de carta. */
   catalog?: boolean;

@@ -140,37 +140,10 @@ export function configSectionLabel(id: string, vertical?: string | null): string
   return CONFIG_SECTION_LABELS[id] ?? id;
 }
 
-/** Conteos opcionales para secciones que dependen del catálogo. */
-export type ConfigSectionCounts = { offers?: number; services?: number };
-
-/**
- * Dot de estado desde el vendor (sin fetches). undefined = sin dot.
- * Cubre las secciones del arranque (perfil/ubicación/contacto/catálogo) además
- * de las de operación, así la nav muestra el mismo progreso que la tarjeta
- * "Cómo va tu comercio" y el paso a paso del alta.
- */
+/** Dot de estado desde el vendor (sin fetches). undefined = sin dot. */
 export function configSectionStatus(
   id: string,
-  vendor:
-    | Pick<
-        Vendor,
-        | "printer_ip"
-        | "print_mode"
-        | "fiscal_cert"
-        | "cuit"
-        | "mp_user_id"
-        | "carta_visibility"
-        | "store_name"
-        | "category"
-        | "description"
-        | "image_url"
-        | "address"
-        | "hours"
-        | "whatsapp"
-      >
-    | null
-    | undefined,
-  counts?: ConfigSectionCounts
+  vendor: Pick<Vendor, "printer_ip" | "print_mode" | "fiscal_cert" | "cuit" | "mp_user_id" | "carta_visibility"> | null | undefined
 ): ConfigSectionStatus | undefined {
   if (!vendor) return undefined;
   if (id === "carta") {
@@ -184,22 +157,6 @@ export function configSectionStatus(
   }
   if (id === "pagos") {
     return vendor.mp_user_id ? "ok" : undefined;
-  }
-  if (id === "perfil") {
-    const base = !!vendor.store_name?.trim() && !!vendor.category?.trim();
-    const extra = !!vendor.description?.trim() || !!vendor.image_url;
-    return base && extra ? "ok" : base ? "warn" : "off";
-  }
-  if (id === "ubicacion") {
-    const dir = !!vendor.address?.trim();
-    const hor = !!vendor.hours?.trim();
-    return dir && hor ? "ok" : dir || hor ? "warn" : "off";
-  }
-  if (id === "contacto") {
-    return vendor.whatsapp?.trim() ? "ok" : "off";
-  }
-  if (id === "catalogo" || id === "menu") {
-    return (counts?.offers ?? 0) > 0 ? "ok" : "off";
   }
   return undefined;
 }

@@ -58,7 +58,7 @@ type Props = {
   msg: string;
   setMsg: (m: string) => void;
   reload: () => void;
-  saveVendor: (data: Record<string, unknown>) => Promise<unknown>;
+  saveVendor: (data: Record<string, unknown>) => Promise<void>;
   uploading: boolean;
   onCrop: (target: "cover" | "logo" | "offer", src?: string) => void;
   /** Sección de Config controlada por la página (sidebar única). */

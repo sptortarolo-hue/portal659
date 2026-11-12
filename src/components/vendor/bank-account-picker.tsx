@@ -62,7 +62,7 @@ export function BankAccountPickerModal({
   const active = (accounts || []).filter((a) => a.active);
   if (!open) return null;
   return (
-    <Modal open={open} onClose={onClose} title={title} size="sm">
+    <Modal open={open} onClose={onClose} title={title} size="sm" zIndex={90}>
       <div className="space-y-3">
         {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
         <div className="space-y-2">

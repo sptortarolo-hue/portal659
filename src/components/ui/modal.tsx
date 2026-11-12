@@ -11,6 +11,9 @@ type ModalProps = {
   footer?: ReactNode;
   /** Ancho del modal. Default "md" (max-w-lg). */
   size?: "sm" | "md" | "lg" | "xl" | "2xl";
+  /** z-index del overlay. Default 50. Subirlo cuando el modal se abre sobre
+   *  otros overlays (sheets, modales anidados, pickers). */
+  zIndex?: number;
 };
 
 const SIZE_CLASS: Record<NonNullable<ModalProps["size"]>, string> = {
@@ -21,7 +24,7 @@ const SIZE_CLASS: Record<NonNullable<ModalProps["size"]>, string> = {
   "2xl": "max-w-6xl",
 };
 
-export function Modal({ open, onClose, title, children, footer, size = "md" }: ModalProps) {
+export function Modal({ open, onClose, title, children, footer, size = "md", zIndex = 50 }: ModalProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -37,7 +40,8 @@ export function Modal({ open, onClose, title, children, footer, size = "md" }: M
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in-up"
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in-up"
+      style={{ zIndex }}
       onClick={onClose}
     >
       <div

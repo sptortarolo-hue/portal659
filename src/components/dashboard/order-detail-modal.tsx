@@ -1431,9 +1431,16 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
                 <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   <p className="font-semibold">🕐 Pago pendiente ({order.payment_status})</p>
                   {isTransferAppPending && chosenAccount && (
-                    <p className="text-[11px] text-amber-700">
-                      🏦 Se le pasaron los datos de: <span className="font-semibold">{bankAccountLabel(chosenAccount)}</span>
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-[11px] text-amber-700">
+                        🏦 Se le pasaron los datos de: <span className="font-semibold">{bankAccountLabel(chosenAccount)}</span>
+                      </p>
+                      {needsAccountPicker(bankAccounts) && (
+                        <button type="button" onClick={() => setAccountPickerOpen(true)} className="text-[10px] font-medium text-primary underline">
+                          cambiar
+                        </button>
+                      )}
+                    </div>
                   )}
                   {isTransferAppPending && needsAccountPicker(bankAccounts) && !chosenAccountId && (
                     <button

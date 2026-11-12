@@ -2739,6 +2739,19 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                       </button>
                     ))}
                   </div>
+                  {payment === "transferencia" && needsAccountPicker(bankAccounts) && (
+                    <div className="flex items-center gap-2 pt-1">
+                      {transferAccountId ? (
+                        <button type="button" onClick={() => setAccountPickerOpen("close")} className="rounded-full border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-muted">
+                          🏦 {bankAccountLabel((bankAccounts || []).find((a) => a.id === transferAccountId))} · cambiar
+                        </button>
+                      ) : (
+                        <button type="button" onClick={() => setAccountPickerOpen("close")} className="rounded-full border border-destructive/40 bg-destructive/10 px-2.5 py-1 text-[11px] font-bold text-destructive hover:bg-destructive/20">
+                          ⚠️ Elegir cuenta
+                        </button>
+                      )}
+                    </div>
+                  )}
                   {/* "¿Con cuánto paga?" (efectivo): el vuelto antes de cerrar. */}
                   {payment === "efectivo" && (
                     <CashTender total={mesaPayTotal} value={cashAmount} onChange={setCashAmount} compact />
@@ -3053,6 +3066,19 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                 <option value="whatsapp">WhatsApp</option>
               </select>
             </div>
+            {partialPayMethod === "transferencia" && needsAccountPicker(bankAccounts) && (
+              <div className="flex items-center gap-2 pt-1">
+                {partialTransferAccountId ? (
+                  <button type="button" onClick={() => setAccountPickerOpen("partial")} className="rounded-full border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-muted">
+                    🏦 {bankAccountLabel((bankAccounts || []).find((a) => a.id === partialTransferAccountId))} · cambiar
+                  </button>
+                ) : (
+                  <button type="button" onClick={() => setAccountPickerOpen("partial")} className="rounded-full border border-destructive/40 bg-destructive/10 px-2.5 py-1 text-[11px] font-bold text-destructive hover:bg-destructive/20">
+                    ⚠️ Elegir cuenta
+                  </button>
+                )}
+              </div>
+            )}
             {partialPayMode === "amount" ? (
               <div>
                 <label className="text-xs font-medium">Monto a cobrar</label>

@@ -104,14 +104,17 @@ export function StoreSwitcher({
       });
       const data = await res.json().catch(() => null);
       if (data?.vendor) {
+        // La tienda nueva arranca con el paso a paso (?setup=1): el dashboard
+        // lo detecta y abre el wizard en modo "completar".
         if (impersonating) {
           const url = new URL(window.location.href);
           url.searchParams.set("as", String(data.vendor.id));
+          url.searchParams.set("setup", "1");
           window.location.href = url.toString();
         } else {
           setWizardOpen(false);
           setOpen(false);
-          window.location.reload();
+          window.location.href = "/vendor/dashboard?setup=1";
         }
         return;
       }

@@ -11,7 +11,7 @@ import type { Vendor } from "@/types/database";
 
 type Props = {
   vendor: Vendor | null;
-  saveVendor: (data: Record<string, unknown>) => Promise<void>;
+  saveVendor: (data: Record<string, unknown>) => Promise<unknown>;
   setMsg: (m: string) => void;
   /** Texto del toggle de impresión automática (cambia según vertical). */
   autoPrintDesc?: string;

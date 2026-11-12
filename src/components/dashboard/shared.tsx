@@ -155,7 +155,7 @@ type SharedProps = {
   msg: string;
   setMsg: (m: string) => void;
   reload: () => void;
-  saveVendor: (data: Record<string, unknown>) => Promise<void>;
+  saveVendor: (data: Record<string, unknown>) => Promise<unknown>;
   uploading: boolean;
 };
 
@@ -1048,7 +1048,7 @@ export function TransferConfig({
   saveVendor,
 }: {
   vendor: any;
-  saveVendor: (data: Record<string, unknown>) => Promise<void>;
+  saveVendor: (data: Record<string, unknown>) => Promise<unknown>;
 }) {
   const [block, setBlock] = useState<boolean>(!!vendor?.block_unpaid_orders);
 
@@ -1095,7 +1095,7 @@ export function DeliveryFeeConfig({
   saveVendor,
 }: {
   vendor: any;
-  saveVendor: (data: Record<string, unknown>) => Promise<void>;
+  saveVendor: (data: Record<string, unknown>) => Promise<unknown>;
 }) {
   const [mode, setMode] = useState<string>(vendor?.delivery_mode === "zones" ? "zones" : "flat");
   const [fee, setFee] = useState<string>(vendor?.delivery_fee != null ? String(vendor.delivery_fee) : "");
@@ -1384,7 +1384,7 @@ export function DeliveryScheduleConfig({
   saveVendor,
 }: {
   vendor: any;
-  saveVendor: (data: Record<string, unknown>) => Promise<void>;
+  saveVendor: (data: Record<string, unknown>) => Promise<unknown>;
 }) {
   const [useStoreHours, setUseStoreHours] = useState<boolean>(
     usesStoreHoursOf({ delivery_hours: vendor?.delivery_hours ?? null })
@@ -1561,7 +1561,7 @@ type CatalogShipZone = {
 
 export function PortalShipConfig({}: {
   vendor: any;
-  saveVendor: (data: Record<string, unknown>) => Promise<void>;
+  saveVendor: (data: Record<string, unknown>) => Promise<unknown>;
 }) {
   const [catZones, setCatZones] = useState<CatalogShipZone[]>([]);
   const [ready, setReady] = useState<boolean | null>(null);
@@ -1720,7 +1720,7 @@ export function AcceptOrdersWhenClosedConfig({
   saveVendor,
 }: {
   vendor: any;
-  saveVendor: (data: Record<string, unknown>) => Promise<void>;
+  saveVendor: (data: Record<string, unknown>) => Promise<unknown>;
 }) {
   const [on, setOn] = useState<boolean>(vendor?.accept_orders_when_closed === true);
   useEffect(() => {

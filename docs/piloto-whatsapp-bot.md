@@ -130,6 +130,34 @@ servicio `wabot` del compose.
 
 ---
 
+## 3.3. Bot del PORTAL (número central): informativo primero, pedidos después
+
+El número central del portal (2212010898, `handlePortalInbound` en
+`services/wa-bot/src/bot.mjs`) **no es el concierge de un comercio**: es un
+asistente de **dos capas**, y el concierge de cada comercio (`handleConcierge`)
+nunca se toca.
+
+- **Capa 1 — informativa** (`!state.currentVendorId`): menú corto de 5 opciones
+  (1️⃣ tiendas abiertas · 2️⃣ todas las tiendas agrupadas por rubro ·
+  3️⃣ cómo comprar/pagar · 4️⃣ ¿tenés un comercio? Sumalo gratis · 5️⃣ persona).
+  Las tiendas se muestran **máx. 5 por mensaje** con nombre + rubro + estado +
+  🔗 link al micrositio (`/tienda/[slug]`). Si no hay coincidencia de producto, el
+  bot **vuelve al menú** en vez de tirar un listado largo.
+- **Capa 2 — pedidos** (recién después de elegir tienda): el flujo de carrito de
+  siempre (ítems → método → datos → confirmación). Un pedido = una tienda.
+
+**Regla de oro:** sin `state.currentVendorId` el bot **no arma ningún pedido**;
+ofrece las tiendas y espera la elección. Los números 1-5 son opciones del menú
+solo mientras no haya una lista de tiendas vigente (si la hay, el número elige
+tienda). Los textos de la capa 1 viven juntos arriba de `handlePortalInbound`
+(`portalMainMenuText`, `portalStoreListLines`, `portalHowToBuyText`,
+`portalB2BText`).
+
+Verificación: `node test-portal.mjs` (casos de menú, listas con link, B2B y
+"pedido sin tienda → no crea pedido").
+
+---
+
 ## 4. Borrado TOTAL (deshacer todo, volver al estado previo)
 
 1. **Contenedor**

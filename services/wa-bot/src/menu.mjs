@@ -89,6 +89,37 @@ export function getPortalStoresSync() {
   return hit?.stores || [];
 }
 
+/** Tiendas abiertas del portal (solo cache). @returns {any[]} */
+export function getPortalStoresOpenSync() {
+  const hit = cache.get(PORTAL_MENU_KEY);
+  if (!hit?.stores) return [];
+  return hit.stores.filter((s) => s.store_open === true);
+}
+
+/** Tiendas del portal con productos (solo cache). @returns {any[]} */
+export function getPortalStoresWithProductsSync() {
+  const hit = cache.get(PORTAL_MENU_KEY);
+  if (!hit?.stores) return [];
+  return hit.stores.filter((s) => (s.products || []).length > 0);
+}
+
+/** Arma un mensaje de lista de tiendas con logo/link.
+ *  @param {any[]} stores - array de tiendas
+ *  @param {number} max - máximo de tiendas a mostrar
+ *  @param {boolean} onlyOpen - si mostrar solo abiertas
+ *  @returns {string}
+ */
+export function formatStoreList(stores, max = 8, onlyOpen = false) {
+  const list = onlyOpen ? stores.filter((s) => s.store_open === true) : stores;
+  const toShow = list.slice(0, max);
+  if (toShow.length === 0) return "No encontré tiendas disponibles por ahora. Escribí *comercios* para ver todas.";
+  const lines = toShow.map((s, i) => {
+    const status = s.store_open === true ? "✓" : s.store_open === false ? "✗" : "?";
+    return `${i + 1}) ${status} *${s.store_name}* — ${s.store_slug ? `https://www.portal659.com.ar/tienda/${s.store_slug}` : ""}${s.neighborhood ? ` (${s.neighborhood})` : ""}`;
+  });
+  return lines.join("\n");
+}
+
 /** Versión sync que lee SOLO el cache (poblado por getMenu en la conversación).
  *  Para el total estimado del resumen: si no hay cache, devuelve [] (sin total). @param {string | number} vendorId @returns {Product[]} */
 export function getMenuSync(vendorId) {

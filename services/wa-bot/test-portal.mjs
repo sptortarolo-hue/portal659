@@ -236,6 +236,71 @@ async function main() {
   if (iso.includes("Pedí fácil desde el menú") || iso.includes("abiertos ahora ✓")) { console.log("!!! el portal respondió con el saludo de un comercio (contaminación)"); ok = false; }
   else { console.log(">>> OK: aislamiento — saludo propio del portal, no del concierge de negocios"); }
 
+  // 15. Capa informativa: el menú corto y el "no pedido sin tienda".
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "hola" });
+  show("menú corto (portal)", r);
+  const menu = (r.replies || []).join(" ");
+  if (!menu.includes("1️⃣") || !menu.includes("Ver tiendas abiertas") || !menu.includes("Sumalo gratis")) { console.log("!!! el saludo no mostró el menú corto de 5 opciones"); ok = false; }
+  else if (menu.includes("Che Sancho (2 productos)")) { console.log("!!! el saludo tiró el listado largo en vez del menú"); ok = false; }
+  else { console.log(">>> OK: saludo → menú corto informativo (sin listado largo)"); }
+
+  // 15b. Opción 1: tiendas abiertas, con link al micrositio.
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "1" });
+  show("opción 1 tiendas abiertas (portal)", r);
+  const o1 = (r.replies || []).join(" ");
+  if (!o1.includes("/tienda/che-sancho") || !o1.includes("Che Sancho")) { console.log("!!! la opción 1 no mostró las tiendas abiertas con link"); ok = false; }
+  else { console.log(">>> OK: opción 1 → tiendas abiertas con link al micrositio"); }
+
+  // 15c. Opción 3: cómo comprar / pagar.
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "3" });
+  show("opción 3 cómo comprar (portal)", r);
+  const o3 = (r.replies || []).join(" ");
+  if (!o3.includes("Mercado Pago") || !o3.includes("Efectivo")) { console.log("!!! la opción 3 no explicó cómo comprar/pagar"); ok = false; }
+  else { console.log(">>> OK: opción 3 → cómo comprar / pagar"); }
+
+  // 15d. Opción 4: B2B (sumar comercio).
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "4" });
+  show("opción 4 B2B (portal)", r);
+  const o4 = (r.replies || []).join(" ");
+  if (!o4.includes("0% comisión") || !o4.includes("Básico")) { console.log("!!! la opción 4 no mostró el contenido B2B"); ok = false; }
+  else { console.log(">>> OK: opción 4 → B2B con planes y 0% comisión"); }
+
+  // 15e. B2B por texto ("tengo un comercio").
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "tengo un comercio y quiero sumarlo" });
+  show("B2B por texto (portal)", r);
+  const o4b = (r.replies || []).join(" ");
+  if (!o4b.includes("0% comisión")) { console.log("!!! 'tengo un comercio' no derivó al contenido B2B"); ok = false; }
+  else { console.log(">>> OK: 'tengo un comercio' → contenido B2B"); }
+
+  // 15f. Opción 5: persona.
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
+  handoffNotified = false;
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "5" });
+  show("opción 5 persona (portal)", r);
+  if (!handoffNotified) { console.log("!!! la opción 5 no derivó a una persona"); ok = false; }
+  else { console.log(">>> OK: opción 5 → handoff a una persona"); }
+
+  // 15g. REGLA DE ORO: pedido SIN tienda elegida → muestra tiendas, no crea pedido.
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "quiero pedir empanadas" });
+  show("pedido sin tienda (portal)", r);
+  const o5 = (r.replies || []).join(" ");
+  if (o5.includes("Pedido confirmado") || o5.includes("Tu pedido:") || o5.includes("¿Todo bien?")) { console.log("!!! armó un pedido sin que el cliente eligiera tienda"); ok = false; }
+  else if (!o5.includes("Che Sancho")) { console.log("!!! no ofreció las tiendas donde pedir"); ok = false; }
+  else { console.log(">>> OK: pedido sin tienda elegida → muestra tiendas, NO crea pedido"); }
+
+  // 15h. "qué hay abierto" → tiendas abiertas.
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "qué hay abierto?" });
+  show("qué hay abierto (portal)", r);
+  const o6 = (r.replies || []).join(" ");
+  if (!o6.includes("/tienda/")) { console.log("!!! 'qué hay abierto' no listó tiendas con link"); ok = false; }
+  else { console.log(">>> OK: 'qué hay abierto' → tiendas abiertas con link"); }
+
   if (!ok) { console.error("\n=== HAY FALLOS (portal) ==="); process.exit(1); }
   console.log("\n=== TODO OK (portal bot) ===");
 }

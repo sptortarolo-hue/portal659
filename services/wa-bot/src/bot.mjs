@@ -1502,6 +1502,86 @@ async function fetchPortalMenu(q = "") {
   }
 }
 
+// — Capa 1 del bot del portal: contenido INFORMATIVO —
+// El bot del portal primero informa (qué es Portal 659, qué tiendas hay,
+// cómo comprar/pagar, cómo sumar un comercio) y recién después arma pedidos.
+// Todo el texto vive acá, junto, para que el copy no se disperse por el flujo.
+
+const PORTAL_VERTICAL_LABELS = {
+  gastronomia: "Gastronomía",
+  comercio: "Comercio",
+  servicio: "Servicios",
+  moda: "Moda",
+  salud: "Salud",
+  estetica: "Peluquería y Estética",
+  taller: "Talleres y Reparaciones",
+};
+
+function portalVerticalLabel(v) {
+  if (!v) return "Tienda";
+  return PORTAL_VERTICAL_LABELS[v] || String(v);
+}
+
+/** Menú corto inicial: 5 opciones, un mensaje, sin listado gigante. */
+function portalMainMenuText() {
+  return [
+    "¿Qué querés hacer?",
+    "1️⃣ Ver tiendas abiertas",
+    "2️⃣ Ver todas las tiendas",
+    "3️⃣ ¿Cómo comprar / pagar?",
+    "4️⃣ ¿Tenés un comercio? Sumalo gratis",
+    "5️⃣ Hablar con una persona",
+  ].join("\n");
+}
+
+/** Lista corta de tiendas (máx 5): nombre + rubro + estado + link al micrositio.
+ *  Devuelve también el índice de cada tienda para setear state.portalVendorList. */
+function portalStoreListLines(stores) {
+  const lines = [];
+  stores.forEach((s, i) => {
+    const dot = s.store_open === true ? "🟢 Abierto" : s.store_open === false ? "🔴 Cerrado" : "⚪ Sin horario";
+    const rubro = s.vertical ? ` — ${portalVerticalLabel(s.vertical)}` : "";
+    lines.push(`${i + 1}) *${s.store_name}*${rubro} · ${dot}`);
+    if (s.slug) lines.push(`   🔗 ${config.publicUrl}/tienda/${s.slug}`);
+    if (s.store_open === false && s.next_open_text) lines.push(`   ⏰ ${s.next_open_text}`);
+  });
+  return lines.join("\n");
+}
+
+/** Texto de "¿cómo comprar / pagar?" (genérico + link al micrositio). */
+function portalHowToBuyText() {
+  return [
+    "🛒 *Cómo comprar*",
+    "1. Elegís la tienda y armás el pedido por acá (o en su micrositio).",
+    "2. Te decimos si lo retirás por el local o te lo enviamos a domicilio.",
+    "3. Confirmás con tu nombre y listo: te avisamos cuando esté.",
+    "",
+    "💳 *Cómo se paga* — cada comercio define lo suyo:",
+    "• Efectivo: al retirar o al recibir.",
+    "• Transferencia: coordinás por WhatsApp con el comercio.",
+    "• Mercado Pago: solo si el comercio lo tiene conectado.",
+    "",
+    "Cuando elijas una tienda te decimos qué opciones tiene. 🙌",
+  ].join("\n");
+}
+
+/** Texto B2B: "¿Tenés un comercio? Sumalo gratis". */
+function portalB2BText() {
+  return [
+    "¡Genial! Portal 659 es para vos. 🏪",
+    "",
+    "Tenés tu propia tienda online con QR, contacto directo por WhatsApp y *0% comisión* por venta.",
+    "",
+    "Planes:",
+    "• Gratuito: ficha + vidriera de hasta 10 productos, contacto por WhatsApp.",
+    "• Básico: $10.000/mes — pedidos online ilimitados.",
+    "• Gestión integral: $20.000/mes — Mostrador, Caja, Clientes, impresión y analítica.",
+    "",
+    "Mirá el detalle y date de alta: " + config.publicUrl + "/comercios",
+    "Si preferís que te ayude una persona, escribí *5*. 🙌",
+  ].join("\n");
+}
+
 async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
   const text = String(body || "").trim();
   let state = (await getState(vendor.id, waId)) || { ...DEFAULT_STATE };
@@ -1566,6 +1646,125 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
     if (RE_HUMAN.test(text) || RE_AYUDA.test(text)) {
       try { (await import("./telemetry.mjs")).trackEvent(vendor.id, "handoff", waId, { reason: "ayuda" }); } catch {}
       return await handoffHuman(vendor, waId, text, state);
+    }
+
+    // ———————————————————————————————————————————————————————————————————————
+    // Capa 1 — MENÚ INFORMATIVO (solo si todavía no eligió tienda).
+    // Regla de oro: sin state.currentVendorId el bot NO arma pedidos. Primero
+    // informa: menú corto, tiendas con link al micrositio, cómo comprar/pagar
+    // o el circuito B2B. Los números 1-5 son opciones del menú SOLO cuando no
+    // hay una lista de tiendas vigente (si la hay, el número elige tienda).
+    // ———————————————————————————————————————————————————————————————————————
+    if (!state.currentVendorId) {
+      const _t = text.trim();
+      const _low = _t.toLowerCase();
+      const GREETING_RE = /^(hola|holaa|buenas|buenos dias|buenos días|buenas tardes|buenas noches|buen dia|buen día|hey|hola!|qué tal|que tal|menu|menú|inicio|empezar|start)$/i;
+      const ALL_STORES_RE = /^(comercios|tiendas|negocios|locales|todas las tiendas|ver tiendas|ver todas las tiendas|lista de tiendas|listado|listado de tiendas)$/i;
+      const OPEN_STORES_RE = /(abiert|qué hay|que hay|qué onda|que onda)/i;
+      const B2B_RE = /(ten(?:go|és|es)\s+(?:un|mi)\s+(?:comercio|negocio|local|emprendimiento|pyme)|quiero sumar|sumar\s+(?:mi|un)\s+(?:comercio|negocio|local|tienda)|(?:doy|dar(?:me|se|lo)?)\s+de\s+alta|soy comerciante|soy emprendedor|emprendimiento propio|quiero publicar|publicar\s+mi\s+(?:comercio|negocio|producto)|vender en portal)/i;
+      const hasStoreList = Array.isArray(state.portalVendorList) && state.portalVendorList.length > 0;
+      const numOpt = _t.match(/^([1-5])$/);
+      const menuNum = numOpt && !hasStoreList ? numOpt[1] : null;
+
+      const greetIfNew = () => {
+        if (!state.welcomed) {
+          state.welcomed = true;
+          replies.push("¡Hola! 👋 Soy el asistente de *Portal 659*, el centro comercial de tu barrio.");
+        }
+      };
+      let _portalStores = null;
+      const portalStores = async () => {
+        if (!_portalStores) {
+          const pd = await fetchPortalMenu("");
+          _portalStores = pd.vendors || pd.stores || [];
+        }
+        return _portalStores;
+      };
+
+      // 4) B2B: "tengo un comercio", "quiero sumar mi negocio", "cómo me doy de alta".
+      if (B2B_RE.test(_low) && !menuNum) {
+        try { (await import("./telemetry.mjs")).trackEvent(vendor.id, "b2b_query", waId, {}); } catch {}
+        greetIfNew();
+        replies.push(portalB2BText());
+        return await persist(state, vendor.id, waId, replies);
+      }
+
+      // 5) Hablar con una persona.
+      if (menuNum === "5") {
+        try { (await import("./telemetry.mjs")).trackEvent(vendor.id, "handoff", waId, { reason: "menu_5" }); } catch {}
+        return await handoffHuman(vendor, waId, text, state);
+      }
+
+      // 3) Cómo comprar / pagar.
+      if (menuNum === "3") {
+        greetIfNew();
+        replies.push(portalHowToBuyText());
+        return await persist(state, vendor.id, waId, replies);
+      }
+
+      // 4) Opción 4 del menú (B2B) por número.
+      if (menuNum === "4") {
+        try { (await import("./telemetry.mjs")).trackEvent(vendor.id, "b2b_query", waId, { via: "menu" }); } catch {}
+        greetIfNew();
+        replies.push(portalB2BText());
+        return await persist(state, vendor.id, waId, replies);
+      }
+
+      // 1) Tiendas abiertas (máx 5, con link al micrositio).
+      if (menuNum === "1" || (OPEN_STORES_RE.test(_low) && !hasStoreList && !ALL_STORES_RE.test(_low))) {
+        try { (await import("./telemetry.mjs")).trackEvent(vendor.id, "open_stores", waId, {}); } catch {}
+        const stores = (await portalStores()).filter((s) => s.store_open === true);
+        if (stores.length === 0) {
+          greetIfNew();
+          replies.push("Ahora no hay tiendas abiertas en la zona. ⏰");
+          replies.push("Escribí *2* para ver todas las tiendas y sus horarios.");
+          return await persist(state, vendor.id, waId, replies);
+        }
+        greetIfNew();
+        replies.push("Estas son las tiendas abiertas ahora:");
+        replies.push(portalStoreListLines(stores.slice(0, 5)));
+        state.portalVendorList = stores.slice(0, 5).map((s) => ({ id: s.id, store_name: s.store_name, slug: s.slug || null }));
+        if (stores.length > 5) replies.push(`(y ${stores.length - 5} más — escribí el nombre de la tienda para verla)`);
+        replies.push("¿Querés pedir de alguna? Respondé el número o el nombre. 🙌");
+        return await persist(state, vendor.id, waId, replies);
+      }
+
+      // 2) Todas las tiendas, agrupadas por rubro.
+      if (menuNum === "2" || ALL_STORES_RE.test(_low) || GREETING_RE.test(_low)) {
+        try { (await import("./telemetry.mjs")).trackEvent(vendor.id, "all_stores", waId, {}); } catch {}
+        const stores = await portalStores();
+        if (stores.length === 0) {
+          greetIfNew();
+          replies.push("Todavía no hay tiendas cargadas en la zona. Escribí *ayuda* si necesitás ayuda. 🙌");
+          return await persist(state, vendor.id, waId, replies);
+        }
+        greetIfNew();
+        if (menuNum === "2" || ALL_STORES_RE.test(_low)) {
+          const grouped = new Map();
+          for (const s of stores) {
+            const k = portalVerticalLabel(s.vertical);
+            if (!grouped.has(k)) grouped.set(k, []);
+            grouped.get(k).push(s);
+          }
+          const lines = [];
+          for (const [label, list] of grouped) {
+            lines.push(`*${label}*:`);
+            for (const s of list.slice(0, 6)) {
+              const dot = s.store_open === true ? "🟢" : s.store_open === false ? "🔴" : "⚪";
+              lines.push(`  ${dot} ${s.store_name}${s.neighborhood ? ` — ${s.neighborhood}` : ""}${s.store_open === false && s.next_open_text ? ` (abre ${s.next_open_text})` : ""}`);
+            }
+            if (list.length > 6) lines.push(`  (y ${list.length - 6} más)`);
+          }
+          replies.push("Tiendas de tu zona:");
+          replies.push(lines.join("\n"));
+          state.portalVendorList = stores.slice(0, 8).map((s) => ({ id: s.id, store_name: s.store_name, slug: s.slug || null }));
+          replies.push("Respondé el número o el nombre de la tienda para ver su menú.");
+        } else {
+          replies.push(portalMainMenuText());
+          replies.push("Respondé el número de una opción, o escribime el nombre de un producto para buscar. 🛒");
+        }
+        return await persist(state, vendor.id, waId, replies);
+      }
     }
 
     // — Consulta de estado del pedido ("¿cómo va mi pedido?", "¿dónde está?",
@@ -2160,8 +2359,17 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
         state.step = "idle";
         const products = await getMenu(chosen.id);
         replies.push(`Perfecto, estás pidiendo de *${chosen.store_name}*. 📋 Menú:`);
-        replies.push(products.slice(0, 20).map((p, i) => `${i + 1}) ${p.name} — $${p.price}`).join("\n") || "Sin productos disponibles.");
-        const link = state.currentVendorSlug ? `\nMirá el menú con fotos: ${config.publicUrl}/tienda/${state.currentVendorSlug}` : "";
+        const _link1 = state.currentVendorSlug ? `\nMirá el menú con fotos: ${config.publicUrl}/tienda/${state.currentVendorSlug}` : "";
+        if (products.length === 0) {
+          // Sin catálogo (servicios, turnera): el micrositio es el que atiende,
+          // no tiene sentido pedirle "mandame tu pedido" por acá.
+          replies.push("Esta tienda no tiene productos para pedir por WhatsApp (atiende por turnos o presupuestos).");
+          replies.push(`Mirá su micrositio: ${config.publicUrl}/tienda/${state.currentVendorSlug || ""}`.trim());
+          replies.push("¿Querés pedir de otra tienda? Escribí *comercios* para ver la lista.");
+          return await persist(state, vendor.id, waId, replies);
+        }
+        replies.push(products.slice(0, 20).map((p, i) => `${i + 1}) ${p.name} — $${p.price}`).join("\n"));
+        const link = _link1;
         replies.push(`Mandame tu pedido (ej: "2 empanadas de carne y una coca").${link}`);
         // Enviar collage de imágenes del menú (best-effort).
         const _client = getClientByVendor(vendor.id);
@@ -2235,8 +2443,17 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
         state.step = "idle";
         const products = await getMenu(nameHit.id);
         replies.push(`Perfecto, estás pidiendo de *${nameHit.store_name}*. 📋 Menú:`);
-        replies.push(products.slice(0, 20).map((p, i) => `${i + 1}) ${p.name} — $${p.price}`).join("\n") || "Sin productos disponibles.");
-        const link = state.currentVendorSlug ? `\nMirá el menú con fotos: ${config.publicUrl}/tienda/${state.currentVendorSlug}` : "";
+        const _link2 = state.currentVendorSlug ? `\nMirá el menú con fotos: ${config.publicUrl}/tienda/${state.currentVendorSlug}` : "";
+        if (products.length === 0) {
+          // Sin catálogo (servicios, turnera): el micrositio es el que atiende,
+          // no tiene sentido pedirle "mandame tu pedido" por acá.
+          replies.push("Esta tienda no tiene productos para pedir por WhatsApp (atiende por turnos o presupuestos).");
+          replies.push(`Mirá su micrositio: ${config.publicUrl}/tienda/${state.currentVendorSlug || ""}`.trim());
+          replies.push("¿Querés pedir de otra tienda? Escribí *comercios* para ver la lista.");
+          return await persist(state, vendor.id, waId, replies);
+        }
+        replies.push(products.slice(0, 20).map((p, i) => `${i + 1}) ${p.name} — $${p.price}`).join("\n"));
+        const link = _link2;
         replies.push(`Mandame tu pedido (ej: "2 empanadas de carne y una coca").${link}`);
         // Enviar collage de imágenes del menú (best-effort).
         const _client = getClientByVendor(vendor.id);
@@ -2336,30 +2553,20 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
       return await persist(state, vendor.id, waId, replies);
     }
 
-    // 3) Sin coincidencia: mostrar comercios disponibles (solo la primera vez
-    //    o si no habíamos mostrado la lista; si ya la vio, no repetir el listado).
+    // 3) Sin coincidencia: en lugar de tirar un listado largo de tiendas, volver
+    //    al menú corto informativo (capa 1). El listado completo se pide con
+    //    *comercios* / opción 2 y se muestra agrupado por rubro.
     if (vendorsWithProducts.length > 0) {
       const alreadyListed = Array.isArray(state.portalVendorList) && state.portalVendorList.length > 0;
-      if (!alreadyListed) {
-        // Lista acotada (Fase 3): máximo 8 comercios; el resto se alcanza por
-        // nombre o buscando un producto.
-        const CAP = 8;
-        const shown = vendorsWithProducts.slice(0, CAP);
-        state.portalVendorList = shown.map((v) => ({ id: v.id, store_name: v.store_name, slug: v.slug || null }));
-        const lines = shown.map((v, i) => `${i + 1}) *${v.store_name}* (${(v.products || []).length} productos)`);
-        if (!state.welcomed) {
-          replies.push("¡Hola! 👋 Soy el asistente de *Portal 659*. Estos son los comercios de tu zona:");
-          state.welcomed = true;
-        } else {
-          replies.push("Comercios de tu zona:");
-        }
-        replies.push(lines.join("\n"));
-        if (vendorsWithProducts.length > CAP) {
-          replies.push(`(y ${vendorsWithProducts.length - CAP} más — escribí el nombre del comercio para verlo)`);
-        }
-        replies.push("Mandame el nombre de un producto para buscar, o el nombre o número del comercio para ver su menú.");
+      if (!state.welcomed) {
+        state.welcomed = true;
+        replies.push(`¡Hola${state.customerName ? ` ${state.customerName}` : ""}! 👋 Soy el asistente de *Portal 659*, el centro comercial de tu barrio.`);
+      }
+      if (alreadyListed) {
+        replies.push("No encontré ese producto. Probá con otro nombre, o escribí *comercios* para ver todas las tiendas.");
       } else {
-        replies.push("No encontré ese producto. Mandame otro nombre, o el nombre o número del comercio de la lista anterior.");
+        replies.push(`No encontré "${text.trim()}" en las tiendas de la zona.`);
+        replies.push(portalMainMenuText());
       }
       return await persist(state, vendor.id, waId, replies);
     }

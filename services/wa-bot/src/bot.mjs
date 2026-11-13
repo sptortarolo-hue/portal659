@@ -10,6 +10,7 @@ classifyIntent, llmStats } from "./nlu.mjs";
 import { saveCorrection } from "./learning.mjs";
 import { trackEvent } from "./telemetry.mjs";
 import { getClientByVendor, sendText, sendTyping, sendPaused, sendImage, sendDocument } from "./relay.mjs";
+import { getServices, buildGreeting, isServiceVertical } from "./services.mjs";
 import { feedPush } from "./metrics.mjs";
 
 const DEFAULT_STATE = {
@@ -240,6 +241,14 @@ if (state.pausedUntil && state.pausedUntil > Date.now()) {
     // Historial para el contexto del LLM (cap 8 mensajes).
     state.history.push({ role: "user", text: text.slice(0, 200) });
     if (state.history.length > 16) state.history = state.history.slice(-16);
+
+    // Modo concierge de SERVICIOS (estética/peluquería, servicios, taller, salud):
+    // saludo una vez con la lista de servicios + link de reserva, y a partir
+    // del segundo mensaje handoff a una persona. Sin carrito ni pedidos.
+    if (isServiceVertical(vendor?.vertical)) {
+      await handleServiceConcierge({ vendor, text, state, replies, waId });
+      return await persist(state, vendor.id, waId, replies);
+    }
 
     // Modo conserje (BOT_TAKE_ORDERS no está en "1"): saludar, compartir el
     // menú online, preguntar si hubo un problema para pedir (handoff a la
@@ -1602,6 +1611,61 @@ async function conciergeGreeting(vendor, waId) {
   const menuLine = openLine.startsWith("Estamos cerrados") ? "De todas maneras podés ver todos nuestros productos en:" : "Pedí fácil desde el menú:";
   const gi = hashStr(String(waId || vendor.id)) % CONCIERGE_GREETINGS.length;
   return CONCIERGE_GREETINGS[gi](vendor.store_name, openLine, menuLine, shopUrl(vendor));
+}
+
+async function handleServiceConcierge({ vendor, text, state, replies, waId }) {
+  const low = text.trim().toLowerCase();
+
+  // 0) Mensajes predefinidos del checkout → silencio.
+  if (RE_APP_ORDER.test(low) && /total\s*:/i.test(low)) return;
+  if (RE_APP_PAID.test(low)) return;
+  if (RE_APP_FAIL.test(low)) {
+    const r = await handoffHuman(vendor, waId, text, state);
+    replies.push(...(r.replies || []));
+    return;
+  }
+  if (RE_APP_ORIGIN.test(low)) return;
+
+  // 1) Comprobante pendiente → silencio de ese flujo (no aplica a servicios,
+  //    pero por seguridad se respeta).
+  if (state.step === "awaiting_receipt") {
+    replies.push("Estoy esperando tu comprobante (foto o PDF). Si cambiás de idea, escribime *cancelar*.");
+    return;
+  }
+
+  // 2) Ayuda / persona / problema / urgente → handoff.
+  if (RE_AYUDA.test(low) || RE_PROBLEMA.test(low) || RE_URGENTE.test(low)) {
+    const r = await handoffHuman(vendor, waId, text, state);
+    replies.push(...(r.replies || []));
+    state.step = "idle";
+    return;
+  }
+
+  // 3) Pausa por handoff reciente → silencio total.
+  if (state.pausedUntil && state.pausedUntil > Date.now()) {
+    return;
+  }
+
+  // 4) Saludo inicial UNA vez por conversación.
+  if (!state.welcomed) {
+    state.welcomed = true;
+    state.step = "idle";
+    try {
+      const { vendor: v, services } = await getServices(vendor.id);
+      replies.push(buildGreeting(v || vendor, services));
+    } catch (e) {
+      // Fallback: saludo mínimo con link al micrositio.
+      const url = vendor?.slug ? `${config.publicUrl}/tienda/${vendor.slug}#reservar-turno` : "";
+      replies.push(`¡Hola! 👋 Soy el asistente de "${vendor.store_name}".\n\n${url ? `Reservá tu turno online:\n${url}` : ""}`);
+    }
+    return;
+  }
+
+  // 5) Cualquier mensaje posterior → handoff.
+  const r = await handoffHuman(vendor, waId, text, state);
+  replies.push(...(r.replies || []));
+  state.step = "idle";
+  return;
 }
 
 async function handleConcierge({ vendor, text, state, replies, waId }) {

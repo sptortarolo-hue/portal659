@@ -47,6 +47,7 @@ export function normalizeDraftItem(item) {
   })) : null;
 
   return {
+    name: item.name || null,
     offerId: item.offerId || item.id || null,
     variantId: item.variantId || null,
     qty,
@@ -81,7 +82,7 @@ export function applyDraftToCart(stateItems, draftItem) {
     existing.qty = Math.max(1, Number(existing.qty || 0) + it.qty);
     return items;
   }
-  items.push({ offerId: it.offerId, variantId: it.variantId, qty: it.qty, unit: it.unit, weightKg: it.weightKg, modifiers: it.modifiers, comboMembers: it.comboMembers, note: it.note });
+  items.push({ name: it.name, offerId: it.offerId, variantId: it.variantId, qty: it.qty, unit: it.unit, weightKg: it.weightKg, modifiers: it.modifiers, comboMembers: it.comboMembers, note: it.note });
   return items;
 }
 

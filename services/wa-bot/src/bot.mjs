@@ -352,20 +352,11 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
   // bot se trababa para siempre (la causa del "no llego a hacer un pedido").
   const t = text.trim();
   // — "¿Lo de siempre?" (re-pedido con la memoria del cliente) —
-  if (state._pendingReorder && !state._awaitingReorder && RE_GREETING.test(text) && text.length < 40) {
-    const lo = state._pendingReorder;
-    const itemsTxt = (lo.items || []).map((i) => `• ${i.name} ×${i.qty}`).join("\n");
-    state._awaitingReorder = true;
-    state.welcomed = true;
-    replies.push(`Tu último pedido de *${lo.storeName || "el comercio"}*:`);
-    replies.push(itemsTxt || "(sin ítems)");
-    replies.push(`Total: $${Number(lo.total || 0).toLocaleString("es-AR")}`);
-    replies.push("¿Lo pedís de nuevo? Decime *sí* o *no*.");
-    return;
-  }
+  // Se responde a "sí"/"no" aunque no sea un saludo.
   if (state._awaitingReorder) {
-    if (/^(s[i\u00ed]|si|yes|ok|dale|confirmo|claro)\b/i.test(t)) {
+    if (/^(s[i\u00ed]|si|yes|ok|dale|confirmo|claro)$/i.test(t)) {
       const lo = state._pendingReorder;
+      const products = await getMenu(vendor.id);
       mergeItems(state, (lo.items || []).map((p) => ({
         offerId: p.offerId || p.id,
         variantId: p.variantId,
@@ -382,8 +373,6 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
       state._pendingReorder = null;
       state._awaitingReorder = false;
       state.welcomed = true;
-      // Si ya hay todo completo, ir directo a confirmar; si no, preguntar lo que falta.
-      const products = await getMenu(vendor.id);
       if (missingFields(state, vendor).length === 0) {
         state.step = "confirm";
         replies.push(config.waTone === "humano" ? summaryTextTone(state, vendor) : summaryText(state, vendor));
@@ -395,13 +384,24 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
       replies.push((config.waTone === "humano" ? pendingQuestionsTone(state) : pendingQuestions(state)));
       return;
     }
-    if (/^(no|nop|cancelar)\b/i.test(t)) {
+    if (/^(no|nop|cancelar)$/i.test(t)) {
       state._pendingReorder = null;
       state._awaitingReorder = false;
       replies.push("Ok, sin problema. Mandame lo que quieras pedir.");
       return;
     }
     // cualquier otra cosa: repetir la oferta
+    replies.push("¿Lo pedís de nuevo? Decime *sí* o *no*.");
+    return;
+  }
+  if (state._pendingReorder && !state._awaitingReorder && RE_GREETING.test(text) && text.length < 40) {
+    const lo = state._pendingReorder;
+    const itemsTxt = (lo.items || []).map((i) => `• ${i.name} ×${i.qty}`).join("\n");
+    state._awaitingReorder = true;
+    state.welcomed = true;
+    replies.push(`Tu último pedido de *${lo.storeName || "el comercio"}*:`);
+    replies.push(itemsTxt || "(sin ítems)");
+    replies.push(`Total: $${Number(lo.total || 0).toLocaleString("es-AR")}`);
     replies.push("¿Lo pedís de nuevo? Decime *sí* o *no*.");
     return;
   }
@@ -1464,7 +1464,7 @@ function mergeItems(state, newItems) {
       (i) => i.offerId === it.offerId && (i.variantId || null) === variantId && (i.modifiers || []).length === mods.length
     );
     if (existing) existing.qty = Math.max(1, Number(existing.qty || 0) + it.qty);
-    else state.items.push({ offerId: it.offerId, variantId: it.variantId, qty: it.qty, unit: it.unit, weightKg: it.weightKg, modifiers: it.modifiers, comboMembers: it.comboMembers, note: it.note });
+    else state.items.push({ name: it.name, offerId: it.offerId, variantId: it.variantId, qty: it.qty, unit: it.unit, weightKg: it.weightKg, modifiers: it.modifiers, comboMembers: it.comboMembers, note: it.note });
   }
   // Dedupe de defensa: jamás dos entradas del mismo producto+variante+mods.
   const seen = new Map();

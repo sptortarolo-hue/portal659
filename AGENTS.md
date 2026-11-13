@@ -191,6 +191,7 @@ Portal 659: "El centro comercial de tu barrio". Hub multicommerce hiperlocal (Si
 - Aplicar `supabase/self-host/migrate-mp-oauth.sql` (columnas `vendors.mp_*` para MP multi-market).
 - En MP Developers: crear app con OAuth, Redirect URL `https://www.portal659.com.ar/api/mp/oauth/callback`, agregar `MP_CLIENT_ID` + `MP_CLIENT_SECRET` + `MP_TOKEN_KEY` (generada) a env/VPS (ver `docs/mp-multimarket-plan.md`).
 - Aplicar `supabase/self-host/migrate-open-override.sql` (columna `vendors.open_override` — toggle Abierto/Cerrado del comercio).
+- Aplicar `supabase/self-host/migrate-carta-qr-target.sql` (columna `vendors.carta_qr_target` — destino del QR del cartel imprimible: 'carta' | 'tienda' | NULL automático). Sin esto el cartel y el modal "Compartí tu vidriera" funcionan igual, pero la elección del comercio no se guarda (el POST la ignora y queda en automático).
 - Aplicar `supabase/self-host/migrate-ticket-config.sql` (toggles de encabezado impreso: `vendors.print_logo/print_address/print_phone/print_social` — sin esto los tickets salen con todo activado por defecto igual, pero conviene correrla antes de tocar esos switches en el dashboard).
 - Aplicar `supabase/self-host/migrate-subscription-payments.sql` (campos de pago en `vendor_subscriptions`: `payment_method/amount/paid_at` — panel `/admin/suscripciones`).
 - Aplicar `supabase/self-host/migrate-order-track-token.sql` (columna `orders.track_token` — link de seguimiento público `/seguimiento/[token]` y cuenta comprador).
@@ -346,6 +347,18 @@ Portal 659: "El centro comercial de tu barrio". Hub multicommerce hiperlocal (Si
 - Comunidad/contenido: newsletter "Alerta Vecinal", panel admin CRUD de `info_items`.
 - **Planes para moda** (definir con el usuario): Habilitar `pos` (Mostrador) impresión y límites de productos; precios concordantes con gastronomía. Hoy moda tiene cart gratis vía `MODA_FEATURES` y el tab Mostrador muestra PlanLock. También: cancelación con motivo/`cancelled_by`, expiración de transferencias no confirmadas (estilo "Pago vencido" de Tiendanube).
 
+## Cartel imprimible con QR (`/vendor/carta-qr`)
+
+Generador de cartel para imprimir/pegar en mesa o vidriera, **con onda**: el comercio elige el **destino del QR** (carta de mesa `/carta/[slug]` vs micrositio `/tienda/[slug]`), la plantilla (**colorido** con gradiente + formas del color del rubro / **foto** con la foto de portada de fondo + overlay / **minimal** blanco y negro para b/n) y el tamaño (**A4**, **A5**, **sticker 10×15**, **hoja 2×2** = 4 stickers en una A4). El cartel lleva: logo, nombre, rubro + barrio, título/bajada según el rubro, QR grande, **3 pasos de cómo escanear**, badge (0% comisión, etc.) y pie con dirección · barrio · horarios · WhatsApp · Instagram.
+
+- **Motor** `src/lib/cartel.ts` (client-safe, sin imports): paleta espejada de `VERTICALS` (el check script falla si se desincroniza), copy matrix vertical × destino, tamaños mm ↔ px a 150 dpi, opciones del QR (`margin: 3`, `errorCorrectionLevel: "H"`, 1200px), resumen de horarios y formateo de teléfono.
+- **Render único** `src/components/vendor/cartel-poster.tsx` (`CartelPoster` + `CartelHoja`): el MISMO componente se usa en el preview del navegador y en el render server-side con satori → **lo que se descarga es idéntico a lo que se ve**. Por eso va con estilos inline y CSS compatible con satori: **sin Tailwind, sin emojis** (satori no trae fuente de emoji), sin `box-shadow`/`filter`/`transform`, sin `undefined`/`null` en los estilos (satori revienta con `.trim()`), y **cada `<div>` con más de un hijo de texto necesita `display: flex` o un solo string**.
+- **Página** `src/app/vendor/carta-qr/page.tsx`: selector de destino (persiste vía `POST /api/vendor/me` — **OJO: la ruta `me` NO tiene PATCH, solo GET/POST**), plantilla y tamaño, preview a escala, bloque de impresión 1:1 (`@page` + `print-color-adjust: exact`) y botones **PNG / PDF / Imprimir**.
+- **Descargas** `GET /api/vendor/cartel/[slug]?formato=png|pdf&plantilla=&size=&target=`: satori (PNG a 150 dpi) y PDF con `pdf-lib` al tamaño exacto en mm (listo para imprenta). Solo el dueño, un admin o la sesión de prueba del mismo comercio.
+- **Destino persistido** en `vendors.carta_qr_target` ('carta' | 'tienda', NULL = automático por vertical: servicio/estética/taller/salud → tienda, el resto → carta). El modal "Compartí tu vidriera" del dashboard usa el mismo destino (`cartelTarget()`), así que el QR del panel y el del cartel nunca apuntan a lugares distintos.
+- **Verificación**: `node scripts/check-cartel.ts` (paleta vs VERTICALS, copy completo, tamaños, destino automático, QR, horarios/teléfono).
+- **Migración**: `supabase/self-host/migrate-carta-qr-target.sql` (columna nullable + CHECK, idempotente).
+
 ## Referencias útiles
 - `docs/plan-multicommerce-portal659.md` — plan de producto multicommerce.
 - `docs/migracion-vexyhost.md` — runbook de migración de VPS + backup self-managed (R2).
@@ -358,3 +371,13 @@ Portal 659: "El centro comercial de tu barrio". Hub multicommerce hiperlocal (Si
 - `src/lib/db.ts` — acceso a datos (pool `pg`).
 - `src/lib/auth.ts` — JWT propio, `getAuthUser`.
 - `supabase/self-host/schema.sql` — esquema canónico de la DB.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+## This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

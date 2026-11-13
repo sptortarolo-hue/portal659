@@ -48,6 +48,7 @@ const ImageCropModal = dynamic(
   { ssr: false }
 );
 import { DEFAULT_ZONE } from "@/lib/config";
+import { cartelTarget } from "@/lib/cartel";
 import VendorSidebar from "@/components/vendor/vendor-sidebar";
 import { configSectionStatus as getConfigSectionStatus, sectionsForVertical, CONFIG_SECTION_GROUPS, configSectionLabel, configSectionIcon } from "@/components/dashboard/config-nav";
 import { StatusDot, configEnterState } from "@/components/dashboard/config-sections";
@@ -1176,26 +1177,23 @@ function VendorDashboardInner() {
     setShareOpen(true);
     try {
       // qrcode solo se carga al compartir (fuera del bundle inicial).
-      // Carta solo-QR: se comparte la carta (/carta). Si es pública, el
-      // micrositio directo a la carta (?menu=1) y marca la fuente ?from=qr.
-      // Servicios: sin carta/menú, se comparte la vidriera (/tienda).
+      // El destino lo elige el comercio en el generador del cartel: la carta
+      // de mesa (/carta) o su micrositio (/tienda). Servicios: siempre la
+      // vidriera (turnos/presupuestos).
       const { default: QRCode } = await import("qrcode");
-      const cartaQrOnly = (vendor as any).carta_visibility !== "public";
-      const url = vendor?.vertical === "servicio"
+      const toTienda = cartelTarget((vendor as any).vertical, (vendor as any).carta_qr_target) === "tienda";
+      const url = toTienda
         ? `${window.location.origin}/tienda/${vendor.slug}`
-        : cartaQrOnly
-          ? `${window.location.origin}/carta/${vendor.slug}`
-          : `${window.location.origin}/tienda/${vendor.slug}?menu=1&from=qr`;
-      setQrDataUrl(await QRCode.toDataURL(url, { width: 480, margin: 1 }));
+        : `${window.location.origin}/carta/${vendor.slug}`;
+      setQrDataUrl(await QRCode.toDataURL(url, { width: 480, margin: 2, errorCorrectionLevel: "H" }));
     } catch { /* noop */ }
-  }, [vendor?.slug, (vendor as any)?.carta_visibility]);
+  }, [vendor?.slug, (vendor as any)?.vertical, (vendor as any)?.carta_qr_target]);
 
   const copyLink = useCallback(async () => {
     if (!vendor?.slug) return;
     try {
-      const path = vendor?.vertical === "servicio"
-        ? `/tienda/${vendor.slug}`
-        : (vendor as any).carta_visibility !== "public" ? `/carta/${vendor.slug}` : `/tienda/${vendor.slug}`;
+      const toTienda = cartelTarget((vendor as any).vertical, (vendor as any).carta_qr_target) === "tienda";
+      const path = toTienda ? `/tienda/${vendor.slug}` : `/carta/${vendor.slug}`;
       await navigator.clipboard.writeText(`${window.location.origin}${path}`);
       setCopied(true);
     } catch { /* noop */ }
@@ -1246,6 +1244,10 @@ function VendorDashboardInner() {
   const isModa = vendor?.vertical === "moda";
   // Retail (moda y comercio): flow de pedido con aceptación explícita y sin cocina.
   const isRetail = isModa || isComercio;
+  // Destino del QR (carta de mesa vs micrositio): lo elige el comercio en el
+  // generador del cartel; por defecto los servicios van a la vidriera.
+  const shareToTienda = cartelTarget(vendor?.vertical, (vendor as any)?.carta_qr_target) === "tienda";
+  const sharePath = vendor?.slug ? (shareToTienda ? `/tienda/${vendor.slug}` : `/carta/${vendor.slug}`) : "";
   // Estética vende productos sin cocina: sus pedidos usan el flow retail
   // ("Empaquetando", etc.) aunque no sea vertical retail.
   const orderFlowRetail = isRetail || isHybrid;
@@ -2683,29 +2685,30 @@ function VendorDashboardInner() {
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setShareOpen(false)}>
           <div className="bg-card rounded-2xl p-6 max-w-sm w-full text-center" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-display text-xl font-semibold mb-1">Compartí tu vidriera</h3>
-            {vendor?.vertical === "servicio" ? (
-              <p className="text-sm text-muted-foreground mb-4">El QR lleva directo a tu vidriera (listo para imprimir y pegar).</p>
-            ) : (vendor as any).carta_visibility !== "public" ? (
-              <p className="text-sm text-muted-foreground mb-4">El QR lleva a tu {isRetail ? "catálogo" : "carta de mesa"} (solo lectura, sin carrito).</p>
+            {shareToTienda ? (
+              <p className="text-sm text-muted-foreground mb-4">
+                El QR lleva directo a tu tienda (listo para imprimir y pegar en la vidriera o el vidrio).
+              </p>
             ) : (
-              <p className="text-sm text-muted-foreground mb-4">{isRetail ? "El QR lleva directo a tu catálogo (listo para imprimir y pegar en la vidriera o el vidrio)." : "El QR lleva directo a tu carta (listo para imprimir y pegar en la mesa o el vidrio)."}</p>
+              <p className="text-sm text-muted-foreground mb-4">
+                El QR lleva a tu {isRetail ? "catálogo" : "carta de mesa"} (solo lectura, sin carrito:{" "}
+                {isRetail ? "te escriben por WhatsApp" : "el mesero toma el pedido"}).
+              </p>
             )}
             {qrDataUrl ? <img src={qrDataUrl} alt="QR" className="mx-auto w-48 h-48 mb-4" /> : <div className="mx-auto w-48 h-48 mb-4 bg-skeleton rounded-lg" />}
-            <p className="text-xs text-muted-foreground break-all mb-4">{window.location.origin}{vendor?.vertical === "servicio" ? `/tienda/${vendor.slug}` : (vendor as any).carta_visibility !== "public" ? `/carta/${vendor.slug}` : `/tienda/${vendor.slug}`}</p>
+            <p className="text-xs text-muted-foreground break-all mb-4">{window.location.origin}{sharePath}</p>
             <div className="space-y-2">
               <a
                 href={`https://wa.me/?text=${encodeURIComponent(
-                  vendor?.vertical === "servicio"
+                  shareToTienda
                     ? `Mirá a ${vendor.store_name} en Portal 659 🛍️\n${window.location.origin}/tienda/${vendor.slug}\n\nEscribiles directo por WhatsApp — 0% comisión`
-                    : (vendor as any).carta_visibility !== "public"
-                      ? `Mirá ${isRetail ? "el catálogo" : "la carta"} de ${vendor.store_name} en Portal 659 ${isRetail ? "🛍️" : "📋"}\n${window.location.origin}/carta/${vendor.slug}`
-                      : `Mirá el ${isRetail ? "catálogo" : "menú"} de ${vendor.store_name} en Portal 659 🛍️\n${window.location.origin}/tienda/${vendor.slug}?menu=1\n\nPedí directo por WhatsApp — 0% comisión`
+                    : `Mirá ${isRetail ? "el catálogo" : "la carta"} de ${vendor.store_name} en Portal 659 ${isRetail ? "🛍️" : "📋"}\n${window.location.origin}/carta/${vendor.slug}`
                 )}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block w-full rounded-xl bg-green-500 text-white text-sm font-medium py-2.5 hover:bg-green-600 transition-colors"
               >
-                📲 {vendor?.vertical === "servicio" ? "Compartir tienda" : (vendor as any).carta_visibility !== "public" ? (isRetail ? "Compartir catálogo" : "Compartir carta") : isRetail ? "Compartir tienda" : "Compartir menú"}
+                📲 {shareToTienda ? "Compartir tienda" : isRetail ? "Compartir catálogo" : "Compartir carta"}
               </a>
               <div className="grid grid-cols-2 gap-2">
                 {qrDataUrl && (
@@ -2717,16 +2720,14 @@ function VendorDashboardInner() {
                     ⬇️ QR (PNG)
                   </a>
                 )}
-                {vendor?.vertical !== "servicio" && (
-                  <a
-                    href="/vendor/carta-qr"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="rounded-xl border border-border bg-background text-sm font-medium py-2.5 hover:bg-muted transition-colors"
-                  >
-                    🖨️ Cartel para imprimir
-                  </a>
-                )}
+                <a
+                  href="/vendor/carta-qr"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-xl border border-border bg-background text-sm font-medium py-2.5 hover:bg-muted transition-colors"
+                >
+                  🖨️ Cartel para imprimir
+                </a>
               </div>
               <div className="flex gap-2">
                 <Button className="flex-1" onClick={copyLink}>{copied ? "¡Copiado!" : "Copiar link"}</Button>

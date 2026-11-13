@@ -582,6 +582,8 @@ export type Vendor = {
   storefront_layout?: string | null;
   /** Visibilidad de la carta de mesa (/carta/[slug]): "public" o "qr_only" (default). */
   carta_visibility?: string | null;
+  /** Destino del QR del cartel imprimible: "carta" (mesa) o "tienda" (micrositio). NULL = automático por vertical. */
+  carta_qr_target?: "carta" | "tienda" | null;
   plan_id: string | null;
   plan_status: PlanStatus;
   plan_expires_at: string | null;

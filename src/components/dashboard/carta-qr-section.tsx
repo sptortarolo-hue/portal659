@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
+import { cartelTarget, isCartelServiceVertical } from "@/lib/cartel";
 import type { Vendor } from "@/types/database";
 
 type Props = {
@@ -22,6 +23,9 @@ type Props = {
  */
 export function CartaQrSection({ vendor, saveVendor, setMsg, catalog = false }: Props) {
   const visibility = vendor?.carta_visibility === "public" ? "public" : "qr_only";
+  // Destino del QR del cartel: "carta" (mesa) o "tienda" (micrositio).
+  const cartelTo = cartelTarget(vendor?.vertical, vendor?.carta_qr_target);
+  const serviceVertical = isCartelServiceVertical(vendor?.vertical);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -128,6 +132,15 @@ export function CartaQrSection({ vendor, saveVendor, setMsg, catalog = false }: 
                 🖨️ Cartel para imprimir
               </Link>
             </div>
+            <p className="text-xs text-muted-foreground">
+              El cartel lleva a{" "}
+              <strong className="text-foreground">
+                {cartelTo === "tienda" ? "tu tienda (micrositio)" : "la carta de mesa"}
+              </strong>
+              {serviceVertical
+                ? " — en tu rubro el QR va a la vidriera para que el cliente pueda reservar o pedir un presupuesto."
+                : ". Lo podés cambiar en el generador del cartel."}
+            </p>
           </div>
         </div>
 

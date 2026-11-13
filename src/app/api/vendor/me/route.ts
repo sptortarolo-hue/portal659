@@ -486,6 +486,12 @@ export async function POST(request: Request) {
     const cv = (body as Record<string, unknown>).carta_visibility;
     payload.carta_visibility = cv === "public" ? "public" : "qr_only";
   }
+  // Destino del QR del cartel imprimible: "carta" (carta de mesa) o "tienda"
+  // (micrositio). null = automático por vertical (servicios → tienda).
+  if ((body as Record<string, unknown>).carta_qr_target !== undefined) {
+    const tq = (body as Record<string, unknown>).carta_qr_target;
+    payload.carta_qr_target = tq === "tienda" ? "tienda" : tq === "carta" ? "carta" : null;
+  }
   if (kitchen_strict_close !== undefined) payload.kitchen_strict_close = kitchen_strict_close !== false;
   // Vista del catálogo online (comercio): lista o vidriera (grilla visual).
   if (storefront_layout !== undefined) payload.storefront_layout = storefront_layout === "vidriera" ? "vidriera" : "lista";
@@ -602,6 +608,7 @@ export async function POST(request: Request) {
         "loyalty_every",
         "loyalty_pct",
         "carta_visibility",
+        "carta_qr_target",
         "transfer_expiry_hours",
         "booking_schedule_mode",
         "ficha_reminder_enabled",

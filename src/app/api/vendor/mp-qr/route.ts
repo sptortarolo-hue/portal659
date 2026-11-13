@@ -44,7 +44,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Monto inválido" }, { status: 400 });
   }
 
-  // Verificar que la migración esté aplicada.
+  // Columna booking_id (seña de turno): se auto-crea si falta, igual que
+  // mp_store_id/mp_external_pos_id más abajo — así el QR de seña funciona
+  // aunque la migración migrate-mp-qr-booking.sql no esté aplicada.
+  try {
+    await queryOne(`ALTER TABLE public.mp_qr_orders ADD COLUMN IF NOT EXISTS booking_id uuid`);
+  } catch { /* sin permiso o sin tabla: el resto es tolerante */ }
+  try {
+    const idx = await queryOne(
+      `SELECT 1 FROM pg_indexes WHERE indexname = 'idx_mp_qr_orders_booking'`
+    );
+    if (!idx) {
+      await queryOne(
+        `CREATE INDEX IF NOT EXISTS idx_mp_qr_orders_booking ON public.mp_qr_orders (vendor_id, booking_id) WHERE booking_id IS NOT NULL`
+      );
+    }
+  } catch { /* tolerante */ }
+
+  // La tabla base tiene que existir (migración vieja del QR de mostrador).
   let hasTable = false;
   try {
     const r = await queryOne<{ exists: boolean }>(
@@ -214,6 +231,9 @@ export async function POST(request: Request) {
   let qrData: string | null = null;
   let qrImage: string | null = null;
   let mpOrderId: string | null = null;
+  // Diagnóstico: con qué API salió el QR (orders = cobrable con polling;
+  // preference = el pago entra por webhook tipo payment).
+  let via: "orders" | "preference" = "orders";
 
   if (vendor.mp_user_id && externalPosId) {
     try {
@@ -242,6 +262,7 @@ export async function POST(request: Request) {
       if (orderData?.type_response?.qr_data) {
         qrData = orderData.type_response.qr_data;
         mpOrderId = orderData.id || null;
+        via = "orders";
       }
       console.log("[mp-qr] qrData extraido:", qrData ? String(qrData).slice(0, 80) : "VACIO (cae a fallback)");
     } catch (e) {
@@ -271,6 +292,7 @@ export async function POST(request: Request) {
       const prefData = await prefRes.json();
       if (prefData?.init_point) {
         qrData = prefData.init_point;
+        via = "preference";
       }
     } catch (e) {
       console.warn("[mp-qr] preference fallback failed:", (e as any)?.message);
@@ -321,5 +343,7 @@ export async function POST(request: Request) {
     externalReference,
     expiresAt,
     amount,
+    via,
+    mpOrderId,
   });
 }

@@ -122,10 +122,8 @@ export function BookingManualModal({
   // ---- Paso de cobro (tras crear el turno) ----
   const [cobro, setCobro] = useState<{ bookingId: string; amount: number } | null>(null);
   const [qrImage, setQrImage] = useState<string | null>(null);
-  const [qrExpires, setQrExpires] = useState<string | null>(null);
-  const [qrId, setQrId] = useState<string | null>(null);
   const [payLink, setPayLink] = useState<string | null>(null);
-  const [cobroBusy, setCobroBusy] = useState<"qr" | "link" | null>(null);
+  const [cobroBusy, setCobroBusy] = useState<"link" | null>(null);
   const [cobroMsg, setCobroMsg] = useState("");
   const [copied, setCopied] = useState(false);
   // Detección del pago: el webhook marca la seña; acá sólo la reflejamos.
@@ -181,36 +179,12 @@ export function BookingManualModal({
     }
   }
 
-  async function generateQr() {
-    if (!cobro) return;
-    setCobroBusy("qr");
-    setCobroMsg("");
-    try {
-      const res = await fetch("/api/vendor/mp-qr", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          amount: cobro.amount,
-          bookingId: cobro.bookingId,
-          concept: `Seña turno — ${customerName.trim() || "cliente"}`,
-        }),
-      });
-      const data = await res.json();
-      if (data.error || !data.qrImage) {
-        setCobroMsg(data.error || "No se pudo generar el QR");
-        return;
-      }
-      setQrImage(data.qrImage);
-      setQrExpires(data.expiresAt || null);
-      if (data.id) setQrId(String(data.id));
-    } catch {
-      setCobroMsg("Error de conexión");
-    } finally {
-      setCobroBusy(null);
-    }
-  }
-
-  async function generateLink() {
+  // Cobro de seña con el MISMO mecanismo que el micrositio: preferencia MP
+  // (external_ref portal659_sena_turno_*) → la confirma el webhook tipo
+  // "payment", que ya está probado. La imagen del QR se genera en el cliente
+  // a partir de ese link: el cliente la escanea con cualquier app, abre el
+  // checkout de MP y paga igual (no depende del evento "orders" ni store/POS).
+  async function generatePay() {
     if (!cobro) return;
     setCobroBusy("link");
     setCobroMsg("");
@@ -218,10 +192,17 @@ export function BookingManualModal({
       const res = await fetch(`/api/vendor/bookings/${cobro.bookingId}/deposit`, { method: "POST" });
       const data = await res.json();
       if (data.error || !data.initPoint) {
-        setCobroMsg(data.error || "No se pudo generar el link");
+        setCobroMsg(data.error || "No se pudo generar el cobro");
         return;
       }
       setPayLink(data.initPoint);
+      try {
+        const QRCode = (await import("qrcode")).default;
+        const url = await QRCode.toDataURL(data.initPoint, { width: 320, margin: 2 });
+        setQrImage(url);
+      } catch {
+        setQrImage(null);
+      }
     } catch {
       setCobroMsg("Error de conexión");
     } finally {
@@ -246,30 +227,13 @@ export function BookingManualModal({
 
   const money = (n: number) => `$${n.toLocaleString("es-AR")}`;
 
-  // Mientras se muestra el QR/link, refrescamos hasta que se acredite la seña
-  // (4s). El QR se confirma contra MP (GET mp-qr/{id}); el link contra el
-  // turno. Así no depende sólo del webhook, que exige eventos "orders" en MP.
+  // La seña la confirma el webhook (mismo mecanismo que el micrositio: la
+  // preferencia portal659_sena_turno_*). Acá sólo la reflejamos en pantalla.
   useEffect(() => {
     if (!cobro || paid) return;
     let alive = true;
     const check = async () => {
       try {
-        if (qrId) {
-          const res = await fetch(`/api/vendor/mp-qr/${qrId}`);
-          if (!res.ok) return;
-          const data = await res.json();
-          if (!alive) return;
-          if (data.status === "paid") {
-            setPaid(true);
-            return;
-          }
-          if (data.status === "expired") {
-            setQrExpires(null);
-            setCobroMsg("El QR venció. Generá uno nuevo.");
-            setQrId(null);
-            return;
-          }
-        }
         const res = await fetch(`/api/vendor/bookings?date=${encodeURIComponent(bookingDate)}`);
         if (!res.ok) return;
         const data = await res.json();
@@ -285,7 +249,7 @@ export function BookingManualModal({
       alive = false;
       clearInterval(t);
     };
-  }, [cobro, paid, qrId, bookingDate]);
+  }, [cobro, paid, bookingDate]);
 
   return (
     <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/50" onClick={onClose}>
@@ -328,17 +292,13 @@ export function BookingManualModal({
 
               {!paid && (
                 <>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button variant="outline" onClick={generateQr} disabled={cobroBusy !== null}>
-                      {cobroBusy === "qr" ? "Generando..." : "📲 Generar QR"}
-                    </Button>
-                    <Button variant="outline" onClick={generateLink} disabled={cobroBusy !== null}>
-                      {cobroBusy === "link" ? "Generando..." : "🔗 Generar link MP"}
-                    </Button>
-                  </div>
+                  <Button onClick={generatePay} disabled={cobroBusy !== null}>
+                    {cobroBusy === "link" ? "Generando..." : "💰 Generar cobro (QR + link)"}
+                  </Button>
                   <p className="text-[11px] text-muted-foreground">
-                    <strong>QR</strong>: el cliente lo escanea y paga en el local (vence en 10 minutos).{" "}
-                    <strong>Link</strong>: para turnos pedidos por teléfono, se manda por WhatsApp.
+                    <strong>QR</strong>: el cliente lo escanea con cualquier app, abre el checkout de MP y paga
+                    (vence en 10 minutos). <strong>Link</strong>: para turnos pedidos por teléfono, se manda por WhatsApp.
+                    La seña se acredita sola cuando se confirma el pago.
                   </p>
                 </>
               )}
@@ -347,8 +307,8 @@ export function BookingManualModal({
                 <div className="rounded-xl border border-border p-3 text-center space-y-1">
                   <img src={qrImage} alt="QR de cobro" className="mx-auto h-44 w-44" />
                   <p className="text-[11px] text-muted-foreground">
-                    {qrExpires ? `Vence: ${new Date(qrExpires).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}` : "Vence en 10 minutos"}
-                    {" · "}cuando se acredite, la seña queda marcada sola.
+                    Escanealo con cualquier app: abre el checkout de Mercado Pago. Cuando se confirme, la seña
+                    queda marcada sola.
                   </p>
                 </div>
               )}

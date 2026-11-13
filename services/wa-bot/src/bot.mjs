@@ -3,6 +3,8 @@
 import { config } from "./config.mjs";
 import { getState, setState, clearState, forEachConversation } from "./state.mjs";
 import { getMenu, getMenuSync, matchProduct, matchAllProducts, normalizeForMatch, menuSummary } from "./menu.mjs";
+import { normalizeDraftItem, isValidDraftItem } from "./draft.mjs";
+import { greetingTextTone, summaryTextTone, pendingQuestionsTone, lowConfidenceTone, reorderTone, confirmTone, noMatchTone, answerTone } from "./talk.mjs";
 import { parseWithLlm, parseByRules, normalizeEs, extractFromText, bareName, 
 classifyIntent, llmStats } from "./nlu.mjs";
 import { saveCorrection } from "./learning.mjs";
@@ -93,14 +95,18 @@ function resolveOfferIds(products, items) {
         (p.offerId && products.find((x) => String(x.id) === String(p.offerId))) ||
         matchProduct(products, p.name);
       const variant = prod ? matchVariant(prod, p) : null;
+      const normalized = normalizeDraftItem(p);
       return {
         offerId: prod?.id || p.offerId || p.id,
         variantId: variant?.id,
         name: p.name,
-        qty: Math.max(1, Number(p.qty) || 1),
+        qty: normalized.qty,
+        unit: normalized.unit,
+        weightKg: normalized.weightKg,
         modifiers: Array.isArray(p.modifiers) ? p.modifiers : [],
         said: p.said,
         variant: p.variant,
+        comboMembers: p.comboMembers || p.combo_members || null,
       };
     })
     .filter((p) => p.offerId);
@@ -187,6 +193,27 @@ export async function handleInbound({ vendor, waId, body, waPhone, timestamp }) 
     state.touchedAt = Date.now();
     // Timestamp del mensaje entrante (anti-mensajes-viejos tras reconexión del relay).
     if (timestamp) state.lastMsgTs = timestamp;
+
+    // — Memoria del cliente (WA_MEMORY=on): al iniciar una conversación nueva,
+    //  cargamos el último pedido no cancelado de los últimos 90 días y
+    //  precargamos nombre/dirección/método/pago para no volver a preguntarlos.
+    //  Si hay ítems previos, ofrecemos "¿lo de siempre?" (re-pedido).
+    if (config.waMemory === "on" && !state.welcomed && state.customerPhone && !String(state.customerPhone).startsWith("lid:")) {
+      try {
+        const mem = await fetchCustomer(vendor.id, state.customerPhone);
+        if (mem?.found) {
+          state.customerName = state.customerName || mem.customerName || null;
+          state.customerAddress = state.customerAddress || mem.customerAddress || null;
+          state.method = state.method || mem.method || null;
+          state.payment = state.payment || mem.paymentMethod || null;
+          state._lastOrder = mem;
+          // Si hay ítems previos y el cliente no eligió nada aún, ofrecer re-pedido.
+          if (mem.items && mem.items.length > 0) {
+            state._pendingReorder = mem;
+          }
+        }
+      } catch { /* best-effort: sin memoria, se pregunta todo de nuevo */ }
+    }
 
     // Cancelación global (siempre disponible, incluso durante la pausa de
     // handoff — antes el check de pausa la bloqueaba y el bot callaba hasta
@@ -285,11 +312,13 @@ function matchesFromQuestion(text, products) {
 }
 
 function answerText(products) {
+  if (config.waTone === "humano") return answerTone(products);
   const lines = products.slice(0, 8).map((p) => `• ${p.name} — $${Number(p.price).toLocaleString("es-AR")}`);
   return `Sí, tenemos:\n${lines.join("\n")}\n\n¿Querés pedir alguna? Decime cuál y cuántas. 🥟`;
 }
 
 function noMatchText(products, vendor) {
+  if (config.waTone === "humano") return noMatchTone(products);
   const lines = products.slice(0, 8).map((p) => `• ${p.name} — $${Number(p.price).toLocaleString("es-AR")}`);
   return `De eso no tengo por ahora. Esto es lo que hay:\n${lines.join("\n")}\n\n¿Algo de acá? 🥟`;
 }
@@ -322,6 +351,61 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
   // "Uy, hubo un error" EN LOOP: el cliente contestaba el "¿sí o no?" y el
   // bot se trababa para siempre (la causa del "no llego a hacer un pedido").
   const t = text.trim();
+  // — "¿Lo de siempre?" (re-pedido con la memoria del cliente) —
+  // Se responde a "sí"/"no" aunque no sea un saludo.
+  if (state._awaitingReorder) {
+    if (/^(s[i\u00ed]|si|yes|ok|dale|confirmo|claro)$/i.test(t)) {
+      const lo = state._pendingReorder;
+      const products = await getMenu(vendor.id);
+      mergeItems(state, (lo.items || []).map((p) => ({
+        offerId: p.offerId || p.id,
+        variantId: p.variantId,
+        name: p.name,
+        qty: p.qty,
+        unit: p.unit,
+        weightKg: p.weightKg,
+        modifiers: p.modifiers || [],
+      })));
+      state.customerName = state.customerName || lo.customerName || null;
+      state.customerAddress = state.customerAddress || lo.customerAddress || null;
+      state.method = state.method || lo.method || null;
+      state.payment = state.payment || lo.paymentMethod || null;
+      state._pendingReorder = null;
+      state._awaitingReorder = false;
+      state.welcomed = true;
+      if (missingFields(state, vendor).length === 0) {
+        state.step = "confirm";
+        replies.push(config.waTone === "humano" ? summaryTextTone(state, vendor) : summaryText(state, vendor));
+        return;
+      }
+      state.step = "flow";
+      state.pendingFields = missingFields(state, vendor);
+      replies.push("Te cargué tu último pedido. ");
+      replies.push((config.waTone === "humano" ? pendingQuestionsTone(state) : pendingQuestions(state)));
+      return;
+    }
+    if (/^(no|nop|cancelar)$/i.test(t)) {
+      state._pendingReorder = null;
+      state._awaitingReorder = false;
+      replies.push("Ok, sin problema. Mandame lo que quieras pedir.");
+      return;
+    }
+    // cualquier otra cosa: repetir la oferta
+    replies.push("¿Lo pedís de nuevo? Decime *sí* o *no*.");
+    return;
+  }
+  if (state._pendingReorder && !state._awaitingReorder && RE_GREETING.test(text) && text.length < 40) {
+    const lo = state._pendingReorder;
+    const itemsTxt = (lo.items || []).map((i) => `• ${i.name} ×${i.qty}`).join("\n");
+    state._awaitingReorder = true;
+    state.welcomed = true;
+    replies.push(`Tu último pedido de *${lo.storeName || "el comercio"}*:`);
+    replies.push(itemsTxt || "(sin ítems)");
+    replies.push(`Total: $${Number(lo.total || 0).toLocaleString("es-AR")}`);
+    replies.push("¿Lo pedís de nuevo? Decime *sí* o *no*.");
+    return;
+  }
+
   // Saludo solo la PRIMERA vez (welcomed flag). Después se contesta con las
   // preguntas pendientes, nunca el mismo texto otra vez.
   if (!state.welcomed && RE_GREETING.test(text) && text.length < 40) {
@@ -388,13 +472,39 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
     state.pendingConfirm = { items: _parsed.items, parsed: _parsed };
     state.welcomed = true;
     const resumen = _parsed.items.map((p) => `${p.qty || 1}× ${p.name}`).join(", ");
-    replies.push(`No estoy seguro de haber entendido bien: ¿es ${resumen}? (respondé *sí* o *no*)`);
+    replies.push(config.waTone === "humano" ? lowConfidenceTone(_parsed.items) : `No estoy seguro de haber entendido bien: ¿es ${resumen}? (respondé *sí* o *no*)`);
     return await persist(state, vendor.id, waId, replies);
   }
   let parsed = enrichParsed(products, _parsed);
 
   if (parsed?.items?.length) {
     state.welcomed = true;
+    // Operaciones del LLM (op:"add" por defecto si no viene).
+    // setQty: el cliente reemplazó todo el carrito ("solo X", "mejor X", "nada más").
+    if (parsed.op === "setQty") {
+      applyParsed(state, parsed, waId);
+      state.handoffCount = 0;
+      if (maybeAskRequiredMods(state, products, replies)) return;
+      advanceAndAsk(state, vendor, replies);
+      return;
+    }
+    // remove: quitar ítems por nombre ("sacá la coca", "quita las empanadas").
+    if (parsed.op === "remove") {
+      for (const p of parsed.items) {
+        const idx = findCartItemIndex(state.items, p.said || p.name || "");
+        if (idx !== -1) state.items.splice(idx, 1);
+      }
+      applyContactFields(state, parsed);
+      state.handoffCount = 0;
+      if (state.items.length === 0) {
+        replies.push("Pedido vacío. Mandame lo que quieras, o *cancelar* para empezar de nuevo.");
+        state.step = "idle";
+        return await persist(state, vendor.id, waId, replies);
+      }
+      replies.push(summaryText(state, vendor));
+      replies.push("¿Confirmás? 1️⃣ Sí  2️⃣ No  3️⃣ Modificar");
+      return await persist(state, vendor.id, waId, replies);
+    }
     // Desambiguación: mención genérica → preguntar cuál/cuántas antes de agregar.
     // Con 1 solo candidato → attach inmediato. Los campos se aplican igual.
     const isAddition0 = /\b(agrega|agregá|agregar|también|tambien|sumá|suma|sumar|más|mas)(?=[\s.,!¡]|$)/i.test(text);
@@ -569,6 +679,24 @@ async function handleStep({ vendor, text, state, replies, waId }) {
         replies.push("Faltan datos antes de confirmar:\n\n" + pendingQuestions(state));
         return await persist(state, vendor.id, waId, replies);
       }
+      // Pre-flight de precio (mismo motor del micrositio): total exacto y
+      // errores de negocio (pack, peso mínimo/paso, modificador inválido) ANTES
+      // de crear el pedido. Solo cuando config.waQuoteMode !== "off".
+      if (config.waQuoteMode !== "off") {
+        const quote = await fetchQuote(vendor.id, state.items, state.method, state.payment);
+        if (quote) {
+          if (config.waQuoteMode === "shadow") {
+            const est = orderTotalEstimate(state, vendor);
+            const diff = Math.round(Math.abs((quote.total || 0) - (est.total || 0)) * 100) / 100;
+            if (diff > 0) console.log(`[bot][quote shadow] vendor=${vendor.id} diff=$${diff} quote=$${quote.total} est=$${est.total}`);
+          }
+          if (config.waQuoteMode === "on" && quote.error) {
+            replies.push(quote.error);
+            replies.push("¿Querés cambiar algo del pedido o lo armamos de nuevo?");
+            return await persist(state, vendor.id, waId, replies);
+          }
+        }
+      }
       let order;
       try {
         order = await createOrder(vendor.id, state);
@@ -622,14 +750,22 @@ async function handleStep({ vendor, text, state, replies, waId }) {
       if (state.payment === "transferencia") {
         state.step = "awaiting_receipt";
         state.orderId = order.orderId || order.id;
-        replies.push("✅ Pedido confirmado. Quedó pendiente de pago.");
+        if (config.waTone === "humano") {
+          replies.push(confirmTone({ trackToken: order.trackToken, trackUrl: order.trackToken ? trackUrl(order.trackToken) : "" }));
+        } else {
+          replies.push("✅ Pedido confirmado. Quedó pendiente de pago.");
+        }
         replies.push(transferText(vendor, order.total));
         if (order.trackToken) {
           replies.push(`📦 Seguí tu pedido acá: ${trackUrl(order.trackToken)}`);
         }
         replies.push("Mandame el comprobante (foto o PDF) por acá. Después de verificarlo, te confirmo. 🙌");
       } else {
-        replies.push("✅ ¡Pedido confirmado! Te avisamos por acá cuando esté listo.");
+        if (config.waTone === "humano") {
+          replies.push(confirmTone({ trackToken: order.trackToken, trackUrl: order.trackToken ? trackUrl(order.trackToken) : "" }));
+        } else {
+          replies.push("✅ ¡Pedido confirmado! Te avisamos por acá cuando esté listo.");
+        }
         if (order.trackToken) {
           replies.push(`📦 Seguí tu pedido acá: ${trackUrl(order.trackToken)}`);
         }
@@ -887,9 +1023,43 @@ async function handleStep({ vendor, text, state, replies, waId }) {
   //  coca" no sumaba).
   if (parsed?.items?.length) {
     got = true;
-    // (la versión anterior tenía los acentos como bytes rotos: "agregǭ/mǭs"
-    //  no matcheaba NADA → "agregá una coca" REEMPLAZABA el carrito entero
-    //  en vez de sumarlo — pedidos que se perdían a mitad de flujo)
+    // Operaciones del LLM (op:"add" por defecto si no viene).
+    // setQty: el cliente reemplazó todo el carrito ("solo X", "mejor X").
+    if (parsed.op === "setQty") {
+      applyParsed(state, parsed, waId);
+      state.handoffCount = 0;
+      if (maybeAskRequiredMods(state, products, replies)) return;
+      advanceAndAsk(state, vendor, replies);
+      return;
+    }
+    // remove: quitar ítems por nombre.
+    if (parsed.op === "remove") {
+      for (const p of parsed.items) {
+        const idx = findCartItemIndex(state.items, p.said || p.name || "");
+        if (idx !== -1) state.items.splice(idx, 1);
+      }
+      applyContactFields(state, parsed);
+      state.handoffCount = 0;
+      const fieldsNow = missingFields(state, vendor);
+      if (state.items.length === 0) {
+        replies.push("Pedido vacío. Mandame lo que quieras, o *cancelar* para empezar de nuevo.");
+        state.step = "idle";
+        return await persist(state, vendor.id, waId, replies);
+      }
+      if (fieldsNow.length === 0) {
+        state.step = "confirm";
+        replies.push(summaryText(state, vendor));
+        return await persist(state, vendor.id, waId, replies);
+      }
+      state.step = "flow";
+      state.pendingFields = fieldsNow;
+      replies.push(pendingQuestions(state));
+      return await persist(state, vendor.id, waId, replies);
+    }
+    // add (default): distinguir AGREGAR de RE-DECLARAR.
+    // (lookahead en vez de \b: "agregá/también/sumá" terminan en vocal acentuada,
+    //  que JS NO trata como word-char — con \b el match fallaba y "agregá otra
+    //  coca" no sumaba.)
     const isAddition = /\b(agrega|agregá|agregame|agregar|también|tambien|sumá|suma|sumar|más|mas)(?=[\s.,!¡]|$)/i.test(t);
     const fullCart =
       state.items.length > 0 &&
@@ -1037,6 +1207,7 @@ function missingFields(state, vendor) {
 }
 
 function pendingQuestions(state) {
+  if (config.waTone === "humano") return pendingQuestionsTone(state);
   const fields = state.pendingFields || missingFields(state);
   const lines = [];
   if (fields.includes("method")) lines.push("1️⃣ ¿Lo *retirás* por el local o te lo *enviamos* a domicilio?");
@@ -1083,29 +1254,40 @@ function ambiguousItems(products, items) {
 // cantidad); si es re-declaración ("solo") → reemplaza todo; si no → agrega.
 // La variante (color/talle) del mensaje se resuelve contra las variantes reales.
 function attachChosen(state, chosen, qty, fromRedeclare, origItem) {
-  const q = Math.max(1, Number(qty) || 1);
+  // kg: qty es el peso real (weightKg); los demás quedan enteros como siempre.
+  let q;
+  if (chosen?.unit === "kg" && origItem && origItem.weightKg != null && Number.isFinite(origItem.weightKg) && origItem.weightKg > 0 && origItem.weightKg <= 99) {
+    q = origItem.weightKg;
+  } else {
+    q = Math.max(1, Number(qty) || 1);
+  }
   const variant = origItem ? matchVariant(chosen, origItem) : null;
   const vid = variant?.id || null;
   if (fromRedeclare) {
-    state.items = [{ offerId: chosen.id, variantId: vid, name: chosen.name, qty: q, modifiers: [] }];
+    state.items = [{ offerId: chosen.id, variantId: vid, name: chosen.name, qty: q, unit: chosen.unit || "unidad", weightKg: chosen.unit === "kg" ? q : null, modifiers: [] }];
     return;
   }
   const inCart = state.items.find((i) => i.offerId === chosen.id && (i.variantId || null) === vid);
   if (inCart) inCart.qty = q;
-  else mergeItems(state, [{ offerId: chosen.id, variantId: vid, name: chosen.name, qty: q, modifiers: [] }]);
+  else mergeItems(state, [{ offerId: chosen.id, variantId: vid, name: chosen.name, qty: q, unit: chosen.unit || "unidad", weightKg: chosen.unit === "kg" ? q : null, modifiers: [] }]);
 }
 
 // Items EXACTOS de un mensaje mixto (exacto + genérico): se agregan igual,
 // no se pierden por el attach inmediato del item ambiguo.
 function applyExactItems(state, items, shouldMerge) {
   if (shouldMerge) mergeItems(state, items);
-  else state.items = items.map((p) => ({
-    offerId: p.offerId || p.id,
-    variantId: p.variantId,
-    name: p.name,
-    qty: Math.max(1, Number(p.qty) || 1),
-    modifiers: p.modifiers || [],
-  }));
+  else state.items = items.map((p) => {
+    const normalized = normalizeDraftItem(p);
+    return {
+      offerId: p.offerId || p.id,
+      variantId: p.variantId,
+      name: p.name,
+      qty: normalized.qty,
+      unit: normalized.unit,
+      weightKg: normalized.weightKg,
+      modifiers: normalized.modifiers,
+    };
+  });
 }
 
 function pendingProductAsk(state) {
@@ -1151,6 +1333,7 @@ function maybeAskRequiredMods(state, products, replies) {
 }
 
 function summaryText(state, vendor) {
+  if (config.waTone === "humano") return summaryTextTone(state, vendor);
   const lines = state.items.map((i) => `• ${itemDisplay(i)}`);
   const method = state.method === "delivery" ? `🛵 Envío a ${state.customerAddress}` : "🏬 Retiro en el local";
   const payment =
@@ -1225,6 +1408,12 @@ function orderTotalEstimate(state, vendor) {
 }
 
 function shortReGreet(state, vendor) {
+  if (config.waTone === "humano") {
+    if (state.items.length) {
+      return `¡Hola de nuevo! 👋 Tu pedido sigue acá:\n${state.items.map((i) => `• ${i.name} ×${i.qty}`).join("\n")}\n\n¿Seguimos?`;
+    }
+    return `¡Hola de nuevo! 👋 ¿Qué te puedo preparar?`;
+  }
   if (state.items.length) {
     return `¡Hola de nuevo! 👋 Tu pedido sigue acá:\n${state.items.map((i) => `• ${i.name} ×${i.qty}`).join("\n")}\n\n¿Seguimos?`;
   }
@@ -1237,6 +1426,7 @@ function shortReGreet(state, vendor) {
 
 function applyParsed(state, parsed, waId) {
   state.items = (parsed.items || []).map((p) => {
+    const normalized = normalizeDraftItem(p);
     const existing = state.items.find((i) => String(i.offerId) === String(p.offerId || p.id));
     const mods = Array.isArray(p.modifiers) && p.modifiers.length > 0
       ? p.modifiers
@@ -1245,8 +1435,10 @@ function applyParsed(state, parsed, waId) {
       offerId: p.offerId || p.id,
       variantId: p.variantId,
       name: p.name,
-      qty: Math.max(1, Number(p.qty) || 1),
-      modifiers: mods,
+      qty: normalized.qty,
+      unit: normalized.unit,
+      weightKg: normalized.weightKg,
+      modifiers: mods.length ? mods : (existing?.modifiers || []),
     };
   });
   applyContactFields(state, parsed);
@@ -1264,23 +1456,22 @@ function applyContactFields(state, parsed) {
 
 function mergeItems(state, newItems) {
   for (const p of newItems) {
-    const offerId = p.offerId || p.id;
-    const variantId = p.variantId || null;
-    const mods = p.modifiers || [];
-    // El key incluye variantId: dos items del mismo producto con variante
-    // distinta (negro/S vs blanco/M) NO se combinan.
+    const it = normalizeDraftItem(p);
+    if (!isValidDraftItem(it)) continue;
+    const variantId = it.variantId || null;
+    const mods = it.modifiers;
     const existing = state.items.find(
-      (i) => i.offerId === offerId && (i.variantId || null) === variantId && (i.modifiers || []).length === mods.length
+      (i) => i.offerId === it.offerId && (i.variantId || null) === variantId && (i.modifiers || []).length === mods.length
     );
-    if (existing) existing.qty += Math.max(1, Number(p.qty) || 1);
-    else state.items.push({ offerId, variantId, name: p.name, qty: Math.max(1, Number(p.qty) || 1), modifiers: mods });
+    if (existing) existing.qty = Math.max(1, Number(existing.qty || 0) + it.qty);
+    else state.items.push({ name: it.name, offerId: it.offerId, variantId: it.variantId, qty: it.qty, unit: it.unit, weightKg: it.weightKg, modifiers: it.modifiers, comboMembers: it.comboMembers, note: it.note });
   }
   // Dedupe de defensa: jamás dos entradas del mismo producto+variante+mods.
   const seen = new Map();
   state.items = state.items.filter((i) => {
     const k = `${i.offerId}|${i.variantId || ""}|${(i.modifiers || []).map((m) => (typeof m === "string" ? m : m.label || m.group)).join(",")}`;
     if (seen.has(k)) {
-      seen.get(k).qty += i.qty;
+      seen.get(k).qty += Number(i.qty || 0);
       return false;
     }
     seen.set(k, i);
@@ -1303,8 +1494,23 @@ async function createOrder(vendorId, state) {
       customerAddress: state.customerAddress || null,
       method: state.method || "pickup",
       paymentMethod: state.payment || "whatsapp",
-      items: state.items.map((i) => ({ offerId: i.offerId, variantId: i.variantId || null, qty: i.qty, modifiers: i.modifiers })),
+      items: state.items.map((i) => ({
+        offerId: i.offerId,
+        variantId: i.variantId || null,
+        qty: i.qty,
+        unit: i.unit || null,
+        weightKg: i.weightKg || null,
+        modifiers: i.modifiers,
+        combo_members: i.comboMembers || null,
+      })),
       notes: state.note || null,
+      deliveryWindow: state.deliveryWindow || null,
+      deliveryZoneId: state.deliveryZoneId || null,
+      deliveryOutOfArea: state.deliveryOutOfArea || null,
+      giftcardCode: state.giftcardCode || null,
+      cashAmount: state.cashAmount || null,
+      isPreview: state.isPreview || null,
+      clientKey: state.clientKey || null,
     }),
   });
   const data = await res.json().catch(() => ({}));
@@ -1499,6 +1705,44 @@ async function fetchPortalMenu(q = "") {
   } catch (e) {
     console.error(`[bot][portal] menu fetch fail: ${e?.message}`);
     return { vendors: [] };
+  }
+}
+
+/** Cotizador del bot: llama a POST /api/wa/quote y devuelve el total exacto
+ *  o null si falla. Solo se usa cuando config.waQuoteMode !== "off". */
+async function fetchQuote(vendorId, items, method, paymentMethod) {
+  try {
+    const res = await fetch(`${config.appUrl}/api/wa/quote`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.waBotSecret}` },
+      signal: AbortSignal.timeout(10_000),
+      body: JSON.stringify({ vendorId, items, method, paymentMethod }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      return { error: err.error || `error ${res.status}` };
+    }
+    return await res.json();
+  } catch (e) {
+    console.error(`[bot] quote fetch fail: ${e?.message}`);
+    return null;
+  }
+}
+
+/** Memoria del cliente: GET /api/wa/customer?vendorId&phone (nuevo endpoint,
+ *  read-only). Devuelve el último pedido no cancelado de los últimos 90 días:
+ *  nombre, dirección, método, pago, total e ítems para re-pedido. */
+async function fetchCustomer(vendorId, phone) {
+  try {
+    const res = await fetch(`${config.appUrl}/api/wa/customer?vendorId=${encodeURIComponent(vendorId)}&phone=${encodeURIComponent(phone || "")}`, {
+      headers: { Authorization: `Bearer ${config.waBotSecret}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) {
+    console.error(`[bot] customer fetch fail: ${e?.message}`);
+    return null;
   }
 }
 
@@ -1961,10 +2205,14 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
         state.step = "confirm";
         // Resumen
         const summary = cartItems.map((i) => `• ${i.name} ×${i.qty}`).join("\n");
-        replies.push(`Tu último pedido a *${last.storeName}*:`);
-        replies.push(summary);
-        replies.push(`Total estimado: $${last.total.toLocaleString("es-AR")}`);
-        replies.push("¿Confirmás el mismo pedido? Respondé *sí* para confirmar o *no* para cancelar.");
+        if (config.waTone === "humano") {
+          replies.push(reorderTone({ storeName: last.storeName, items: cartItems }));
+        } else {
+          replies.push(`Tu último pedido a *${last.storeName}*:`);
+          replies.push(summary);
+          replies.push(`Total estimado: $${last.total.toLocaleString("es-AR")}`);
+          replies.push("¿Confirmás el mismo pedido? Respondé *sí* para confirmar o *no* para cancelar.");
+        }
         return await persist(state, vendor.id, waId, replies);
       } catch (e) {
         replies.push("No pude armar el re-pedido ahora. Probá de nuevo en un momento, o mandame tu pedido directo. 🙏");
@@ -2717,6 +2965,9 @@ async function persist(state, vendorId, waId, replies) {
 
 function greetingText(vendor) {
   const url = shopUrl(vendor);
+  if (config.waTone === "humano") {
+    return `${greetingTextTone(vendor, config.waTone)}\n\n📲 Pedí desde nuestro menú online:\n${url}\n¿Ya sabés qué pedir? Escribilo directamente y te lo confirmo.`;
+  }
   return `Hola 👋 Soy el asistente de *${vendor.store_name}*.
 
 📲 Pedí desde nuestro menú online:

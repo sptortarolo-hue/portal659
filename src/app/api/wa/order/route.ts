@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
   }
 
-  const { vendorId, customerName, customerPhone, customerAddress, method, items, notes, customerId, paymentMethod } = body;
+  const { vendorId, customerName, customerPhone, customerAddress, method, items, notes, customerId, paymentMethod, deliveryWindow, deliveryZoneId, deliveryOutOfArea, giftcardCode, cashAmount, isPreview, clientKey } = body;
 
   if (!vendorId || !customerName || !customerPhone || !Array.isArray(items) || items.length === 0) {
     return NextResponse.json({ error: "Faltan datos requeridos" }, { status: 400 });
@@ -54,9 +54,15 @@ export async function POST(request: Request) {
       notes: notes || null,
       deviceId: null,
       source: "wa-bot",
+      deliveryWindow: deliveryWindow || null,
+      deliveryZoneId: deliveryZoneId || null,
+      deliveryOutOfArea: deliveryOutOfArea || null,
+      giftcardCode: giftcardCode || null,
+      cashAmount: cashAmount || null,
+      isPreview: isPreview || null,
     });
 
-    return NextResponse.json({ ok: true, orderId: result.orderId, total: result.total, trackToken: result.trackToken });
+    return NextResponse.json({ ok: true, orderId: result.orderId, total: result.total, trackToken: result.trackToken, clientKey });
   } catch (e) {
     if (e instanceof InvalidPhoneError) {
       return NextResponse.json({ error: e.message }, { status: 400 });

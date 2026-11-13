@@ -50,4 +50,16 @@ export const config = {
   // o comprobante) sin contestar por más de esto, el bot avisa que va a ser
   // atendido por una persona y deriva (push al dueño + pausa).
   handoffTimeoutMin: Number(process.env.WA_HANDOFF_TIMEOUT_MIN || 5),
+  // Modo del cotizador del bot: "off" (sin cotizar, comportamiento actual),
+  // "shadow" (cotiza y loguea la diferencia vs el resumen actual sin cambiar
+  // nada) o "on" (muestra el total exacto y bloquea la confirmación si hay
+  // error de precios: pack, peso mínimo/paso, modificador inválido).
+  waQuoteMode: process.env.WA_QUOTE_MODE || "off",
+  // Tono del bot: "clasico" (textos actuales, sin cambio) o "humano"
+  // (copys conversacionales, variantes rotadas por chat).
+  waTone: process.env.WA_TONE || "clasico",
+  // Memoria del cliente: si esta en "on", el bot consulta /api/wa/customer al
+  // iniciar una conversación nueva y no vuelve a preguntar nombre/dirección/
+  // método/pago que ya se sepa. Tambien ofrece "lo de siempre" como re-pedido.
+  waMemory: process.env.WA_MEMORY || "off",
 };

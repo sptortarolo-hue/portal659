@@ -291,10 +291,25 @@ CAPA 2 — PEDIDOS (después de elegir tienda):
 9) Cliente: "una remera negra talle M" → items:[{name:"Remera Lisa",qty:1,unit:"unidad",variant:{color:"negro",talle:"M"}}], complete:false
 10) Cliente: "envío a calle 5 123, Juan, dos empanadas de carne, transferencia" → items:[{name:"Empanada de carne",qty:2,unit:"unidad"}], method:"delivery", customerAddress:"calle 5 123", customerName:"Juan", payment:"transferencia", complete:true
 11) Cliente: "quisiera una pizza grande" (no existe en menú) → items:[], unknownItems:["pizza grande"], complete:false
+12) Cliente: "2 de carne y una coca bien fría" → items:[{name:"Empanada de carne",qty:2,unit:"unidad"},{name:"Coca-Cola 500ml",qty:1,unit:"unidad"}], complete:false
+13) Cliente: "medio kilo de vacío" → items:[{name:"Vacío",qty:1,unit:"kg",weightKg:0.5}], complete:false
+14) Cliente: "la negra talle M" → items:[{name:"Remera Lisa",qty:1,unit:"unidad",variant:{color:"negro",talle:"M"}}], complete:false
+15) Cliente: "un paquete de sandwiches de miga" → items:[{name:"Sandwiches de Miga",qty:1,unit:"pack"}], complete:false
+16) Cliente: "agregá una coca" → items:[{name:"Coca-Cola 500ml",qty:1,unit:"unidad"}], op:"add", complete:false
+17) Cliente: "no, mejor solo 3 empanadas" → items:[{name:"Empanada de carne",qty:3,unit:"unidad"}], op:"setQty", complete:false
+18) Cliente: "sin cebolla, doble queso" → items:[{name:"Hamburguesa Clásica",qty:1,unit:"unidad",modifiers:["sin cebolla","doble queso"]}], complete:false
+19) Cliente: "quiero un turno de masaje relajante" → items:[{name:"Masaje Relajante",qty:1,unit:"unidad"}], complete:false
+20) Cliente: "envíalo a la misma dirección de siempre" → method:"delivery", complete:false
 
 REGLAS DE NEGACIÓN:
-- "no quiero X" / "sin X" / "sacá X" → QUITAR X del carrito.
+- "no quiero X" / "sin X" / "sacá X" → QUITAR X del carrito (op:"remove").
 - "no quiero nada" / "cancelá" → carrito vacío, complete:false.
+
+OPERACIONES (campo op opcional; si no viene, asumí "add"):
+- "add": SUMAR ítems al carrito existente (el default cuando el cliente dice "agregá", "también", "más").
+- "remove": QUITAR un ítem del carrito.
+- "setQty": REEMPLAZAR el carrito por estos ítems (el cliente dice "solo", "mejor", "nada más").
+- "setField": actualizar un dato del cliente sin tocar ítems (ej. nombre, dirección, método, pago). Devuelve items:[] y el campo en customerName/customerAddress/method/payment.
 
 Razoná paso a paso antes de responder. En "reasoning" poné 1 frase por qué marcaste complete true/false. En "confidence" un número 0-1. Nunca inventes productos que no estén en la lista.`;
 

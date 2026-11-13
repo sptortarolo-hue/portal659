@@ -400,6 +400,32 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
 
   if (parsed?.items?.length) {
     state.welcomed = true;
+    // Operaciones del LLM (op:"add" por defecto si no viene).
+    // setQty: el cliente reemplazó todo el carrito ("solo X", "mejor X", "nada más").
+    if (parsed.op === "setQty") {
+      applyParsed(state, parsed, waId);
+      state.handoffCount = 0;
+      if (maybeAskRequiredMods(state, products, replies)) return;
+      advanceAndAsk(state, vendor, replies);
+      return;
+    }
+    // remove: quitar ítems por nombre ("sacá la coca", "quita las empanadas").
+    if (parsed.op === "remove") {
+      for (const p of parsed.items) {
+        const idx = findCartItemIndex(state.items, p.said || p.name || "");
+        if (idx !== -1) state.items.splice(idx, 1);
+      }
+      applyContactFields(state, parsed);
+      state.handoffCount = 0;
+      if (state.items.length === 0) {
+        replies.push("Pedido vacío. Mandame lo que quieras, o *cancelar* para empezar de nuevo.");
+        state.step = "idle";
+        return await persist(state, vendor.id, waId, replies);
+      }
+      replies.push(summaryText(state, vendor));
+      replies.push("¿Confirmás? 1️⃣ Sí  2️⃣ No  3️⃣ Modificar");
+      return await persist(state, vendor.id, waId, replies);
+    }
     // Desambiguación: mención genérica → preguntar cuál/cuántas antes de agregar.
     // Con 1 solo candidato → attach inmediato. Los campos se aplican igual.
     const isAddition0 = /\b(agrega|agregá|agregar|también|tambien|sumá|suma|sumar|más|mas)(?=[\s.,!¡]|$)/i.test(text);
@@ -910,9 +936,43 @@ async function handleStep({ vendor, text, state, replies, waId }) {
   //  coca" no sumaba).
   if (parsed?.items?.length) {
     got = true;
-    // (la versión anterior tenía los acentos como bytes rotos: "agregǭ/mǭs"
-    //  no matcheaba NADA → "agregá una coca" REEMPLAZABA el carrito entero
-    //  en vez de sumarlo — pedidos que se perdían a mitad de flujo)
+    // Operaciones del LLM (op:"add" por defecto si no viene).
+    // setQty: el cliente reemplazó todo el carrito ("solo X", "mejor X").
+    if (parsed.op === "setQty") {
+      applyParsed(state, parsed, waId);
+      state.handoffCount = 0;
+      if (maybeAskRequiredMods(state, products, replies)) return;
+      advanceAndAsk(state, vendor, replies);
+      return;
+    }
+    // remove: quitar ítems por nombre.
+    if (parsed.op === "remove") {
+      for (const p of parsed.items) {
+        const idx = findCartItemIndex(state.items, p.said || p.name || "");
+        if (idx !== -1) state.items.splice(idx, 1);
+      }
+      applyContactFields(state, parsed);
+      state.handoffCount = 0;
+      const fieldsNow = missingFields(state, vendor);
+      if (state.items.length === 0) {
+        replies.push("Pedido vacío. Mandame lo que quieras, o *cancelar* para empezar de nuevo.");
+        state.step = "idle";
+        return await persist(state, vendor.id, waId, replies);
+      }
+      if (fieldsNow.length === 0) {
+        state.step = "confirm";
+        replies.push(summaryText(state, vendor));
+        return await persist(state, vendor.id, waId, replies);
+      }
+      state.step = "flow";
+      state.pendingFields = fieldsNow;
+      replies.push(pendingQuestions(state));
+      return await persist(state, vendor.id, waId, replies);
+    }
+    // add (default): distinguir AGREGAR de RE-DECLARAR.
+    // (lookahead en vez de \b: "agregá/también/sumá" terminan en vocal acentuada,
+    //  que JS NO trata como word-char — con \b el match fallaba y "agregá otra
+    //  coca" no sumaba.)
     const isAddition = /\b(agrega|agregá|agregame|agregar|también|tambien|sumá|suma|sumar|más|mas)(?=[\s.,!¡]|$)/i.test(t);
     const fullCart =
       state.items.length > 0 &&

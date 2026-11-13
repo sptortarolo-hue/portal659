@@ -4,6 +4,7 @@ import { config } from "./config.mjs";
 import { getState, setState, clearState, forEachConversation } from "./state.mjs";
 import { getMenu, getMenuSync, matchProduct, matchAllProducts, normalizeForMatch, menuSummary } from "./menu.mjs";
 import { normalizeDraftItem, isValidDraftItem } from "./draft.mjs";
+import { greetingTextTone, summaryTextTone, pendingQuestionsTone, lowConfidenceTone, reorderTone, confirmTone, noMatchTone, answerTone } from "./talk.mjs";
 import { parseWithLlm, parseByRules, normalizeEs, extractFromText, bareName, 
 classifyIntent, llmStats } from "./nlu.mjs";
 import { saveCorrection } from "./learning.mjs";
@@ -193,6 +194,27 @@ export async function handleInbound({ vendor, waId, body, waPhone, timestamp }) 
     // Timestamp del mensaje entrante (anti-mensajes-viejos tras reconexión del relay).
     if (timestamp) state.lastMsgTs = timestamp;
 
+    // — Memoria del cliente (WA_MEMORY=on): al iniciar una conversación nueva,
+    //  cargamos el último pedido no cancelado de los últimos 90 días y
+    //  precargamos nombre/dirección/método/pago para no volver a preguntarlos.
+    //  Si hay ítems previos, ofrecemos "¿lo de siempre?" (re-pedido).
+    if (config.waMemory === "on" && !state.welcomed && state.customerPhone && !String(state.customerPhone).startsWith("lid:")) {
+      try {
+        const mem = await fetchCustomer(vendor.id, state.customerPhone);
+        if (mem?.found) {
+          state.customerName = state.customerName || mem.customerName || null;
+          state.customerAddress = state.customerAddress || mem.customerAddress || null;
+          state.method = state.method || mem.method || null;
+          state.payment = state.payment || mem.paymentMethod || null;
+          state._lastOrder = mem;
+          // Si hay ítems previos y el cliente no eligió nada aún, ofrecer re-pedido.
+          if (mem.items && mem.items.length > 0) {
+            state._pendingReorder = mem;
+          }
+        }
+      } catch { /* best-effort: sin memoria, se pregunta todo de nuevo */ }
+    }
+
     // Cancelación global (siempre disponible, incluso durante la pausa de
     // handoff — antes el check de pausa la bloqueaba y el bot callaba hasta
     // para cancelar).
@@ -290,11 +312,13 @@ function matchesFromQuestion(text, products) {
 }
 
 function answerText(products) {
+  if (config.waTone === "humano") return answerTone(products);
   const lines = products.slice(0, 8).map((p) => `• ${p.name} — $${Number(p.price).toLocaleString("es-AR")}`);
   return `Sí, tenemos:\n${lines.join("\n")}\n\n¿Querés pedir alguna? Decime cuál y cuántas. 🥟`;
 }
 
 function noMatchText(products, vendor) {
+  if (config.waTone === "humano") return noMatchTone(products);
   const lines = products.slice(0, 8).map((p) => `• ${p.name} — $${Number(p.price).toLocaleString("es-AR")}`);
   return `De eso no tengo por ahora. Esto es lo que hay:\n${lines.join("\n")}\n\n¿Algo de acá? 🥟`;
 }
@@ -327,6 +351,61 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
   // "Uy, hubo un error" EN LOOP: el cliente contestaba el "¿sí o no?" y el
   // bot se trababa para siempre (la causa del "no llego a hacer un pedido").
   const t = text.trim();
+  // — "¿Lo de siempre?" (re-pedido con la memoria del cliente) —
+  if (state._pendingReorder && !state._awaitingReorder && RE_GREETING.test(text) && text.length < 40) {
+    const lo = state._pendingReorder;
+    const itemsTxt = (lo.items || []).map((i) => `• ${i.name} ×${i.qty}`).join("\n");
+    state._awaitingReorder = true;
+    state.welcomed = true;
+    replies.push(`Tu último pedido de *${lo.storeName || "el comercio"}*:`);
+    replies.push(itemsTxt || "(sin ítems)");
+    replies.push(`Total: $${Number(lo.total || 0).toLocaleString("es-AR")}`);
+    replies.push("¿Lo pedís de nuevo? Decime *sí* o *no*.");
+    return;
+  }
+  if (state._awaitingReorder) {
+    if (/^(s[i\u00ed]|si|yes|ok|dale|confirmo|claro)\b/i.test(t)) {
+      const lo = state._pendingReorder;
+      mergeItems(state, (lo.items || []).map((p) => ({
+        offerId: p.offerId || p.id,
+        variantId: p.variantId,
+        name: p.name,
+        qty: p.qty,
+        unit: p.unit,
+        weightKg: p.weightKg,
+        modifiers: p.modifiers || [],
+      })));
+      state.customerName = state.customerName || lo.customerName || null;
+      state.customerAddress = state.customerAddress || lo.customerAddress || null;
+      state.method = state.method || lo.method || null;
+      state.payment = state.payment || lo.paymentMethod || null;
+      state._pendingReorder = null;
+      state._awaitingReorder = false;
+      state.welcomed = true;
+      // Si ya hay todo completo, ir directo a confirmar; si no, preguntar lo que falta.
+      const products = await getMenu(vendor.id);
+      if (missingFields(state, vendor).length === 0) {
+        state.step = "confirm";
+        replies.push(config.waTone === "humano" ? summaryTextTone(state, vendor) : summaryText(state, vendor));
+        return;
+      }
+      state.step = "flow";
+      state.pendingFields = missingFields(state, vendor);
+      replies.push("Te cargué tu último pedido. ");
+      replies.push((config.waTone === "humano" ? pendingQuestionsTone(state) : pendingQuestions(state)));
+      return;
+    }
+    if (/^(no|nop|cancelar)\b/i.test(t)) {
+      state._pendingReorder = null;
+      state._awaitingReorder = false;
+      replies.push("Ok, sin problema. Mandame lo que quieras pedir.");
+      return;
+    }
+    // cualquier otra cosa: repetir la oferta
+    replies.push("¿Lo pedís de nuevo? Decime *sí* o *no*.");
+    return;
+  }
+
   // Saludo solo la PRIMERA vez (welcomed flag). Después se contesta con las
   // preguntas pendientes, nunca el mismo texto otra vez.
   if (!state.welcomed && RE_GREETING.test(text) && text.length < 40) {
@@ -393,7 +472,7 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
     state.pendingConfirm = { items: _parsed.items, parsed: _parsed };
     state.welcomed = true;
     const resumen = _parsed.items.map((p) => `${p.qty || 1}× ${p.name}`).join(", ");
-    replies.push(`No estoy seguro de haber entendido bien: ¿es ${resumen}? (respondé *sí* o *no*)`);
+    replies.push(config.waTone === "humano" ? lowConfidenceTone(_parsed.items) : `No estoy seguro de haber entendido bien: ¿es ${resumen}? (respondé *sí* o *no*)`);
     return await persist(state, vendor.id, waId, replies);
   }
   let parsed = enrichParsed(products, _parsed);
@@ -671,14 +750,22 @@ async function handleStep({ vendor, text, state, replies, waId }) {
       if (state.payment === "transferencia") {
         state.step = "awaiting_receipt";
         state.orderId = order.orderId || order.id;
-        replies.push("✅ Pedido confirmado. Quedó pendiente de pago.");
+        if (config.waTone === "humano") {
+          replies.push(confirmTone({ trackToken: order.trackToken, trackUrl: order.trackToken ? trackUrl(order.trackToken) : "" }));
+        } else {
+          replies.push("✅ Pedido confirmado. Quedó pendiente de pago.");
+        }
         replies.push(transferText(vendor, order.total));
         if (order.trackToken) {
           replies.push(`📦 Seguí tu pedido acá: ${trackUrl(order.trackToken)}`);
         }
         replies.push("Mandame el comprobante (foto o PDF) por acá. Después de verificarlo, te confirmo. 🙌");
       } else {
-        replies.push("✅ ¡Pedido confirmado! Te avisamos por acá cuando esté listo.");
+        if (config.waTone === "humano") {
+          replies.push(confirmTone({ trackToken: order.trackToken, trackUrl: order.trackToken ? trackUrl(order.trackToken) : "" }));
+        } else {
+          replies.push("✅ ¡Pedido confirmado! Te avisamos por acá cuando esté listo.");
+        }
         if (order.trackToken) {
           replies.push(`📦 Seguí tu pedido acá: ${trackUrl(order.trackToken)}`);
         }
@@ -1120,6 +1207,7 @@ function missingFields(state, vendor) {
 }
 
 function pendingQuestions(state) {
+  if (config.waTone === "humano") return pendingQuestionsTone(state);
   const fields = state.pendingFields || missingFields(state);
   const lines = [];
   if (fields.includes("method")) lines.push("1️⃣ ¿Lo *retirás* por el local o te lo *enviamos* a domicilio?");
@@ -1245,6 +1333,7 @@ function maybeAskRequiredMods(state, products, replies) {
 }
 
 function summaryText(state, vendor) {
+  if (config.waTone === "humano") return summaryTextTone(state, vendor);
   const lines = state.items.map((i) => `• ${itemDisplay(i)}`);
   const method = state.method === "delivery" ? `🛵 Envío a ${state.customerAddress}` : "🏬 Retiro en el local";
   const payment =
@@ -1319,6 +1408,12 @@ function orderTotalEstimate(state, vendor) {
 }
 
 function shortReGreet(state, vendor) {
+  if (config.waTone === "humano") {
+    if (state.items.length) {
+      return `¡Hola de nuevo! 👋 Tu pedido sigue acá:\n${state.items.map((i) => `• ${i.name} ×${i.qty}`).join("\n")}\n\n¿Seguimos?`;
+    }
+    return `¡Hola de nuevo! 👋 ¿Qué te puedo preparar?`;
+  }
   if (state.items.length) {
     return `¡Hola de nuevo! 👋 Tu pedido sigue acá:\n${state.items.map((i) => `• ${i.name} ×${i.qty}`).join("\n")}\n\n¿Seguimos?`;
   }
@@ -1630,6 +1725,23 @@ async function fetchQuote(vendorId, items, method, paymentMethod) {
     return await res.json();
   } catch (e) {
     console.error(`[bot] quote fetch fail: ${e?.message}`);
+    return null;
+  }
+}
+
+/** Memoria del cliente: GET /api/wa/customer?vendorId&phone (nuevo endpoint,
+ *  read-only). Devuelve el último pedido no cancelado de los últimos 90 días:
+ *  nombre, dirección, método, pago, total e ítems para re-pedido. */
+async function fetchCustomer(vendorId, phone) {
+  try {
+    const res = await fetch(`${config.appUrl}/api/wa/customer?vendorId=${encodeURIComponent(vendorId)}&phone=${encodeURIComponent(phone || "")}`, {
+      headers: { Authorization: `Bearer ${config.waBotSecret}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) {
+    console.error(`[bot] customer fetch fail: ${e?.message}`);
     return null;
   }
 }
@@ -2093,10 +2205,14 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
         state.step = "confirm";
         // Resumen
         const summary = cartItems.map((i) => `• ${i.name} ×${i.qty}`).join("\n");
-        replies.push(`Tu último pedido a *${last.storeName}*:`);
-        replies.push(summary);
-        replies.push(`Total estimado: $${last.total.toLocaleString("es-AR")}`);
-        replies.push("¿Confirmás el mismo pedido? Respondé *sí* para confirmar o *no* para cancelar.");
+        if (config.waTone === "humano") {
+          replies.push(reorderTone({ storeName: last.storeName, items: cartItems }));
+        } else {
+          replies.push(`Tu último pedido a *${last.storeName}*:`);
+          replies.push(summary);
+          replies.push(`Total estimado: $${last.total.toLocaleString("es-AR")}`);
+          replies.push("¿Confirmás el mismo pedido? Respondé *sí* para confirmar o *no* para cancelar.");
+        }
         return await persist(state, vendor.id, waId, replies);
       } catch (e) {
         replies.push("No pude armar el re-pedido ahora. Probá de nuevo en un momento, o mandame tu pedido directo. 🙏");
@@ -2849,6 +2965,9 @@ async function persist(state, vendorId, waId, replies) {
 
 function greetingText(vendor) {
   const url = shopUrl(vendor);
+  if (config.waTone === "humano") {
+    return `${greetingTextTone(vendor, config.waTone)}\n\n📲 Pedí desde nuestro menú online:\n${url}\n¿Ya sabés qué pedir? Escribilo directamente y te lo confirmo.`;
+  }
   return `Hola 👋 Soy el asistente de *${vendor.store_name}*.
 
 📲 Pedí desde nuestro menú online:

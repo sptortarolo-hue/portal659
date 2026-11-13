@@ -55,4 +55,11 @@ export const config = {
   // nada) o "on" (muestra el total exacto y bloquea la confirmación si hay
   // error de precios: pack, peso mínimo/paso, modificador inválido).
   waQuoteMode: process.env.WA_QUOTE_MODE || "off",
+  // Tono del bot: "clasico" (textos actuales, sin cambio) o "humano"
+  // (copys conversacionales, variantes rotadas por chat).
+  waTone: process.env.WA_TONE || "clasico",
+  // Memoria del cliente: si esta en "on", el bot consulta /api/wa/customer al
+  // iniciar una conversación nueva y no vuelve a preguntar nombre/dirección/
+  // método/pago que ya se sepa. Tambien ofrece "lo de siempre" como re-pedido.
+  waMemory: process.env.WA_MEMORY || "off",
 };

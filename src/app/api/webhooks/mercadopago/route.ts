@@ -140,10 +140,20 @@ export async function POST(request: Request) {
       const order = await res.json();
       console.log(`[mp-webhook] orders QR: id=${orderId} status=${order?.status} ext=${order?.external_reference}`);
       if (order?.status === "processed" && order?.external_reference?.startsWith("mpqr_")) {
-        const qrOrder = await queryOne<{ id: string; vendor_id: string; order_id: string | null; booking_id?: string | null; amount: number; is_direct: boolean | null }>(
-          `SELECT id, vendor_id, order_id, booking_id, amount, is_direct FROM mp_qr_orders WHERE external_reference = $1 LIMIT 1`,
-          [order.external_reference]
-        );
+        // Tolerante a migración sin aplicar: si no existe la columna
+        // booking_id, el QR sigue funcionando (solo no marca la seña).
+        let qrOrder: { id: string; vendor_id: string; order_id: string | null; booking_id?: string | null; amount: number; is_direct: boolean | null } | null = null;
+        try {
+          qrOrder = (await queryOne<{ id: string; vendor_id: string; order_id: string | null; booking_id?: string | null; amount: number; is_direct: boolean | null }>(
+            `SELECT id, vendor_id, order_id, booking_id, amount, is_direct FROM mp_qr_orders WHERE external_reference = $1 LIMIT 1`,
+            [order.external_reference]
+          )) ?? null;
+        } catch {
+          qrOrder = (await queryOne<{ id: string; vendor_id: string; order_id: string | null; amount: number; is_direct: boolean | null }>(
+            `SELECT id, vendor_id, order_id, amount, is_direct FROM mp_qr_orders WHERE external_reference = $1 LIMIT 1`,
+            [order.external_reference]
+          )) ?? null;
+        }
         if (qrOrder) {
           await queryOne(
             `UPDATE mp_qr_orders SET status = 'paid', payment_id = $1, paid_at = now(), updated_at = now() WHERE id = $2`,
@@ -253,10 +263,19 @@ export async function POST(request: Request) {
         // Rama cobro por QR MP interoperable: portal659_mpqr_{vendorId}_{ts}.
         if (externalRef?.startsWith("mpqr_")) {
           try {
-            const qrOrder = await queryOne<{ id: string; vendor_id: string; order_id: string | null; booking_id?: string | null; amount: number; is_direct: boolean | null }>(
-              `SELECT id, vendor_id, order_id, booking_id, amount, is_direct FROM mp_qr_orders WHERE external_reference = $1 LIMIT 1`,
-              [externalRef]
-            );
+            // Tolerante a migración sin aplicar (ver nota en la rama orders).
+            let qrOrder: { id: string; vendor_id: string; order_id: string | null; booking_id?: string | null; amount: number; is_direct: boolean | null } | null = null;
+            try {
+              qrOrder = (await queryOne<{ id: string; vendor_id: string; order_id: string | null; booking_id?: string | null; amount: number; is_direct: boolean | null }>(
+                `SELECT id, vendor_id, order_id, booking_id, amount, is_direct FROM mp_qr_orders WHERE external_reference = $1 LIMIT 1`,
+                [externalRef]
+              )) ?? null;
+            } catch {
+              qrOrder = (await queryOne<{ id: string; vendor_id: string; order_id: string | null; amount: number; is_direct: boolean | null }>(
+                `SELECT id, vendor_id, order_id, amount, is_direct FROM mp_qr_orders WHERE external_reference = $1 LIMIT 1`,
+                [externalRef]
+              )) ?? null;
+            }
             if (qrOrder) {
               await queryOne(
                 `UPDATE mp_qr_orders SET status = 'paid', payment_id = $1, paid_at = now(), updated_at = now() WHERE id = $2`,

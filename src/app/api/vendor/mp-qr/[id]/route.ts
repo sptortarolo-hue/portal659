@@ -22,7 +22,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const vendorId = (gate.vendor as any).id as string;
   const isPreview = gate.previewSession === true;
 
-  const row = await queryOne<{
+  // Tolerante a migración sin aplicar: sin la columna booking_id el QR sigue
+  // funcionando para pedidos, solo no marca la seña del turno.
+  let row: {
     id: string;
     status: string;
     amount: number;
@@ -32,11 +34,28 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     mp_order_id: string | null;
     vendor_id: string;
     is_direct: boolean | null;
-  }>(
-    `SELECT id, status, amount, paid_at, expires_at, order_id, mp_order_id, vendor_id, is_direct
-     FROM mp_qr_orders WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
-    [id, vendorId]
-  );
+    booking_id?: string | null;
+  } | null = null;
+  try {
+    row = (await queryOne<{
+      id: string; status: string; amount: number; paid_at: string | null; expires_at: string | null;
+      order_id: string | null; mp_order_id: string | null; vendor_id: string; is_direct: boolean | null;
+      booking_id?: string | null;
+    }>(
+      `SELECT id, status, amount, paid_at, expires_at, order_id, mp_order_id, vendor_id, is_direct, booking_id
+       FROM mp_qr_orders WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+      [id, vendorId]
+    )) ?? null;
+  } catch {
+    row = (await queryOne<{
+      id: string; status: string; amount: number; paid_at: string | null; expires_at: string | null;
+      order_id: string | null; mp_order_id: string | null; vendor_id: string; is_direct: boolean | null;
+    }>(
+      `SELECT id, status, amount, paid_at, expires_at, order_id, mp_order_id, vendor_id, is_direct
+       FROM mp_qr_orders WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+      [id, vendorId]
+    )) ?? null;
+  }
 
   if (!row) {
     return NextResponse.json({ error: "No encontrado" }, { status: 404 });
@@ -47,6 +66,20 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       `UPDATE mp_qr_orders SET status = 'paid', paid_at = now(), updated_at = now() WHERE id = $1`,
       [id]
     );
+    // Seña del turno (QR generado desde el alta manual de turno).
+    if (row?.booking_id) {
+      try {
+        await queryOne(
+          `UPDATE bookings
+              SET deposit_status = 'paid', deposit_paid_at = now(), deposit_method = 'mercadopago',
+                  status = CASE WHEN status = 'pending' THEN 'confirmed' ELSE status END
+            WHERE id = $1 AND COALESCE(deposit_status, '') <> 'paid'`,
+          [row.booking_id]
+        );
+      } catch {
+        /* columnas sin migrar: la seña se marca a mano */
+      }
+    }
     if (row.order_id) {
       if (row.is_direct) {
         // Venta directa: al cobrar se completa y cierra (no forma pedido con flow).
@@ -85,8 +118,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         });
       }
     } catch { /* push best-effort */ }
-    row.status = "paid";
-    row.paid_at = new Date().toISOString();
+    if (row) {
+      row.status = "paid";
+      row.paid_at = new Date().toISOString();
+    }
   };
 
   // Simulación en preview: marca como pagada.

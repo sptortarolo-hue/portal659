@@ -123,10 +123,13 @@ export function BookingManualModal({
   const [cobro, setCobro] = useState<{ bookingId: string; amount: number } | null>(null);
   const [qrImage, setQrImage] = useState<string | null>(null);
   const [qrExpires, setQrExpires] = useState<string | null>(null);
+  const [qrId, setQrId] = useState<string | null>(null);
   const [payLink, setPayLink] = useState<string | null>(null);
   const [cobroBusy, setCobroBusy] = useState<"qr" | "link" | null>(null);
   const [cobroMsg, setCobroMsg] = useState("");
   const [copied, setCopied] = useState(false);
+  // Detección del pago: el webhook marca la seña; acá sólo la reflejamos.
+  const [paid, setPaid] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -199,6 +202,7 @@ export function BookingManualModal({
       }
       setQrImage(data.qrImage);
       setQrExpires(data.expiresAt || null);
+      if (data.id) setQrId(String(data.id));
     } catch {
       setCobroMsg("Error de conexión");
     } finally {
@@ -242,6 +246,47 @@ export function BookingManualModal({
 
   const money = (n: number) => `$${n.toLocaleString("es-AR")}`;
 
+  // Mientras se muestra el QR/link, refrescamos hasta que se acredite la seña
+  // (4s). El QR se confirma contra MP (GET mp-qr/{id}); el link contra el
+  // turno. Así no depende sólo del webhook, que exige eventos "orders" en MP.
+  useEffect(() => {
+    if (!cobro || paid) return;
+    let alive = true;
+    const check = async () => {
+      try {
+        if (qrId) {
+          const res = await fetch(`/api/vendor/mp-qr/${qrId}`);
+          if (!res.ok) return;
+          const data = await res.json();
+          if (!alive) return;
+          if (data.status === "paid") {
+            setPaid(true);
+            return;
+          }
+          if (data.status === "expired") {
+            setQrExpires(null);
+            setCobroMsg("El QR venció. Generá uno nuevo.");
+            setQrId(null);
+            return;
+          }
+        }
+        const res = await fetch(`/api/vendor/bookings?date=${encodeURIComponent(bookingDate)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const row = (data.bookings || []).find((b: any) => String(b.id) === cobro.bookingId);
+        if (alive && row && row.deposit_status === "paid") setPaid(true);
+      } catch {
+        /* reintenta en el próximo tick */
+      }
+    };
+    check();
+    const t = setInterval(check, 4000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [cobro, paid, qrId, bookingDate]);
+
   return (
     <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/50" onClick={onClose}>
       <div
@@ -254,7 +299,9 @@ export function BookingManualModal({
           </h3>
           <p className="text-xs text-muted-foreground">
             {cobro
-              ? "El turno quedó pendiente de seña (no ocupa horario hasta que se acredite)."
+              ? paid
+                ? "La seña se acreditó: el turno quedó confirmado."
+                : "El turno quedó pendiente de seña (no ocupa horario hasta que se acredite)."
               : editing
                 ? "Cambiá la fecha, el horario o los datos. Se avisa al cliente si cambia el horario."
                 : initialCustomerName
@@ -273,20 +320,30 @@ export function BookingManualModal({
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <Button variant="outline" onClick={generateQr} disabled={cobroBusy !== null}>
-                  {cobroBusy === "qr" ? "Generando..." : "📲 Generar QR"}
-                </Button>
-                <Button variant="outline" onClick={generateLink} disabled={cobroBusy !== null}>
-                  {cobroBusy === "link" ? "Generando..." : "🔗 Generar link MP"}
-                </Button>
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                <strong>QR</strong>: el cliente lo escanea y paga en el local (vence en 10 minutos).{" "}
-                <strong>Link</strong>: para turnos pedidos por teléfono, se manda por WhatsApp.
-              </p>
+              {paid && (
+                <div className="rounded-xl border border-green-300 bg-green-50 px-3 py-2 text-sm font-medium text-green-700">
+                  ✅ ¡Pago exitoso! La seña quedó acreditada y el turno confirmado.
+                </div>
+              )}
 
-              {qrImage && (
+              {!paid && (
+                <>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button variant="outline" onClick={generateQr} disabled={cobroBusy !== null}>
+                      {cobroBusy === "qr" ? "Generando..." : "📲 Generar QR"}
+                    </Button>
+                    <Button variant="outline" onClick={generateLink} disabled={cobroBusy !== null}>
+                      {cobroBusy === "link" ? "Generando..." : "🔗 Generar link MP"}
+                    </Button>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    <strong>QR</strong>: el cliente lo escanea y paga en el local (vence en 10 minutos).{" "}
+                    <strong>Link</strong>: para turnos pedidos por teléfono, se manda por WhatsApp.
+                  </p>
+                </>
+              )}
+
+              {qrImage && !paid && (
                 <div className="rounded-xl border border-border p-3 text-center space-y-1">
                   <img src={qrImage} alt="QR de cobro" className="mx-auto h-44 w-44" />
                   <p className="text-[11px] text-muted-foreground">

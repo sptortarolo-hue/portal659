@@ -50,4 +50,9 @@ export const config = {
   // o comprobante) sin contestar por más de esto, el bot avisa que va a ser
   // atendido por una persona y deriva (push al dueño + pausa).
   handoffTimeoutMin: Number(process.env.WA_HANDOFF_TIMEOUT_MIN || 5),
+  // Modo del cotizador del bot: "off" (sin cotizar, comportamiento actual),
+  // "shadow" (cotiza y loguea la diferencia vs el resumen actual sin cambiar
+  // nada) o "on" (muestra el total exacto y bloquea la confirmación si hay
+  // error de precios: pack, peso mínimo/paso, modificador inválido).
+  waQuoteMode: process.env.WA_QUOTE_MODE || "off",
 };

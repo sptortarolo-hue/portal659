@@ -574,6 +574,24 @@ async function handleStep({ vendor, text, state, replies, waId }) {
         replies.push("Faltan datos antes de confirmar:\n\n" + pendingQuestions(state));
         return await persist(state, vendor.id, waId, replies);
       }
+      // Pre-flight de precio (mismo motor del micrositio): total exacto y
+      // errores de negocio (pack, peso mínimo/paso, modificador inválido) ANTES
+      // de crear el pedido. Solo cuando config.waQuoteMode !== "off".
+      if (config.waQuoteMode !== "off") {
+        const quote = await fetchQuote(vendor.id, state.items, state.method, state.payment);
+        if (quote) {
+          if (config.waQuoteMode === "shadow") {
+            const est = orderTotalEstimate(state, vendor);
+            const diff = Math.round(Math.abs((quote.total || 0) - (est.total || 0)) * 100) / 100;
+            if (diff > 0) console.log(`[bot][quote shadow] vendor=${vendor.id} diff=$${diff} quote=$${quote.total} est=$${est.total}`);
+          }
+          if (config.waQuoteMode === "on" && quote.error) {
+            replies.push(quote.error);
+            replies.push("¿Querés cambiar algo del pedido o lo armamos de nuevo?");
+            return await persist(state, vendor.id, waId, replies);
+          }
+        }
+      }
       let order;
       try {
         order = await createOrder(vendor.id, state);
@@ -1532,6 +1550,27 @@ async function fetchPortalMenu(q = "") {
   } catch (e) {
     console.error(`[bot][portal] menu fetch fail: ${e?.message}`);
     return { vendors: [] };
+  }
+}
+
+/** Cotizador del bot: llama a POST /api/wa/quote y devuelve el total exacto
+ *  o null si falla. Solo se usa cuando config.waQuoteMode !== "off". */
+async function fetchQuote(vendorId, items, method, paymentMethod) {
+  try {
+    const res = await fetch(`${config.appUrl}/api/wa/quote`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.waBotSecret}` },
+      signal: AbortSignal.timeout(10_000),
+      body: JSON.stringify({ vendorId, items, method, paymentMethod }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      return { error: err.error || `error ${res.status}` };
+    }
+    return await res.json();
+  } catch (e) {
+    console.error(`[bot] quote fetch fail: ${e?.message}`);
+    return null;
   }
 }
 

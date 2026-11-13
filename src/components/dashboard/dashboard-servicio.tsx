@@ -370,6 +370,9 @@ export default function DashboardServicio({
   const isEstetica = vendor?.vertical === "estetica" || vendor?.vertical === "salud";
   const isTaller = vendor?.vertical === "taller";
   const isHybrid = isEstetica || isTaller;
+  // Mercado Pago conectada: habilita cobrar la seña al cargar el turno
+  // (QR en el local / link por WhatsApp).
+  const mpConnected = !!(vendor as any)?.mp_user_id;
   // Copy: en estética los "presupuestos" son consultas/evaluaciones.
   const presupuestosLabel = isEstetica ? "Consultas" : "Presupuestos";
   const presupuestosLow = isEstetica ? "consultas" : "presupuestos";
@@ -431,7 +434,7 @@ export default function DashboardServicio({
     })();
   }, [isHybrid, bookings.length]);
   // Catálogo para el modal de turno manual (estética): servicios + staff.
-  const [catalogServices, setCatalogServices] = useState<{ id: string; name: string; price?: number | null; price_from?: number | null; price_to?: number | null }[]>([]);
+  const [catalogServices, setCatalogServices] = useState<{ id: string; name: string; price?: number | null; price_from?: number | null; price_to?: number | null; deposit_amount?: number | null; require_deposit?: boolean | null }[]>([]);
   const [catalogStaff, setCatalogStaff] = useState<{ id: string; name: string }[]>([]);
   const [catalogLocations, setCatalogLocations] = useState<{ id: string; name: string }[]>([]);
 
@@ -815,6 +818,8 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
             price: s.price != null ? Number(s.price) : null,
             price_from: s.price_from != null ? Number(s.price_from) : null,
             price_to: s.price_to != null ? Number(s.price_to) : null,
+            deposit_amount: s.deposit_amount != null ? Number(s.deposit_amount) : null,
+            require_deposit: s.require_deposit === true,
           })));
         }
         if (tRes?.ok) {
@@ -2450,6 +2455,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
           staffOptions={isHybrid ? catalogStaff : undefined}
           locationOptions={isHybrid ? catalogLocations : undefined}
           equipment={isTaller}
+          canChargeDeposits={mpConnected}
           initialCustomerName={rebook?.customerName}
           initialCustomerPhone={rebook?.customerPhone}
           initialServiceId={rebook?.serviceId}
@@ -2474,6 +2480,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
           staffOptions={isHybrid ? catalogStaff : undefined}
           locationOptions={isHybrid ? catalogLocations : undefined}
           equipment={isTaller}
+          canChargeDeposits={mpConnected}
           onCreated={(warning) => {
             setEditingBooking(null);
             setMsg(warning || "Turno actualizado");

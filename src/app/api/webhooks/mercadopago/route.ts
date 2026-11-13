@@ -140,8 +140,8 @@ export async function POST(request: Request) {
       const order = await res.json();
       console.log(`[mp-webhook] orders QR: id=${orderId} status=${order?.status} ext=${order?.external_reference}`);
       if (order?.status === "processed" && order?.external_reference?.startsWith("mpqr_")) {
-        const qrOrder = await queryOne<{ id: string; vendor_id: string; order_id: string | null; amount: number; is_direct: boolean | null }>(
-          `SELECT id, vendor_id, order_id, amount, is_direct FROM mp_qr_orders WHERE external_reference = $1 LIMIT 1`,
+        const qrOrder = await queryOne<{ id: string; vendor_id: string; order_id: string | null; booking_id?: string | null; amount: number; is_direct: boolean | null }>(
+          `SELECT id, vendor_id, order_id, booking_id, amount, is_direct FROM mp_qr_orders WHERE external_reference = $1 LIMIT 1`,
           [order.external_reference]
         );
         if (qrOrder) {
@@ -166,6 +166,20 @@ export async function POST(request: Request) {
                   [qrOrder.order_id]
                 );
               }
+            }
+          }
+          // Seña de turno cobrada por QR (mismo efecto que el link MP).
+          if (qrOrder.booking_id) {
+            try {
+              await queryOne(
+                `UPDATE bookings
+                    SET deposit_status = 'paid', deposit_paid_at = now(), deposit_method = 'mercadopago',
+                        status = CASE WHEN status = 'pending' THEN 'confirmed' ELSE status END
+                  WHERE id = $1 AND COALESCE(deposit_status, '') <> 'paid'`,
+                [qrOrder.booking_id]
+              );
+            } catch {
+              /* columna sin migrar: la seña se marca a mano */
             }
           }
           try {
@@ -239,8 +253,8 @@ export async function POST(request: Request) {
         // Rama cobro por QR MP interoperable: portal659_mpqr_{vendorId}_{ts}.
         if (externalRef?.startsWith("mpqr_")) {
           try {
-            const qrOrder = await queryOne<{ id: string; vendor_id: string; order_id: string | null; amount: number; is_direct: boolean | null }>(
-              `SELECT id, vendor_id, order_id, amount, is_direct FROM mp_qr_orders WHERE external_reference = $1 LIMIT 1`,
+            const qrOrder = await queryOne<{ id: string; vendor_id: string; order_id: string | null; booking_id?: string | null; amount: number; is_direct: boolean | null }>(
+              `SELECT id, vendor_id, order_id, booking_id, amount, is_direct FROM mp_qr_orders WHERE external_reference = $1 LIMIT 1`,
               [externalRef]
             );
             if (qrOrder) {
@@ -265,6 +279,21 @@ export async function POST(request: Request) {
                       [qrOrder.order_id]
                     );
                   }
+                }
+              }
+              // Seña de turno cobrada por QR: mismo efecto que el link MP
+              // (deposit_status='paid' + fecha/medio, y pending → confirmed).
+              if (qrOrder.booking_id) {
+                try {
+                  await queryOne(
+                    `UPDATE bookings
+                        SET deposit_status = 'paid', deposit_paid_at = now(), deposit_method = 'mercadopago',
+                            status = CASE WHEN status = 'pending' THEN 'confirmed' ELSE status END
+                      WHERE id = $1 AND COALESCE(deposit_status, '') <> 'paid'`,
+                    [qrOrder.booking_id]
+                  );
+                } catch {
+                  /* columna sin migrar: la seña se marca a mano */
                 }
               }
               try {

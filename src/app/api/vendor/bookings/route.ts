@@ -155,6 +155,9 @@ export async function POST(request: Request) {
   // Sesión de prueba compartida: el turno no cuenta en CRM/topes.
   const isPreview = gate.previewSession === true;
 
+  // Seña del turno manual: si se pide cobrar y el servicio la tiene, el
+  // turno nace pendiente (no ocupa horario hasta que se acredite).
+  let depositInfo: { amount: number; status: string } | null = null;
   let bookingId: string | null = null;
   try {
     bookingId = await withTransaction(async (tx) => {
@@ -199,6 +202,22 @@ export async function POST(request: Request) {
       }
       const id = b[0]?.id;
       if (!id) throw new Error("No se pudo crear el turno");
+      // Seña: mismo contrato que el micrositio (status pending + deposit
+      // pending => no ocupa horario hasta que la seña se acredite).
+      const chargeDeposit = body.charge_deposit === true;
+      const depositAmount = refs.depositAmount ?? 0;
+      if (chargeDeposit && depositAmount > 0) {
+        try {
+          await tx.queryVoid(
+            `UPDATE bookings SET deposit_amount = $1, deposit_status = 'pending', status = 'pending' WHERE id = $2`,
+            [depositAmount, id]
+          );
+          depositInfo = { amount: depositAmount, status: "pending" };
+        } catch {
+          // Columnas de seña sin migrar: el turno queda confirmado y la seña
+          // se cobra después desde la tarjeta (link/QR).
+        }
+      }
       // Enlaza el equipo (tolerante: sin columna equipment_id no se setea).
       if (hasEqCol && eqId) {
         await tx.queryVoid(`UPDATE bookings SET equipment_id = $1 WHERE id = $2`, [eqId, id]);
@@ -222,5 +241,5 @@ export async function POST(request: Request) {
     `SELECT * FROM bookings WHERE id = $1 LIMIT 1`,
     [bookingId]
   ).catch(() => undefined);
-  return NextResponse.json({ booking: booking || { id: bookingId }, warning: overlapWarning, blockWarning, scheduleWarning });
+  return NextResponse.json({ booking: booking || { id: bookingId }, warning: overlapWarning, blockWarning, scheduleWarning, deposit: depositInfo });
 }

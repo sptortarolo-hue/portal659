@@ -50,6 +50,10 @@ export type ResolvedBookingRefs = {
   locationId: string | null;
   serviceName: string | null;
   servicePrice: number | null;
+  /** Seña del servicio (null = no tiene). */
+  depositAmount: number | null;
+  /** El servicio exige seña para reservar online. */
+  requireDeposit: boolean;
   serviceCommission: number | null;
   staffCommission: number | null;
   /** Comisión a guardar como snapshot (servicio > profesional > null). */
@@ -77,13 +81,15 @@ export async function resolveBookingRefs(
   let serviceId: string | null = typeof input.serviceId === "string" && input.serviceId ? input.serviceId : null;
   let serviceName: string | null = null;
   let servicePrice: number | null = null;
+  let depositAmount: number | null = null;
+  let requireDeposit = false;
   let serviceCommission: number | null = null;
   let staffCommission: number | null = null;
 
   try {
     if (serviceId) {
-      const svc = await queryOne<{ name: string; duration_min: number | null; buffer_min: number | null; price: number | null; price_from?: number | null; commission_pct: number | null }>(
-        `SELECT name, duration_min, buffer_min, price, price_from, commission_pct FROM services WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+      const svc = await queryOne<{ name: string; duration_min: number | null; buffer_min: number | null; price: number | null; price_from?: number | null; deposit_amount?: number | null; require_deposit?: boolean | null; commission_pct: number | null }>(
+        `SELECT name, duration_min, buffer_min, price, price_from, deposit_amount, require_deposit, commission_pct FROM services WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
         [serviceId, vendorId]
       ).catch(() =>
         queryOne<{ name: string; duration_min: number | null; buffer_min: number | null; price: number | null; price_from?: number | null; commission_pct: number | null }>(
@@ -99,6 +105,9 @@ export async function resolveBookingRefs(
         // Precio "desde": snapshot = mínimo de referencia; el final se
         // define al cobrar (el cobro actualiza el snapshot).
         else if (svc.price_from != null && Number(svc.price_from) >= 0) servicePrice = Number(svc.price_from);
+        const svcDep = svc as { deposit_amount?: number | null; require_deposit?: boolean | null };
+        if (svcDep.deposit_amount != null && Number(svcDep.deposit_amount) > 0) depositAmount = Number(svcDep.deposit_amount);
+        requireDeposit = svcDep.require_deposit === true;
         if (svc.commission_pct != null && Number(svc.commission_pct) >= 0) serviceCommission = Number(svc.commission_pct);
       } else {
         serviceId = null;
@@ -148,6 +157,8 @@ export async function resolveBookingRefs(
     locationId,
     serviceName,
     servicePrice,
+    depositAmount,
+    requireDeposit,
     serviceCommission,
     staffCommission,
     snapshotCommission,

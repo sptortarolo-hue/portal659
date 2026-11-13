@@ -36,6 +36,9 @@ export async function POST(request: Request) {
   const amount = Number(body?.amount);
   const concept = typeof body?.concept === "string" ? body.concept.slice(0, 120) : null;
   const isDirect = body?.isDirect === true;
+  // Turno (seña cobrada en el local): el QR queda imputado al turno para que
+  // el webhook marque la seña como pagada.
+  const bookingId = typeof body?.bookingId === "string" && body.bookingId ? body.bookingId : null;
 
   if (!Number.isFinite(amount) || amount <= 0) {
     return NextResponse.json({ error: "Monto inválido" }, { status: 400 });
@@ -90,6 +93,9 @@ export async function POST(request: Request) {
     );
     if (row?.id && hasDirectCol && isDirect) {
       await queryOne(`UPDATE mp_qr_orders SET is_direct = true WHERE id = $1`, [row.id]).catch(() => {});
+    }
+    if (bookingId && row?.id) {
+      await queryOne(`UPDATE mp_qr_orders SET booking_id = $1 WHERE id = $2`, [bookingId, row.id]).catch(() => {});
     }
     if (orderId && row?.id) {
       try {
@@ -291,6 +297,9 @@ export async function POST(request: Request) {
   );
   if (row?.id && hasDirectCol && isDirect) {
     await queryOne(`UPDATE mp_qr_orders SET is_direct = true WHERE id = $1`, [row.id]).catch(() => {});
+  }
+  if (bookingId && row?.id) {
+    await queryOne(`UPDATE mp_qr_orders SET booking_id = $1 WHERE id = $2`, [bookingId, row.id]).catch(() => {});
   }
 
   // Vincular la orden al pedido si corresponde.

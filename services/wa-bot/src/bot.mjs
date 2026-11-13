@@ -3,6 +3,7 @@
 import { config } from "./config.mjs";
 import { getState, setState, clearState, forEachConversation } from "./state.mjs";
 import { getMenu, getMenuSync, matchProduct, matchAllProducts, normalizeForMatch, menuSummary } from "./menu.mjs";
+import { normalizeDraftItem, isValidDraftItem } from "./draft.mjs";
 import { parseWithLlm, parseByRules, normalizeEs, extractFromText, bareName, 
 classifyIntent, llmStats } from "./nlu.mjs";
 import { saveCorrection } from "./learning.mjs";
@@ -93,14 +94,18 @@ function resolveOfferIds(products, items) {
         (p.offerId && products.find((x) => String(x.id) === String(p.offerId))) ||
         matchProduct(products, p.name);
       const variant = prod ? matchVariant(prod, p) : null;
+      const normalized = normalizeDraftItem(p);
       return {
         offerId: prod?.id || p.offerId || p.id,
         variantId: variant?.id,
         name: p.name,
-        qty: Math.max(1, Number(p.qty) || 1),
+        qty: normalized.qty,
+        unit: normalized.unit,
+        weightKg: normalized.weightKg,
         modifiers: Array.isArray(p.modifiers) ? p.modifiers : [],
         said: p.said,
         variant: p.variant,
+        comboMembers: p.comboMembers || p.combo_members || null,
       };
     })
     .filter((p) => p.offerId);
@@ -1083,29 +1088,40 @@ function ambiguousItems(products, items) {
 // cantidad); si es re-declaración ("solo") → reemplaza todo; si no → agrega.
 // La variante (color/talle) del mensaje se resuelve contra las variantes reales.
 function attachChosen(state, chosen, qty, fromRedeclare, origItem) {
-  const q = Math.max(1, Number(qty) || 1);
+  // kg: qty es el peso real (weightKg); los demás quedan enteros como siempre.
+  let q;
+  if (chosen?.unit === "kg" && origItem && origItem.weightKg != null && Number.isFinite(origItem.weightKg) && origItem.weightKg > 0 && origItem.weightKg <= 99) {
+    q = origItem.weightKg;
+  } else {
+    q = Math.max(1, Number(qty) || 1);
+  }
   const variant = origItem ? matchVariant(chosen, origItem) : null;
   const vid = variant?.id || null;
   if (fromRedeclare) {
-    state.items = [{ offerId: chosen.id, variantId: vid, name: chosen.name, qty: q, modifiers: [] }];
+    state.items = [{ offerId: chosen.id, variantId: vid, name: chosen.name, qty: q, unit: chosen.unit || "unidad", weightKg: chosen.unit === "kg" ? q : null, modifiers: [] }];
     return;
   }
   const inCart = state.items.find((i) => i.offerId === chosen.id && (i.variantId || null) === vid);
   if (inCart) inCart.qty = q;
-  else mergeItems(state, [{ offerId: chosen.id, variantId: vid, name: chosen.name, qty: q, modifiers: [] }]);
+  else mergeItems(state, [{ offerId: chosen.id, variantId: vid, name: chosen.name, qty: q, unit: chosen.unit || "unidad", weightKg: chosen.unit === "kg" ? q : null, modifiers: [] }]);
 }
 
 // Items EXACTOS de un mensaje mixto (exacto + genérico): se agregan igual,
 // no se pierden por el attach inmediato del item ambiguo.
 function applyExactItems(state, items, shouldMerge) {
   if (shouldMerge) mergeItems(state, items);
-  else state.items = items.map((p) => ({
-    offerId: p.offerId || p.id,
-    variantId: p.variantId,
-    name: p.name,
-    qty: Math.max(1, Number(p.qty) || 1),
-    modifiers: p.modifiers || [],
-  }));
+  else state.items = items.map((p) => {
+    const normalized = normalizeDraftItem(p);
+    return {
+      offerId: p.offerId || p.id,
+      variantId: p.variantId,
+      name: p.name,
+      qty: normalized.qty,
+      unit: normalized.unit,
+      weightKg: normalized.weightKg,
+      modifiers: normalized.modifiers,
+    };
+  });
 }
 
 function pendingProductAsk(state) {
@@ -1237,6 +1253,7 @@ function shortReGreet(state, vendor) {
 
 function applyParsed(state, parsed, waId) {
   state.items = (parsed.items || []).map((p) => {
+    const normalized = normalizeDraftItem(p);
     const existing = state.items.find((i) => String(i.offerId) === String(p.offerId || p.id));
     const mods = Array.isArray(p.modifiers) && p.modifiers.length > 0
       ? p.modifiers
@@ -1245,8 +1262,10 @@ function applyParsed(state, parsed, waId) {
       offerId: p.offerId || p.id,
       variantId: p.variantId,
       name: p.name,
-      qty: Math.max(1, Number(p.qty) || 1),
-      modifiers: mods,
+      qty: normalized.qty,
+      unit: normalized.unit,
+      weightKg: normalized.weightKg,
+      modifiers: mods.length ? mods : (existing?.modifiers || []),
     };
   });
   applyContactFields(state, parsed);
@@ -1264,23 +1283,22 @@ function applyContactFields(state, parsed) {
 
 function mergeItems(state, newItems) {
   for (const p of newItems) {
-    const offerId = p.offerId || p.id;
-    const variantId = p.variantId || null;
-    const mods = p.modifiers || [];
-    // El key incluye variantId: dos items del mismo producto con variante
-    // distinta (negro/S vs blanco/M) NO se combinan.
+    const it = normalizeDraftItem(p);
+    if (!isValidDraftItem(it)) continue;
+    const variantId = it.variantId || null;
+    const mods = it.modifiers;
     const existing = state.items.find(
-      (i) => i.offerId === offerId && (i.variantId || null) === variantId && (i.modifiers || []).length === mods.length
+      (i) => i.offerId === it.offerId && (i.variantId || null) === variantId && (i.modifiers || []).length === mods.length
     );
-    if (existing) existing.qty += Math.max(1, Number(p.qty) || 1);
-    else state.items.push({ offerId, variantId, name: p.name, qty: Math.max(1, Number(p.qty) || 1), modifiers: mods });
+    if (existing) existing.qty = Math.max(1, Number(existing.qty || 0) + it.qty);
+    else state.items.push({ offerId: it.offerId, variantId: it.variantId, qty: it.qty, unit: it.unit, weightKg: it.weightKg, modifiers: it.modifiers, comboMembers: it.comboMembers, note: it.note });
   }
   // Dedupe de defensa: jamás dos entradas del mismo producto+variante+mods.
   const seen = new Map();
   state.items = state.items.filter((i) => {
     const k = `${i.offerId}|${i.variantId || ""}|${(i.modifiers || []).map((m) => (typeof m === "string" ? m : m.label || m.group)).join(",")}`;
     if (seen.has(k)) {
-      seen.get(k).qty += i.qty;
+      seen.get(k).qty += Number(i.qty || 0);
       return false;
     }
     seen.set(k, i);
@@ -1303,8 +1321,23 @@ async function createOrder(vendorId, state) {
       customerAddress: state.customerAddress || null,
       method: state.method || "pickup",
       paymentMethod: state.payment || "whatsapp",
-      items: state.items.map((i) => ({ offerId: i.offerId, variantId: i.variantId || null, qty: i.qty, modifiers: i.modifiers })),
+      items: state.items.map((i) => ({
+        offerId: i.offerId,
+        variantId: i.variantId || null,
+        qty: i.qty,
+        unit: i.unit || null,
+        weightKg: i.weightKg || null,
+        modifiers: i.modifiers,
+        combo_members: i.comboMembers || null,
+      })),
       notes: state.note || null,
+      deliveryWindow: state.deliveryWindow || null,
+      deliveryZoneId: state.deliveryZoneId || null,
+      deliveryOutOfArea: state.deliveryOutOfArea || null,
+      giftcardCode: state.giftcardCode || null,
+      cashAmount: state.cashAmount || null,
+      isPreview: state.isPreview || null,
+      clientKey: state.clientKey || null,
     }),
   });
   const data = await res.json().catch(() => ({}));

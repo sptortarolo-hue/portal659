@@ -2713,7 +2713,7 @@ function VendorDashboardInner() {
                     : "border-border text-muted-foreground hover:border-primary/30"
                 }`}
               >
-                \ud83d\uded2 Tienda
+                🛒 tienda
               </button>
               <button
                 type="button"
@@ -2724,7 +2724,7 @@ function VendorDashboardInner() {
                     : "border-border text-muted-foreground hover:border-primary/30"
                 }`}
               >
-                \ud83d\udccb Cat\u00e1logo
+                📋 catálogo
               </button>
             </div>
             {qrDataUrl ? <img src={qrDataUrl} alt="QR" className="mx-auto w-48 h-48 mb-4" /> : <div className="mx-auto w-48 h-48 mb-4 bg-skeleton rounded-lg" />}
@@ -2740,7 +2740,7 @@ function VendorDashboardInner() {
                 rel="noopener noreferrer"
                 className="block w-full rounded-xl bg-green-500 text-white text-sm font-medium py-2.5 hover:bg-green-600 transition-colors"
               >
-                \ud83d\udcac {shareTarget === "tienda" ? "Compartir tienda" : isRetail ? "Compartir cat\u00e1logo" : "Compartir carta"}
+                {shareTarget === "tienda" ? "Compartir tienda" : "Compartir cat\u00e1logo"}
               </a>
               <div className="grid grid-cols-2 gap-2">
                 {qrDataUrl && (

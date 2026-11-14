@@ -476,6 +476,7 @@ export function buildOrderWhatsAppMessage(params: {
 export type ContextualWaResult = {
   url: string;
   label: string;
+  text: string;
   variant?: "transfer" | "info" | "libre";
 };
 
@@ -500,6 +501,7 @@ export function buildContextualWhatsApp(
       return {
         url: `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`,
         label: "💸 Datos de pago (WA)",
+        text: msg,
         variant: "transfer",
       };
     }
@@ -516,7 +518,7 @@ export function buildContextualWhatsApp(
           : order.status === "sent"
             ? "🚚 Avisar envío"
             : "✅ Avisar entrega";
-      return { url, label, variant: "info" };
+      return { url, label, text: buildClientWhatsAppMessage(order.status, order, vendorName) || "", variant: "info" };
     }
   }
 
@@ -541,6 +543,7 @@ export function buildContextualWhatsApp(
     return {
       url: `https://wa.me/${phone}?text=${encodeURIComponent(stageMsg)}`,
       label: stageLabel,
+      text: stageMsg,
       variant: "info",
     };
   }

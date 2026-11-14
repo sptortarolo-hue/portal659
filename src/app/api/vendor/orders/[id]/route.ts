@@ -822,22 +822,28 @@ export async function PATCH(
     }
   }
 
-  // WhatsApp (bot): ACEPTADO automático al salir de "new" (simple, con link de
-  // seguimiento — sin plata). Los datos de alias/monto van por el BOTÓN manual
-  // del panel ("💳 Enviar datos de pago por WA"), no acá. Todo best-effort:
-  // sin el bot conectado el flow sigue igual que siempre. Los pedidos de
-  // PRUEBA también envían (el teléfono lo carga el comercio en su demo —
-  // muestra la experiencia completa: aceptado/en camino/listo + seguimiento).
-  // Atajo "Entregar ya": si el pedido salta de "new" directo a completado NO
-  // se manda el "aceptado" (ya está entregado: sería un mensaje falso). El
-  // push/campana/mail de reseña sí dicen "entregado".
-  const isAcceptEvent =
-    status && currentOrder.status === "new" && status !== "cancelled" && status !== "completed";
+  // WhatsApp (bot): envío automático SOLO para "listo para retirar" (ready+pickup)
+  // y "envío a domicilio" (sent+delivery). El "aceptado" se manda manual desde
+  // el panel (botón "Avisar recibido/confirmado") para no spamear. Todo
+  // best-effort: sin el bot conectado el flow sigue igual que siempre.
   const isOnRoadEvent = status === "sent" && order.method === "delivery";
   const isReadyEvent = status === "ready" && order.method === "pickup";
+  // Configurabilidad: si el comercio desactivó los avisos automáticos
+  // (vendors.wa_auto_notify = false), no se envía nada automáticamente.
+  let autoNotify = true;
+  try {
+    const vrow = await queryOne<{ wa_auto_notify: boolean | null }>(
+      `SELECT wa_auto_notify FROM vendors WHERE id = $1 LIMIT 1`,
+      [vendor.id]
+    );
+    if (vrow && vrow.wa_auto_notify === false) autoNotify = false;
+  } catch {
+    /* columna sin migrar: se asume activado */
+  }
   const hasRealPhone = typeof order.customer_phone === "string" && !!order.customer_phone && !(order.customer_phone as string).startsWith("lid:");
   if (
-    (isAcceptEvent || isOnRoadEvent || isReadyEvent) &&
+    (isOnRoadEvent || isReadyEvent) &&
+    autoNotify &&
     !isCounterPickup &&
     hasRealPhone
   ) {
@@ -850,9 +856,7 @@ export async function PATCH(
       const addr = fullVendor?.address ? ` Nos encontrás en ${fullVendor.address}.` : "";
       const text = isOnRoadEvent
         ? `🛵 ¡Tu pedido ${nro} va en camino! (${store}).${link}`
-        : isReadyEvent
-          ? `🛍️ ¡Tu pedido ${nro} está listo para retirar! Pasá a buscarlo por *${store}*.${addr}`
-          : `✅ ¡Tu pedido ${nro} fue aceptado por *${store}*!${link}`;
+        : `🛍️ ¡Tu pedido ${nro} está listo para retirar! Pasá a buscarlo por *${store}*.${addr}`;
       const wabotUrl = (process.env.WABOT_URL || "http://wabot:8792").replace(/\/$/, "");
       await fetch(`${wabotUrl}/send`, {
         method: "POST",

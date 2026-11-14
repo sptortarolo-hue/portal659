@@ -1686,11 +1686,9 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
               )}
               <FiscalBillButton orderId={order.id} />
               {contextualWa && (
-                <a href={contextualWa.url} target="_blank" rel="noopener noreferrer" className="block">
-                  <Button variant="outline" className="w-full border-green-200 bg-green-50 text-green-700 hover:bg-green-100">
-                    {contextualWa.label}
-                  </Button>
-                </a>
+                <Button variant="outline" className="w-full border-green-200 bg-green-50 text-green-700 hover:bg-green-100" onClick={async () => { try { const res = await fetch("/api/vendor/orders/" + order.id + "/send-wa", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: contextualWa.text }) }); const data = await res.json().catch(() => ({})); if (res.ok && data.mode === "manual" && data.url) window.open(data.url, "_blank", "noopener,noreferrer"); } catch { window.open(contextualWa.url, "_blank", "noopener,noreferrer"); } }}>
+                  {contextualWa.label}
+                </Button>
               )}
               {contactWhatsApp && (
                 <a href={contactWhatsApp} target="_blank" rel="noopener noreferrer" className="block">

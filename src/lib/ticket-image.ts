@@ -1,15 +1,25 @@
-import sharp from "sharp";
-import fs from "fs";
-import path from "path";
-import QRCode from "qrcode";
+import {
+  FONT_NAME,
+  decodePng,
+  encodePng,
+  loadPureImage,
+  loadSharp,
+  makeCircularLogo,
+  renderQrImage,
+  renderStoreHeader,
+  type PrinterVendor,
+} from "@/lib/printer-image";
 
-function esc(s: unknown): string {
-  return String(s ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
+/**
+ * Comprobante PNG (WhatsApp / descarga) con el MISMO contenido y orden que el
+ * ticket térmico: encabezado (logo redondo + nombre + datos), ítems, total,
+ * seña, vuelto y bloque fiscal con QR.
+ *
+ * Se dibuja con `pureimage` + la Roboto-Bold del repo (igual que el
+ * encabezado de la impresora). NO se usa SVG: librsvg —el motor de sharp—
+ * no tiene fuentes en el container Alpine de producción y los <text>
+ * salían como cuadrados o directamente no se dibujaban.
+ */
 
 export interface TicketImageInput {
   storeName: string;
@@ -30,7 +40,9 @@ export interface TicketImageInput {
   total: number;
   depositPaid?: number;
   amountPaid?: number;
+  cashAmount?: number | null;
   paymentMethod?: string | null;
+  paymentLabel?: string | null;
   vuelto?: number;
   cashDiscount?: number;
   // Fiscal
@@ -39,269 +51,360 @@ export interface TicketImageInput {
   caeVto?: string | null;
   isFiscal?: boolean;
   qrData?: string | null; // data para QR fiscal
+  docTitle?: string | null;
   footer?: string;
+  bookingRef?: string | null;
+  staffName?: string | null;
 }
 
-let fontBase64Cache: string | null = null;
-function loadFontBase64(): string | null {
-  if (fontBase64Cache !== null) return fontBase64Cache || null;
-  try {
-    const fontPath = path.join(process.cwd(), "assets", "fonts", "Roboto-Bold.ttf");
-    if (!fs.existsSync(fontPath)) {
-      fontBase64Cache = "";
-      return null;
+// Ancho del ticket 80mm a 203dpi (576 dots) × 2 para que se lea nítido en el
+// celular. Las proporciones son las del ticket impreso.
+const LOGICAL_WIDTH = 576;
+const SCALE = 2;
+const WIDTH = LOGICAL_WIDTH * SCALE;
+const PAD = 14 * SCALE;
+const MAX_W = WIDTH - PAD * 2;
+
+const FONT_BODY = 26;
+const FONT_TITLE = 34;
+const FONT_TOTAL = 36;
+const FONT_SMALL = 22;
+
+type Align = "left" | "right" | "center";
+type Seg = { text: string; size: number; align: Align; color?: string };
+type Row = { h: number; segs: Seg[]; image?: Buffer; imageW?: number; imageH?: number };
+
+const AR_TZ = "America/Argentina/Buenos_Aires";
+
+function segH(size: number): number {
+  return Math.round(size * 1.35);
+}
+
+function shortSocialHandle(value: string, host: string): string {
+  let v = String(value || "").trim();
+  v = v.replace(/^https?:\/\//i, "");
+  v = v.replace(/^www\./i, "");
+  v = v.replace(new RegExp(`^${host}\\.com/`, "i"), "");
+  v = v.replace(/^@/, "");
+  v = v.replace(/[?#].*$/, "").replace(/\/+$/, "").trim();
+  return v;
+}
+
+function wrapWords(ctx: any, text: string, maxWidth: number, size: number): string[] {
+  const words = String(text || "").split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  ctx.font = `${size}px ${FONT_NAME}`;
+  const lines: string[] = [];
+  let cur = "";
+  for (const w of words) {
+    const candidate = cur ? cur + " " + w : w;
+    if (ctx.measureText(candidate).width <= maxWidth || !cur) {
+      cur = candidate;
+    } else {
+      lines.push(cur);
+      cur = w;
     }
-    const buf = fs.readFileSync(fontPath);
-    fontBase64Cache = buf.toString("base64");
-    return fontBase64Cache;
-  } catch {
-    fontBase64Cache = "";
-    return null;
   }
+  if (cur) lines.push(cur);
+  return lines;
 }
 
-let logoCache: Map<string, string> = new Map();
-async function loadLogoBase64(url: string | null | undefined): Promise<string | null> {
-  if (!url) return null;
-  if (logoCache.has(url)) return logoCache.get(url)!;
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(8_000) });
-    if (!res.ok) return null;
-    const buf = Buffer.from(await res.arrayBuffer());
-    const b64 = buf.toString("base64");
-    const mime = res.headers.get("content-type") || "image/png";
-    const dataUri = `data:${mime};base64,${b64}`;
-    logoCache.set(url, dataUri);
-    return dataUri;
-  } catch {
-    return null;
-  }
+function money(n: number): string {
+  return `$${Number(n || 0).toLocaleString("es-AR")}`;
 }
 
-/**
- * Renderiza un comprobante (ticket o factura) como PNG, replicando el layout
- * del ticket térmico (composeStoreHeader + ítems + total + vuelto + seña + fiscal).
- */
+const PAYMENT_LABELS: Record<string, string> = {
+  efectivo: "Efectivo",
+  transferencia: "Transferencia",
+  whatsapp: "Coordinado",
+  tarjeta: "Tarjeta",
+  credito: "Tarjeta/Online",
+  fiado: "Fiado",
+};
+
 export async function renderReceiptImage(input: TicketImageInput): Promise<Buffer | null> {
   try {
-    const width = 400;
-    const padding = 16;
-    const lineHeight = 20;
-    const lines: { text: string; bold?: boolean; size?: number; align?: "left" | "center" | "right" }[] = [];
+    const PI = await loadPureImage();
+    const sharp = await loadSharp();
 
-    const fontB64 = loadFontBase64();
-    const fontFace = fontB64
-      ? `@font-face { font-family: 'Roboto'; src: url('data:font/ttf;base64,${fontB64}') format('truetype'); font-weight: bold; }`
-      : "";
-    const fontFamily = fontB64 ? "Roboto" : "DejaVu Sans, sans-serif";
+    // Canvas auxiliar: sólo para medir el texto antes de crear el final.
+    const probe = PI.make(8, 8);
+    const pctx = probe.getContext("2d");
+    pctx.textBaseline = "alphabetic";
 
-    // --- Header (logo + nombre + datos) ---
-    const wantLogo = input.printLogo !== false && !!input.logoUrl;
-    const logoDataUri = wantLogo ? await loadLogoBase64(input.logoUrl) : null;
+    const rows: Row[] = [];
+    const pushText = (
+      text: string,
+      opts: { size?: number; align?: Align; color?: string } = {}
+    ) => {
+      const size = opts.size || FONT_BODY;
+      rows.push({
+        h: segH(size),
+        segs: [{ text, size, align: opts.align || "left", color: opts.color }],
+      });
+    };
+    const pushSeparator = () => {
+      pctx.font = `${FONT_SMALL}px ${FONT_NAME}`;
+      const dashW = pctx.measureText("-").width || 8;
+      const n = Math.max(10, Math.floor(MAX_W / dashW));
+      rows.push({
+        h: segH(FONT_SMALL),
+        segs: [{ text: "-".repeat(n), size: FONT_SMALL, align: "center" }],
+      });
+    };
 
-    // Nombre del local
-    const storeName = input.storeName || "Comercio";
+    // --- Encabezado: mismo bitmap que se imprime (logo redondo + nombre) ---
+    const vendor: PrinterVendor = {
+      id: "receipt",
+      store_name: input.storeName || "Comercio",
+      logo_url: input.logoUrl || null,
+      address: input.address || null,
+      phone: input.phone || null,
+      whatsapp: input.whatsapp || null,
+      instagram: input.instagram || null,
+      facebook: input.facebook || null,
+      printer_ip: null,
+      printer_port: null,
+      paper_size: "80mm",
+    };
 
-    // Address
+    let headerPng: Buffer | null = null;
+    if (input.printLogo !== false && input.logoUrl) {
+      const circular = await makeCircularLogo(input.logoUrl);
+      if (circular) {
+        const raw = await renderStoreHeader(vendor, LOGICAL_WIDTH, circular);
+        if (raw) {
+          // Se escala ×2 con "nearest": al ser 1-bit mantiene los bordes duros.
+          const scaled = await sharp(raw)
+            .resize(WIDTH, undefined, { kernel: "nearest" })
+            .png()
+            .toBuffer();
+          const meta = await sharp(scaled).metadata();
+          headerPng = scaled;
+          rows.push({ h: meta.height || 0, segs: [], image: scaled, imageW: WIDTH, imageH: meta.height || 0 });
+          rows.push({ h: 6, segs: [] });
+        }
+      }
+    }
+    if (!headerPng) {
+      // Sin logo (o falló): nombre + datos, como composeStoreHeader.
+      pushText(input.storeName || "Comercio", { size: FONT_TITLE, align: "center" });
+    }
+
+    // Datos del local (respetando los toggles de impresión).
     const address = input.printAddress !== false ? (input.address || "").trim() : "";
+    if (address) {
+      for (const ln of wrapWords(pctx, address, MAX_W, FONT_SMALL)) {
+        pushText(ln, { size: FONT_SMALL, align: "center" });
+      }
+    }
     const phone = input.printPhone !== false ? (input.phone || "").trim() : "";
     const whatsapp = input.printPhone !== false ? (input.whatsapp || "").trim() : "";
-    const ig = input.printSocial !== false && input.instagram ? `IG: @${input.instagram.replace(/^@/, "")}` : null;
-    const fb = input.printSocial !== false && input.facebook ? `FB: ${input.facebook}` : null;
-
-    // --- Build SVG ---
-    // Calculamos altura aproximada
-    let lineCount = 0;
-    if (!logoDataUri) lineCount += 1; // nombre
-    if (address) lineCount += 1;
-    if (phone || whatsapp) lineCount += 1;
-    if (ig || fb) lineCount += 1;
-    lineCount += 1; // separador
-    if (input.customerName) lineCount += 1;
-    if (input.date) lineCount += 1;
-    lineCount += 1; // separador
-    for (const it of input.items) {
-      lineCount += 1;
-      if (it.modifiers && it.modifiers.length > 0) lineCount += 1;
-    }
-    lineCount += 1; // separador
-    if (input.depositPaid && input.depositPaid > 0) lineCount += 1;
-    lineCount += 1; // total
-    if (input.amountPaid != null && input.amountPaid > 0 && input.amountPaid !== input.total) lineCount += 1;
-    if (input.paymentMethod) lineCount += 1;
-    if (input.vuelto != null && input.vuelto > 0) lineCount += 1;
-    if (input.cashDiscount && input.cashDiscount > 0) lineCount += 1;
-    if (input.isFiscal) {
-      lineCount += 1; // separador
-      if (input.invoiceNumber) lineCount += 1;
-      if (input.cae) lineCount += 1;
-      if (input.caeVto) lineCount += 1;
-      if (input.qrData) lineCount += 6; // QR ~6 líneas de altura
-    }
-    if (input.footer) {
-      lineCount += 1; // separador
-      lineCount += 1;
-    }
-    lineCount += 1; // fecha/hora final
-
-    const lh = 20;
-    const height = 30 + lineCount * lh + 20;
-
-    const svg: string[] = [];
-    svg.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">`);
-    svg.push(`<defs>${fontFace ? `<style>${fontFace}</style>` : ""}</defs>`);
-    svg.push(`<rect width="100%" height="100%" fill="white"/>`);
-
-    let y = 24;
-    const cx = width / 2;
-
-    // --- Logo + nombre ---
-    if (logoDataUri) {
-      // Logo redondo centrado (como composeStoreHeader en modo imagen)
-      const logoSize = 60;
-      const logoX = (width - logoSize) / 2;
-      svg.push(`<defs><clipPath id="logoCircle"><circle cx="${logoX + logoSize / 2}" cy="${y + logoSize / 2}" r="${logoSize / 2}"/></clipPath></defs>`);
-      svg.push(`<image href="${logoDataUri}" x="${logoX}" y="${y}" width="${logoSize}" height="${logoSize}" clip-path="url(#logoCircle)" preserveAspectRatio="xMidYMid slice"/>`);
-      y += logoSize + 8;
-    }
-
-    // Nombre del local (centrado, bold)
-    svg.push(`<text x="${cx}" y="${y}" font-size="18" font-weight="bold" font-family="${fontFamily}" text-anchor="middle" fill="black">${esc(storeName)}</text>`);
-    y += lineHeight + 2;
-
-    // Datos
-    if (address) {
-      svg.push(`<text x="${cx}" y="${y}" font-size="12" font-family="${fontFamily}" text-anchor="middle" fill="black">${esc(address)}</text>`);
-      y += lineHeight;
-    }
     if (phone || whatsapp) {
-      const tel = phone ? `Tel: ${phone}` : null;
-      const wa = whatsapp ? `WA: ${whatsapp}` : null;
+      const tel = phone ? `Tel: ${phone}` : "";
+      const wa = whatsapp ? `WA: ${whatsapp}` : "";
       const combined = [tel, wa].filter(Boolean).join(" · ");
-      svg.push(`<text x="${cx}" y="${y}" font-size="12" font-family="${fontFamily}" text-anchor="middle" fill="black">${esc(combined)}</text>`);
-      y += lineHeight;
+      if (combined.length <= 48) {
+        pushText(combined, { size: FONT_SMALL, align: "center" });
+      } else {
+        if (tel) pushText(tel, { size: FONT_SMALL, align: "center" });
+        if (wa) pushText(wa, { size: FONT_SMALL, align: "center" });
+      }
     }
+    const ig =
+      input.printSocial !== false && input.instagram
+        ? `IG: @${shortSocialHandle(input.instagram, "instagram")}`
+        : "";
+    const fb =
+      input.printSocial !== false && input.facebook
+        ? `FB: ${shortSocialHandle(input.facebook, "facebook")}`
+        : "";
     if (ig || fb) {
       const combined = [ig, fb].filter(Boolean).join(" · ");
-      svg.push(`<text x="${cx}" y="${y}" font-size="12" font-family="${fontFamily}" text-anchor="middle" fill="black">${esc(combined)}</text>`);
-      y += lineHeight;
-    }
-
-    // Separador
-    svg.push(`<text x="${padding}" y="${y}" font-size="12" font-family="${fontFamily}" fill="black">${"-".repeat(48)}</text>`);
-    y += lineHeight;
-
-    // Customer + fecha
-    if (input.customerName) {
-      svg.push(`<text x="${padding}" y="${y}" font-size="13" font-family="${fontFamily}" fill="black">${esc(`Cliente: ${input.customerName}`)}</text>`);
-      y += lineHeight;
-    }
-    if (input.date) {
-      svg.push(`<text x="${padding}" y="${y}" font-size="13" font-family="${fontFamily}" fill="black">${esc(`Fecha: ${input.date}${input.time ? " " + input.time : ""}`)}</text>`);
-      y += lineHeight;
-    }
-
-    // Separador
-    svg.push(`<text x="${padding}" y="${y}" font-size="12" font-family="${fontFamily}" fill="black">${"-".repeat(48)}</text>`);
-    y += lineHeight;
-
-    // Items
-    for (const it of input.items) {
-      const qty = it.qty && it.qty > 1 ? `${it.qty}x ` : "";
-      const price = it.price != null ? `  $${Number(it.price).toLocaleString("es-AR")}` : "";
-      svg.push(`<text x="${padding}" y="${y}" font-size="13" font-family="${fontFamily}" fill="black">${esc(`${qty}${it.name}${price}`)}</text>`);
-      y += lineHeight;
-      if (it.modifiers && it.modifiers.length > 0) {
-        svg.push(`<text x="${padding + 10}" y="${y}" font-size="11" font-family="${fontFamily}" fill="black">${esc(`(${it.modifiers.join(", ")})`)}</text>`);
-        y += lineHeight;
+      if (combined.length <= 48) {
+        pushText(combined, { size: FONT_SMALL, align: "center" });
+      } else {
+        if (ig) pushText(ig, { size: FONT_SMALL, align: "center" });
+        if (fb) pushText(fb, { size: FONT_SMALL, align: "center" });
       }
     }
 
-    // Separador
-    svg.push(`<text x="${padding}" y="${y}" font-size="12" font-family="${fontFamily}" fill="black">${"-".repeat(48)}</text>`);
-    y += lineHeight;
+    pushSeparator();
 
-    // Seña
-    if (input.depositPaid && input.depositPaid > 0) {
-      svg.push(`<text x="${padding}" y="${y}" font-size="13" font-family="${fontFamily}" fill="black">${esc(`Seña pagada: $${input.depositPaid.toLocaleString("es-AR")}`)}</text>`);
-      y += lineHeight;
+    // --- Título + identificación (espejo de composeReceipt) ---
+    pushText(input.docTitle || (input.isFiscal ? "FACTURA C" : "TICKET"), {
+      size: FONT_TITLE,
+      align: "center",
+    });
+    if (input.bookingRef) {
+      pushText(`Turno #${input.bookingRef}`, { size: FONT_BODY, align: "left" });
+    }
+    if (input.customerName) {
+      pushText(`Cliente: ${input.customerName}`, { size: FONT_BODY, align: "left" });
+    }
+    if (input.staffName) {
+      pushText(`Profesional: ${input.staffName}`, { size: FONT_BODY, align: "left" });
+    }
+    if (input.date) {
+      pushText(`${input.date}${input.time ? " " + input.time : ""}`, {
+        size: FONT_BODY,
+        align: "left",
+      });
     }
 
-    // Descuento en efectivo
+    pushSeparator();
+
+    // --- Partidas (precio SIEMPRE visible; el nombre se envuelve) ---
+    for (const item of input.items || []) {
+      const qty = Number(item.qty || 1);
+      const name = String(item.name || "").trim();
+      const unitPrice = Number(item.price || 0);
+      const total = unitPrice * qty;
+      const qtyStr = `${qty % 1 === 0 ? qty : qty.toLocaleString("es-AR")}x`;
+      const left = `${qtyStr} ${name}`;
+      const right = money(total);
+
+      pctx.font = `${FONT_BODY}px ${FONT_NAME}`;
+      const leftW = pctx.measureText(left).width;
+      const rightW = pctx.measureText(right).width;
+
+      if (leftW + rightW + 24 <= MAX_W) {
+        rows.push({
+          h: segH(FONT_BODY),
+          segs: [
+            { text: left, size: FONT_BODY, align: "left" },
+            { text: right, size: FONT_BODY, align: "right" },
+          ],
+        });
+      } else {
+        for (const ln of wrapWords(pctx, left, MAX_W, FONT_BODY)) {
+          rows.push({ h: segH(FONT_BODY), segs: [{ text: ln, size: FONT_BODY, align: "left" }] });
+        }
+        rows.push({
+          h: segH(FONT_BODY),
+          segs: [{ text: right, size: FONT_BODY, align: "right" }],
+        });
+      }
+
+      if (item.modifiers && item.modifiers.length) {
+        const mods = `(${item.modifiers.join(", ")})`;
+        for (const ln of wrapWords(pctx, mods, MAX_W - 12, FONT_SMALL)) {
+          rows.push({
+            h: segH(FONT_SMALL),
+            segs: [{ text: `  ${ln}`, size: FONT_SMALL, align: "left" }],
+          });
+        }
+      }
+    }
+
+    pushSeparator();
+
+    // --- Totales ---
     if (input.cashDiscount && input.cashDiscount > 0) {
-      svg.push(`<text x="${padding}" y="${y}" font-size="13" font-family="${fontFamily}" fill="black">${esc(`Desc. efectivo: -$${input.cashDiscount.toLocaleString("es-AR")}`)}</text>`);
-      y += lineHeight;
+      pushText(`Desc. efectivo: -${money(input.cashDiscount)}`, { size: FONT_BODY, align: "right" });
     }
+    rows.push({
+      h: segH(FONT_TOTAL),
+      segs: [{ text: `TOTAL: ${money(input.total)}`, size: FONT_TOTAL, align: "right" }],
+    });
 
-    // Total
-    svg.push(`<text x="${padding}" y="${y}" font-size="16" font-weight="bold" font-family="${fontFamily}" fill="black">${esc(`TOTAL: $${input.total.toLocaleString("es-AR")}`)}</text>`);
-    y += lineHeight + 2;
-
-    // Cobrado
-    if (input.amountPaid != null && input.amountPaid > 0 && input.amountPaid !== input.total) {
-      svg.push(`<text x="${padding}" y="${y}" font-size="13" font-family="${fontFamily}" fill="black">${esc(`Cobrado: $${input.amountPaid.toLocaleString("es-AR")}`)}</text>`);
-      y += lineHeight;
+    // --- Pago / seña / vuelto ---
+    const payLabel =
+      input.paymentLabel ||
+      PAYMENT_LABELS[String(input.paymentMethod || "").toLowerCase()] ||
+      (input.paymentMethod ? String(input.paymentMethod) : "");
+    if (payLabel) {
+      pushText(`Pago: ${payLabel} — PAGADO`, { size: FONT_BODY, align: "left" });
     }
-
-    // Vuelto
+    if (input.depositPaid && input.depositPaid > 0) {
+      pushText(`Seña pagada: ${money(input.depositPaid)}`, { size: FONT_BODY, align: "left" });
+    }
+    if (input.amountPaid != null && input.amountPaid > 0 && Number(input.amountPaid) !== Number(input.total)) {
+      pushText(`Cobrado: ${money(input.amountPaid)}`, { size: FONT_BODY, align: "left" });
+    }
+    if (input.cashAmount != null && Number(input.cashAmount) > 0) {
+      pushText(`Abona con: ${money(input.cashAmount)}`, { size: FONT_BODY, align: "left" });
+    }
     if (input.vuelto != null && input.vuelto > 0) {
-      svg.push(`<text x="${padding}" y="${y}" font-size="13" font-family="${fontFamily}" fill="black">${esc(`Vuelto: $${input.vuelto.toLocaleString("es-AR")}`)}</text>`);
-      y += lineHeight;
-    }
-
-    // Método de pago
-    if (input.paymentMethod) {
-      svg.push(`<text x="${padding}" y="${y}" font-size="12" font-family="${fontFamily}" fill="black">${esc(`Pago: ${input.paymentMethod}`)}</text>`);
-      y += lineHeight;
+      pushText(`Vuelto: ${money(input.vuelto)}`, { size: FONT_BODY, align: "left" });
     }
 
     // --- Fiscal (Factura C) ---
+    let qrPng: Buffer | null = null;
     if (input.isFiscal) {
-      svg.push(`<text x="${padding}" y="${y}" font-size="12" font-family="${fontFamily}" fill="black">${"-".repeat(48)}</text>`);
-      y += lineHeight;
+      pushSeparator();
       if (input.invoiceNumber) {
-        svg.push(`<text x="${padding}" y="${y}" font-size="13" font-weight="bold" font-family="${fontFamily}" fill="black">${esc(`FACTURA C N° ${input.invoiceNumber}`)}</text>`);
-        y += lineHeight;
+        pushText(`FACTURA C N° ${input.invoiceNumber}`, { size: FONT_BODY, align: "left" });
       }
       if (input.cae) {
-        svg.push(`<text x="${padding}" y="${y}" font-size="12" font-family="${fontFamily}" fill="black">${esc(`CAE: ${input.cae}`)}</text>`);
-        y += lineHeight;
+        pushText(`CAE: ${input.cae}`, { size: FONT_SMALL, align: "left" });
       }
       if (input.caeVto) {
-        svg.push(`<text x="${padding}" y="${y}" font-size="12" font-family="${fontFamily}" fill="black">${esc(`Vto CAE: ${input.caeVto}`)}</text>`);
-        y += lineHeight;
+        pushText(`Vto CAE: ${input.caeVto}`, { size: FONT_SMALL, align: "left" });
       }
-      // QR fiscal
       if (input.qrData) {
-        try {
-          const qrDataUri = await QRCode.toDataURL(input.qrData, { width: 120, margin: 1 });
-          const qrSize = 120;
-          const qrX = (width - qrSize) / 2;
-          svg.push(`<image href="${qrDataUri}" x="${qrX}" y="${y}" width="${qrSize}" height="${qrSize}"/>`);
-          y += qrSize + 8;
-        } catch { /* sin QR */ }
+        qrPng = await renderQrImage(input.qrData, 300);
+        if (qrPng) {
+          // El QR va dentro del bloque fiscal (igual que en el ticket impreso).
+          rows.push({ h: 312, segs: [], image: qrPng, imageW: 300, imageH: 300 });
+        }
       }
     }
 
-    // Footer
+    // --- Pie ---
+    pushSeparator();
     if (input.footer) {
-      svg.push(`<text x="${padding}" y="${y}" font-size="12" font-family="${fontFamily}" fill="black">${"-".repeat(48)}</text>`);
-      y += lineHeight;
-      svg.push(`<text x="${cx}" y="${y}" font-size="12" font-family="${fontFamily}" text-anchor="middle" fill="black">${esc(input.footer)}</text>`);
-      y += lineHeight;
+      pushText(input.footer, { size: FONT_SMALL, align: "center" });
+    }
+    const now = new Date();
+    const emitted = `${now.toLocaleDateString("es-AR", { timeZone: AR_TZ })} ${now.toLocaleTimeString("es-AR", {
+      timeZone: AR_TZ,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      hourCycle: "h23",
+    })}`;
+    pushText(`Emitido: ${emitted}`, { size: FONT_SMALL, align: "center", color: "#555555" });
+
+    // --- Canvas final ---
+    const headerH = rows.reduce((acc, r) => acc + r.h, 0);
+    const totalH = Math.max(200, headerH + 24);
+    const canvas = PI.make(WIDTH, totalH);
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "white";
+    ctx.fillRect(0, 0, WIDTH, totalH);
+    ctx.textBaseline = "alphabetic";
+
+    let y = 8;
+    for (const row of rows) {
+      if (row.image) {
+        const bitmap = await decodePng(PI, row.image);
+        const iw = row.imageW || WIDTH;
+        const ih = row.imageH || row.h;
+        ctx.drawImage(bitmap, Math.round((WIDTH - iw) / 2), y, iw, ih);
+        y += row.h;
+        continue;
+      }
+      for (const seg of row.segs) {
+        ctx.font = `${seg.size}px ${FONT_NAME}`;
+        ctx.fillStyle = seg.color || "black";
+        const w = ctx.measureText(seg.text).width;
+        let x = PAD;
+        if (seg.align === "right") x = WIDTH - PAD - w;
+        else if (seg.align === "center") x = Math.round((WIDTH - w) / 2);
+        ctx.fillText(seg.text, x, y + seg.size);
+      }
+      y += row.h;
     }
 
-    // Fecha/hora de emisión
-    const now = new Date();
-    const fechaEmision = now.toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" });
-    const horaEmision = now.toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit" });
-    svg.push(`<text x="${cx}" y="${y}" font-size="10" font-family="${fontFamily}" text-anchor="middle" fill="gray">${esc(`Emitido: ${fechaEmision} ${horaEmision}`)}</text>`);
-    y += lineHeight;
+    if (qrPng) {
+      const qrBitmap = await decodePng(PI, qrPng);
+      const qrX = Math.round((WIDTH - 300) / 2);
+      ctx.drawImage(qrBitmap, qrX, y + 6, 300, 300);
+    }
 
-    svg.push(`</svg>`);
-
-    const png = await sharp(Buffer.from(svg.join(""))).png().toBuffer();
-    return png;
+    const raw = await encodePng(PI, canvas);
+    return await sharp(raw).png().toBuffer();
   } catch (e) {
     console.error("[ticket-image] render failed", e);
     return null;

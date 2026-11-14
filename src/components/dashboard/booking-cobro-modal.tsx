@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { isFromPricing } from "@/lib/service-price";
 import { useBankAccounts, BankAccountPickerModal } from "@/components/vendor/bank-account-picker";
 import { bankAccountLabel, needsAccountPicker } from "@/lib/bank-accounts";
+import { ProductImage } from "@/components/product-image";
 
 export type BookingCobroModalProps = {
   booking: any;
@@ -161,7 +162,13 @@ export function BookingCobroModal({
           )}
           {receiptImageUrl && (
             <div className="space-y-2">
-              <img src={receiptImageUrl} alt="Comprobante" className="w-full rounded-lg border border-border" />
+              <ProductImage
+                src={receiptImageUrl}
+                name="Comprobante"
+                alt="Comprobante"
+                fit="contain"
+                className="w-full rounded-lg border border-border"
+              />
               <div className="flex gap-2">
                 <a href={receiptImageUrl} download className="flex-1">
                   <Button variant="outline" size="sm" className="w-full h-9">⬇️ Descargar imagen</Button>

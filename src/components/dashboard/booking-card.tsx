@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { ProductImage } from "@/components/product-image";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -756,7 +757,13 @@ export function BookingCard({
             {comprobanteStatus && <p className="text-xs text-muted-foreground">{comprobanteStatus}</p>}
             {comprobanteUrl && (
               <div className="space-y-2">
-                <img src={comprobanteUrl} alt="Comprobante" className="w-full rounded-lg border border-border" />
+                <ProductImage
+                  src={comprobanteUrl}
+                  name="Comprobante"
+                  alt="Comprobante"
+                  fit="contain"
+                  className="w-full rounded-lg border border-border"
+                />
                 <div className="flex gap-2">
                   <a href={comprobanteUrl} download className="flex-1">
                     <Button variant="outline" size="sm" className="w-full h-9">⬇️ Descargar</Button>

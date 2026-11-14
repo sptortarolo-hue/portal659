@@ -93,6 +93,32 @@ export async function POST(
     } catch { /* sin QR */ }
   }
 
+  // Servicio y profesional del turno (vertical estética/taller/servicio).
+  let serviceName: string | null = null;
+  let staffName: string | null = null;
+  try {
+    const refs = await queryOne<{ service_id: string | null; staff_id: string | null }>(
+      `SELECT service_id, staff_id FROM bookings WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+      [id, vendor.id]
+    );
+    if (refs?.service_id) {
+      const s = await queryOne<{ name: string }>(
+        `SELECT name FROM services WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+        [refs.service_id, vendor.id]
+      ).catch(() => null);
+      serviceName = s?.name || null;
+    }
+    if (refs?.staff_id) {
+      const st = await queryOne<{ name: string }>(
+        `SELECT name FROM estetica_staff WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+        [refs.staff_id, vendor.id]
+      ).catch(() => null);
+      staffName = st?.name || null;
+    }
+  } catch {
+    /* sin migración de estética: se sigue con los datos básicos */
+  }
+
   // Partidas de la cuenta (si las hay).
   let items: { name: string; qty?: number; price?: number }[] = [];
   try {
@@ -106,7 +132,7 @@ export async function POST(
     /* sin migración: sin partidas */
   }
   if (items.length === 0 && booking.service_price && booking.service_price > 0) {
-    items = [{ name: "Servicio", qty: 1, price: Number(booking.service_price) }];
+    items = [{ name: serviceName || "Servicio", qty: 1, price: Number(booking.service_price) }];
   }
 
 
@@ -121,8 +147,22 @@ export async function POST(
     phone: string | null;
     whatsapp: string | null;
     instagram: string | null;
+    facebook: string | null;
   }>(
-    `SELECT store_name, logo_url, address, phone, whatsapp, instagram FROM vendors WHERE id = $1 LIMIT 1`,
+    `SELECT store_name, logo_url, address, phone, whatsapp, instagram, facebook
+     FROM vendors WHERE id = $1 LIMIT 1`,
+    [vendor.id]
+  ).catch(() => null);
+
+  // Toggles del encabezado impreso (pueden no estar migrados).
+  const printCfg = await queryOne<{
+    print_logo: boolean | null;
+    print_address: boolean | null;
+    print_phone: boolean | null;
+    print_social: boolean | null;
+  }>(
+    `SELECT print_logo, print_address, print_phone, print_social
+     FROM vendors WHERE id = $1 LIMIT 1`,
     [vendor.id]
   ).catch(() => null);
 
@@ -133,9 +173,16 @@ export async function POST(
     phone: v?.phone,
     whatsapp: v?.whatsapp,
     instagram: v?.instagram,
+    facebook: v?.facebook,
+    printLogo: printCfg?.print_logo,
+    printAddress: printCfg?.print_address,
+    printPhone: printCfg?.print_phone,
+    printSocial: printCfg?.print_social,
     customerName: booking.customer_name,
     date: booking.booking_date,
     time: String(booking.booking_time).slice(0, 5),
+    staffName,
+    bookingRef: id.slice(0, 8),
     items,
     total,
     depositPaid,
@@ -146,6 +193,7 @@ export async function POST(
     caeVto: invoice?.cae_expiry || null,
     isFiscal,
     qrData,
+    docTitle: isFiscal ? "FACTURA C" : "TICKET",
     footer: isFiscal ? "Factura C — documento fiscal" : "Comprobante de servicio",
   });
 

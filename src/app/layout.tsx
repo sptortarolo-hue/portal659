@@ -14,6 +14,7 @@ import { ThemeProvider } from "@/components/ui/theme-provider";
 import { ThemeColorSync } from "@/components/ui/theme-color-sync";
 import { BottomNav } from "@/components/nav/bottom-nav";
 import { OnboardingOverlay } from "@/components/onboarding/onboarding-overlay";
+import { MicroFeedback } from "@/components/ui/micro-feedback";
 import { AnalyticsBeacon } from "@/components/analytics/analytics-beacon";
 import { PANEL_UI_PRE_PAINT } from "@/lib/panel-ui";
 import { PanelUiProvider } from "@/components/panel-ui/panel-ui-provider";
@@ -136,6 +137,11 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
         <script
           dangerouslySetInnerHTML={{
+            __html: `(function(){try{var s=0;function send(m,st){if(s>5)return;s++;try{fetch("/api/client-error",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:String(m).slice(0,500),stack:String(st||"").slice(0,2000),url:location.href}),keepalive:true}).catch(function(){})}catch(e){}}window.onerror=function(m,src,line,col,err){send(m,err&&err.stack);return false};window.onunhandledrejection=function(e){send("UnhandledRejection: "+(e.reason&&e.reason.message?e.reason.message:e.reason),e.reason&&e.reason.stack)}}catch(e){}})()`,
+          }}
+        />
+        <script
+          dangerouslySetInnerHTML={{
             // Pre-paint del diseño del panel: cookie `portal659-panel-ui`,
             // localStorage o `?ui=tasty|classic` → data-panel-ui en <html>
             // (default clásico). Mismo patrón que el tema de abajo.
@@ -175,6 +181,7 @@ export default function RootLayout({
               <CartFooter />
               <CartDrawer />
               <BottomNav />
+              <MicroFeedback />
               <footer className="border-t border-border py-6 text-center text-sm text-muted-foreground bg-card" data-portal-chrome>
                 <div className="container mx-auto px-4 flex flex-col sm:flex-row items-center justify-center gap-2">
                   <span>© {new Date().getFullYear()} Portal 659 — El centro comercial de tu barrio · 0% comisión</span>

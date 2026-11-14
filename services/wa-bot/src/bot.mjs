@@ -1376,16 +1376,17 @@ function maybeAskRequiredMods(state, products, replies) {
   return false;
 }
 
-function summaryText(state, vendor) {
-  if (config.waTone === "humano") return summaryTextTone(state, vendor);
+function summaryText(state, vendor, exactTotal = null) {
+  if (config.waTone === "humano") return summaryTextTone(state, vendor, exactTotal);
   const lines = state.items.map((i) => `• ${itemDisplay(i)}`);
   const method = state.method === "delivery" ? `🛵 Envío a ${state.customerAddress}` : "🏬 Retiro en el local";
   const payment =
     state.payment === "transferencia" ? "🏦 Transferencia" :
     state.payment === "efectivo" ? "💵 Efectivo" : "💳 Coordinamos por WhatsApp";
   const estimate = orderTotalEstimate(state, vendor);
-  const totalLine = estimate.total != null
-    ? `💰 Total: $${Math.round(estimate.total).toLocaleString("es-AR")}${estimate.aprox ? " (aprox)" : ""}`
+  const totalToShow = exactTotal != null ? exactTotal : estimate.total;
+  const totalLine = totalToShow != null
+    ? `💰 Total: $${Math.round(totalToShow).toLocaleString("es-AR")}${exactTotal != null ? "" : (estimate.aprox ? " (aprox)" : "")}`
     : "";
   return [
     "✅ Tu pedido:",

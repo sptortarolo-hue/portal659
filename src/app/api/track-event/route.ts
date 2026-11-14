@@ -3,7 +3,7 @@ import { queryOne, query } from "@/lib/db";
 import { DEVICE_COOKIE, deviceCookieOptions, getDeviceId, newDeviceId } from "@/lib/device";
 import { AR_DAY_SQL } from "@/lib/analytics-day";
 
-const KINDS = new Set(["search", "wa_click", "store_open"]);
+const KINDS = new Set(["search", "wa_click", "store_open", "feedback"]);
 
 /**
  * Beacon público de interacciones (portal_events):

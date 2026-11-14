@@ -9,6 +9,7 @@ import { isFromPricing } from "@/lib/service-price";
 import { useBankAccounts, BankAccountPickerModal } from "@/components/vendor/bank-account-picker";
 import { bankAccountLabel, needsAccountPicker } from "@/lib/bank-accounts";
 import { ProductImage } from "@/components/product-image";
+import { shareReceiptImage } from "@/lib/share-receipt";
 
 export type BookingCobroModalProps = {
   booking: any;
@@ -61,6 +62,10 @@ export function BookingCobroModal({
   const [receiptStatus, setReceiptStatus] = useState<string | null>(null);
   const [receiptImageUrl, setReceiptImageUrl] = useState<string | null>(null);
   const [sendingReceipt, setSendingReceipt] = useState(false);
+  const [receiptShare, setReceiptShare] = useState<{ text: string; filename: string }>({
+    text: "",
+    filename: "comprobante.png",
+  });
   const firstInput = useRef<HTMLInputElement>(null);
 
   const { accounts: bankAccounts } = useBankAccounts();
@@ -169,23 +174,42 @@ export function BookingCobroModal({
                 fit="contain"
                 className="w-full rounded-lg border border-border"
               />
-              <div className="flex gap-2">
-                <a href={receiptImageUrl} download className="flex-1">
+              <div className="flex flex-wrap gap-2">
+                <a href={receiptImageUrl} download className="flex-1 min-w-[110px]">
                   <Button variant="outline" size="sm" className="w-full h-9">⬇️ Descargar imagen</Button>
                 </a>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="flex-1 h-9"
-                  onClick={() => {
-                    const phone = String(booking.customer_phone || "").replace(/\D/g, "");
-                    if (phone) window.open(`https://wa.me/${phone}?text=${encodeURIComponent("Te envío el comprobante de tu servicio.")}`, "_blank", "noopener,noreferrer");
+                  className="flex-1 min-w-[110px] h-9"
+                  onClick={async () => {
+                    setSendingReceipt(true);
+                    setReceiptStatus(null);
+                    const r = await shareReceiptImage({
+                      url: receiptImageUrl,
+                      filename: receiptShare.filename,
+                      title: "Comprobante de servicio",
+                      text: receiptShare.text,
+                      phone: booking.customer_phone,
+                    });
+                    setReceiptStatus(
+                      r.mode === "share"
+                        ? "✅ Comprobante compartido"
+                        : r.mode === "download"
+                          ? r.message || "⬇️ Se descargó la imagen: adjuntala en WhatsApp"
+                          : r.mode === "cancelled"
+                            ? null
+                            : r.message || "No se pudo compartir"
+                    );
+                    setSendingReceipt(false);
                   }}
                 >
-                  💬 Abrir WhatsApp
+                  📤 Compartir
                 </Button>
               </div>
-              <p className="text-[10px] text-muted-foreground">Guardá la imagen y compartila por WhatsApp (adjuntala al chat).</p>
+              <p className="text-[10px] text-muted-foreground">
+                Compartí la imagen por WhatsApp (en el celular se abre con la foto lista para enviar).
+              </p>
             </div>
           )}
           <div className="flex gap-2">
@@ -206,6 +230,12 @@ export function BookingCobroModal({
                   const data = await res.json().catch(() => ({}));
                   if (res.ok) {
                     setReceiptImageUrl(data.url || null);
+                    if (data.share) {
+                      setReceiptShare({
+                        text: String(data.share.text || ""),
+                        filename: String(data.share.filename || "comprobante.png"),
+                      });
+                    }
                     setReceiptStatus(
                       data.mode === "auto"
                         ? "✅ Comprobante enviado automáticamente por WhatsApp"

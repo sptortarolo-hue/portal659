@@ -2,12 +2,19 @@ import { NextResponse } from "next/server";
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { query, queryOne, queryMany } from "@/lib/db";
 import { getSiteUrl } from "@/lib/site-url";
-import { renderReceiptImage } from "@/lib/ticket-image";
+import { renderReceiptCard, accentForVertical } from "@/lib/receipt-image";
 import { sendOrLink } from "@/lib/wa-dispatch";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 
 export const dynamic = "force-dynamic";
+
+function formatDateEs(value: string | null | undefined): string | null {
+  const s = String(value || "").slice(0, 10);
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  return s || null;
+}
 
 export async function POST(
   request: Request,
@@ -50,7 +57,7 @@ export async function POST(
     return NextResponse.json({ error: "El turno no tiene teléfono del cliente" }, { status: 400 });
   }
 
-  // Factura fiscal vinculada (si se emitió).
+  // ---- Factura fiscal vinculada (si se emitió) ----
   const invoice = await queryOne<{
     id: string;
     number: string | null;
@@ -63,17 +70,16 @@ export async function POST(
     cbte_nro: number | null;
     created_at: string | null;
   }>(
-    `SELECT id, number, cae, cae_expiry::text AS cae_expiry, pdf_url, total::numeric AS total,
+    `SELECT id, number, cae, cae_vto::text AS cae_expiry, pdf_url, total::numeric AS total,
             cbte_tipo, punto_venta, cbte_nro, created_at::text AS created_at
      FROM invoices WHERE booking_id = $1 AND vendor_id = $2 LIMIT 1`,
     [id, vendor.id]
   ).catch(() => null);
 
   const isFiscal = !!invoice && !!invoice.cae;
-
   const total = invoice?.total != null ? Number(invoice.total) : Number(booking.service_price || 0);
 
-  // QR fiscal (si hay factura).
+  // ---- QR fiscal ----
   let qrData: string | null = null;
   if (isFiscal && invoice) {
     try {
@@ -90,36 +96,81 @@ export async function POST(
       const fecha = invoice.created_at ? new Date(invoice.created_at) : new Date();
       const { buildQrUrl } = await import("@/lib/arca/qr");
       qrData = buildQrUrl({ cuit, ptoVta, cbteTipo, cbteNro, importe, cae, fecha });
-    } catch { /* sin QR */ }
+    } catch {
+      /* sin QR */
+    }
   }
 
-  // Servicio y profesional del turno (vertical estética/taller/servicio).
+  // ---- Detalle del turno (tolerante a migraciones no aplicadas) ----
   let serviceName: string | null = null;
   let staffName: string | null = null;
-  try {
-    const refs = await queryOne<{ service_id: string | null; staff_id: string | null }>(
-      `SELECT service_id, staff_id FROM bookings WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
-      [id, vendor.id]
-    );
-    if (refs?.service_id) {
-      const s = await queryOne<{ name: string }>(
-        `SELECT name FROM services WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
-        [refs.service_id, vendor.id]
+  let locationName: string | null = null;
+  let equipmentLabel: string | null = null;
+  let durationMin: number | null = null;
+  let notes: string | null = null;
+  let productsUsed: string | null = null;
+  let diagnosis: string | null = null;
+  let orderNo: string | null = null;
+
+  const extra = await queryOne<{
+    service_id: string | null;
+    staff_id: string | null;
+    location_id: string | null;
+    equipment_id: string | null;
+    duration_min: number | null;
+    notes: string | null;
+    products_used: string | null;
+    diagnosis: string | null;
+    work_order_no: string | null;
+  }>(
+    `SELECT service_id, staff_id, location_id, equipment_id, duration_min, notes,
+            products_used, diagnosis, work_order_no
+     FROM bookings WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+    [id, vendor.id]
+  ).catch(() => null);
+
+  if (extra) {
+    durationMin = extra.duration_min ?? null;
+    notes = extra.notes ?? null;
+    productsUsed = extra.products_used ?? null;
+    diagnosis = extra.diagnosis ?? null;
+    orderNo = extra.work_order_no ?? null;
+
+    if (extra.service_id) {
+      const s = await queryOne<{ name: string; duration_min: number | null }>(
+        `SELECT name, duration_min FROM services WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+        [extra.service_id, vendor.id]
       ).catch(() => null);
       serviceName = s?.name || null;
+      if (!durationMin && s?.duration_min) durationMin = Number(s.duration_min);
     }
-    if (refs?.staff_id) {
+    if (extra.staff_id) {
       const st = await queryOne<{ name: string }>(
         `SELECT name FROM estetica_staff WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
-        [refs.staff_id, vendor.id]
+        [extra.staff_id, vendor.id]
       ).catch(() => null);
       staffName = st?.name || null;
     }
-  } catch {
-    /* sin migración de estética: se sigue con los datos básicos */
+    if (extra.location_id) {
+      const loc = await queryOne<{ name: string }>(
+        `SELECT name FROM estetica_locations WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+        [extra.location_id, vendor.id]
+      ).catch(() => null);
+      locationName = loc?.name || null;
+    }
+    if (extra.equipment_id) {
+      const eq = await queryOne<{ brand: string | null; model: string | null; identifier: string | null }>(
+        `SELECT brand, model, identifier FROM equipment WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+        [extra.equipment_id, vendor.id]
+      ).catch(() => null);
+      if (eq) {
+        const parts = [eq.brand, eq.model, eq.identifier].filter(Boolean).map(String).filter(Boolean);
+        equipmentLabel = parts.length ? parts.join(" ") : null;
+      }
+    }
   }
 
-  // Partidas de la cuenta (si las hay).
+  // ---- Partidas de la cuenta (repuestos de taller) ----
   let items: { name: string; qty?: number; price?: number }[] = [];
   try {
     const parts = await queryMany<{ name: string; qty: number; unit_price: number }>(
@@ -135,11 +186,10 @@ export async function POST(
     items = [{ name: serviceName || "Servicio", qty: 1, price: Number(booking.service_price) }];
   }
 
-
   const depositPaid = booking.deposit_status === "paid" ? Number(booking.deposit_amount || 0) : 0;
   const amountPaid = Number(booking.amount_paid || 0);
 
-  // Vendor info (logo, datos).
+  // ---- Datos del local ----
   const v = await queryOne<{
     store_name: string;
     logo_url: string | null;
@@ -166,8 +216,16 @@ export async function POST(
     [vendor.id]
   ).catch(() => null);
 
-  const png = await renderReceiptImage({
-    storeName: v?.store_name || (vendor as any).store_name || "Comercio",
+  const storeName = v?.store_name || (vendor as any).store_name || "Comercio";
+  const vertical = (vendor as any).vertical || null;
+  const slug = (vendor as any).slug || null;
+  const categoryLabel = (vendor as any).category || null;
+  const neighborhood = (vendor as any).neighborhood || null;
+  const accent = accentForVertical(vertical);
+  const storeUrl = slug ? `${getSiteUrl()}/tienda/${slug}` : null;
+
+  const png = await renderReceiptCard({
+    storeName,
     logoUrl: v?.logo_url,
     address: v?.address,
     phone: v?.phone,
@@ -178,10 +236,21 @@ export async function POST(
     printAddress: printCfg?.print_address,
     printPhone: printCfg?.print_phone,
     printSocial: printCfg?.print_social,
+    accent,
+    categoryLabel,
+    neighborhood,
     customerName: booking.customer_name,
-    date: booking.booking_date,
-    time: String(booking.booking_time).slice(0, 5),
+    serviceName,
     staffName,
+    date: formatDateEs(booking.booking_date),
+    time: String(booking.booking_time || "").slice(0, 5),
+    durationMin,
+    locationName,
+    notes,
+    productsUsed,
+    equipmentLabel,
+    diagnosis,
+    orderNo,
     bookingRef: id.slice(0, 8),
     items,
     total,
@@ -193,8 +262,7 @@ export async function POST(
     caeVto: invoice?.cae_expiry || null,
     isFiscal,
     qrData,
-    docTitle: isFiscal ? "FACTURA C" : "TICKET",
-    footer: isFiscal ? "Factura C — documento fiscal" : "Comprobante de servicio",
+    storeUrl,
   });
 
   if (!png) {
@@ -209,19 +277,36 @@ export async function POST(
   await writeFile(path.join(dir, filename), png);
   const imageUrl = `${getSiteUrl()}/uploads/receipts/${vendor.id}/${filename}`;
 
+  // ---- Texto que acompaña a la imagen (lo único clickeable) ----
+  const shareLines: string[] = [];
+  const firstName = String(booking.customer_name || "").trim().split(/\s+/)[0];
+  shareLines.push(
+    firstName
+      ? `Hola ${firstName} 👋 Gracias por tu visita a ${storeName}.`
+      : `Gracias por tu visita a ${storeName}.`
+  );
+  if (invoice?.number) shareLines.push(`Factura C N° ${invoice.number}`);
+  if (storeUrl) shareLines.push(`Reservá tu próximo turno 👉 ${storeUrl}`);
+  const localWa = String(v?.whatsapp || v?.phone || "").replace(/\D/g, "");
+  if (localWa) shareLines.push(`WhatsApp 👉 https://wa.me/${localWa}`);
+  if (v?.instagram) shareLines.push(`Instagram: @${String(v.instagram).replace(/^@/, "")}`);
+  const shareText = shareLines.join("\n");
+  const downloadName = `comprobante-${slug || "servicio"}.png`;
+
   if (!wantSend) {
-    return NextResponse.json({ ok: true, url: imageUrl, mode: "manual" });
+    return NextResponse.json({
+      ok: true,
+      url: imageUrl,
+      mode: "manual",
+      share: { text: shareText, filename: downloadName },
+    });
   }
 
   const b64 = png.toString("base64");
-  const caption = isFiscal
-    ? `Factura C ${invoice?.number || ""} — ${v?.store_name || ""}`
-    : `Comprobante de servicio — ${v?.store_name || ""}`;
-
   const result = await sendOrLink({
     vendorId: vendor.id,
     phone: booking.customer_phone,
-    text: caption,
+    text: shareText,
     imageData: b64,
   });
 
@@ -231,5 +316,6 @@ export async function POST(
     mode: result.mode,
     sent: result.ok,
     reason: result.reason,
+    share: { text: shareText, filename: downloadName },
   });
 }

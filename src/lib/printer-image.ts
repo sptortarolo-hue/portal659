@@ -15,6 +15,9 @@ import { Readable, Writable } from "stream";
 
 export const FONT_PATH = path.join(process.cwd(), "assets", "fonts", "Roboto-Bold.ttf");
 export const FONT_NAME = "RobotoBold";
+/** Variante normal (misma familia/licencia) para jerarquía en los documentos. */
+export const FONT_REGULAR_PATH = path.join(process.cwd(), "assets", "fonts", "Roboto-Regular.ttf");
+export const FONT_REGULAR_NAME = "Roboto";
 export const LOGO_D = 172;
 export const HEADER_PAD = 16;
 
@@ -48,6 +51,11 @@ export async function loadSharp() {
 }
 
 let PureImage: any = null;
+let regularReady = false;
+/** Nombre de la fuente a usar para texto normal (cae a Bold si no hay Regular). */
+export function regularFontName(): string {
+  return regularReady ? FONT_REGULAR_NAME : FONT_NAME;
+}
 export async function loadPureImage() {
   if (!PureImage) {
     // Si la TTF no está (assets no copiado al container), fallamos fuerte:
@@ -58,6 +66,14 @@ export async function loadPureImage() {
     const mod: any = await import("pureimage");
     if (mod.registerFont) {
       mod.registerFont(FONT_PATH, FONT_NAME).loadSync();
+      if (existsSync(FONT_REGULAR_PATH)) {
+        try {
+          mod.registerFont(FONT_REGULAR_PATH, FONT_REGULAR_NAME).loadSync();
+          regularReady = true;
+        } catch {
+          regularReady = false;
+        }
+      }
     }
     PureImage = mod;
   }

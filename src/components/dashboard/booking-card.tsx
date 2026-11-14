@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ProductImage } from "@/components/product-image";
+import { shareReceiptImage } from "@/lib/share-receipt";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -153,6 +154,10 @@ export function BookingCard({
   const [comprobanteUrl, setComprobanteUrl] = useState<string | null>(null);
   const [comprobanteStatus, setComprobanteStatus] = useState<string | null>(null);
   const [comprobanteBusy, setComprobanteBusy] = useState(false);
+  const [comprobanteShare, setComprobanteShare] = useState<{ text: string; filename: string }>({
+    text: "",
+    filename: "comprobante.png",
+  });
 
   async function openComprobante() {
     setComprobanteOpen(true);
@@ -168,6 +173,12 @@ export function BookingCard({
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.url) {
         setComprobanteUrl(data.url);
+        if (data.share) {
+          setComprobanteShare({
+            text: String(data.share.text || ""),
+            filename: String(data.share.filename || "comprobante.png"),
+          });
+        }
       } else {
         setComprobanteStatus(data.error || "No se pudo generar el comprobante");
       }
@@ -764,8 +775,8 @@ export function BookingCard({
                   fit="contain"
                   className="w-full rounded-lg border border-border"
                 />
-                <div className="flex gap-2">
-                  <a href={comprobanteUrl} download className="flex-1">
+                <div className="flex flex-wrap gap-2">
+                  <a href={comprobanteUrl} download className="flex-1 min-w-[110px]">
                     <Button variant="outline" size="sm" className="w-full h-9">⬇️ Descargar</Button>
                   </a>
                   <Button
@@ -784,6 +795,12 @@ export function BookingCard({
                         const data = await res.json().catch(() => ({}));
                         if (res.ok) {
                           if (data.url) setComprobanteUrl(data.url);
+                          if (data.share) {
+                            setComprobanteShare({
+                              text: String(data.share.text || ""),
+                              filename: String(data.share.filename || "comprobante.png"),
+                            });
+                          }
                           setComprobanteStatus(
                             data.mode === "auto"
                               ? "✅ Comprobante enviado automáticamente por WhatsApp"
@@ -791,7 +808,7 @@ export function BookingCard({
                           );
                           if (data.mode === "manual" && data.url) {
                             const phone = String(booking.customer_phone || "").replace(/\D/g, "");
-                            if (phone) window.open(`https://wa.me/${phone}?text=${encodeURIComponent("Te envío el comprobante de tu servicio.")}`, "_blank", "noopener,noreferrer");
+                            if (phone) window.open(`https://wa.me/${phone}?text=${encodeURIComponent(data.share?.text || "Te envío el comprobante de tu servicio.")}`, "_blank", "noopener,noreferrer");
                           }
                         } else {
                           setComprobanteStatus(data.error || "No se pudo enviar");
@@ -805,6 +822,35 @@ export function BookingCard({
                     disabled={comprobanteBusy}
                   >
                     {comprobanteBusy ? "Enviando…" : "📲 Enviar por WA"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 min-w-[110px] h-9"
+                    disabled={comprobanteBusy}
+                    onClick={async () => {
+                      setComprobanteBusy(true);
+                      setComprobanteStatus(null);
+                      const r = await shareReceiptImage({
+                        url: comprobanteUrl,
+                        filename: comprobanteShare.filename,
+                        title: "Comprobante de servicio",
+                        text: comprobanteShare.text,
+                        phone: booking.customer_phone,
+                      });
+                      setComprobanteStatus(
+                        r.mode === "share"
+                          ? "✅ Comprobante compartido"
+                          : r.mode === "download"
+                            ? r.message || "⬇️ Se descargó la imagen: adjuntala en WhatsApp"
+                            : r.mode === "cancelled"
+                              ? null
+                              : r.message || "No se pudo compartir"
+                      );
+                      setComprobanteBusy(false);
+                    }}
+                  >
+                    📤 Compartir
                   </Button>
                 </div>
               </div>

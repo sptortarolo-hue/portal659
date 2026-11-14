@@ -1,13 +1,23 @@
-Fuente: Roboto Bold (AAQ_FOT) — license Apache License 2.0.
+Fuentes: Roboto Bold y Roboto Regular (AAQ_FOT) — license Apache License 2.0.
 
-Fuente: Roboto Bold
+Roboto Bold
 Autor: Google (impresión). Fuente descargada del paquete
 npm @expo-google-fonts/roboto (Roboto_700Bold.ttf).
+
+Roboto Regular
+Autor: Google (comprobantes PNG para WhatsApp / documentos del panel).
+Mismo paquete npm @expo-google-fonts/roboto (Roboto_400Regular.ttf).
 
 Licencia: Apache License 2.0
 https://www.apache.org/licenses/LICENSE-2.0
 
-Se usa en el render del encabezado del ticket térmico (nombre del comercio
-en el bitmap junto al logo). Es un archivo de solo lectura usado en runtime
-por src/lib/thermal-printer.ts (vía pureimage). No cambiar nombre/ubicación
-sin actualizar también el FONT_PATH del módulo de impresión.
+Se usan en runtime por:
+- src/lib/thermal-printer.ts → encabezado del ticket térmico (vía pureimage,
+  FONT_PATH del módulo de impresión).
+- src/lib/printer-image.ts → maquinaria compartida: registra ambas fuentes.
+- src/lib/receipt-image.ts → comprobante "realzado" en PNG (documento vertical
+  a color que se comparte por WhatsApp).
+
+Son archivos de solo lectura usados en runtime. No cambiar nombre/ubicación
+sin actualizar también las rutas (FONT_PATH / FONT_REGULAR_PATH) y el
+Dockerfile (COPY --from=builder /app/assets ./assets).

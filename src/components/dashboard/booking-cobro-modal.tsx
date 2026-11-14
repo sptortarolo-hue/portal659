@@ -62,7 +62,11 @@ export function BookingCobroModal({
   const [receiptStatus, setReceiptStatus] = useState<string | null>(null);
   const [receiptImageUrl, setReceiptImageUrl] = useState<string | null>(null);
   const [sendingReceipt, setSendingReceipt] = useState(false);
-  const [receiptShare, setReceiptShare] = useState<{ text: string; filename: string }>({
+  const [receiptShare, setReceiptShare] = useState<{
+    text: string;
+    filename: string;
+    phone?: string | null;
+  }>({
     text: "",
     filename: "comprobante.png",
   });
@@ -190,7 +194,7 @@ export function BookingCobroModal({
                       filename: receiptShare.filename,
                       title: "Comprobante de servicio",
                       text: receiptShare.text,
-                      phone: booking.customer_phone,
+                      phone: receiptShare.phone || booking.customer_phone,
                     });
                     setReceiptStatus(
                       r.mode === "share"
@@ -234,6 +238,7 @@ export function BookingCobroModal({
                       setReceiptShare({
                         text: String(data.share.text || ""),
                         filename: String(data.share.filename || "comprobante.png"),
+                        phone: data.share.phone || null,
                       });
                     }
                     setReceiptStatus(

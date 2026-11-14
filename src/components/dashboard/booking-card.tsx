@@ -154,7 +154,11 @@ export function BookingCard({
   const [comprobanteUrl, setComprobanteUrl] = useState<string | null>(null);
   const [comprobanteStatus, setComprobanteStatus] = useState<string | null>(null);
   const [comprobanteBusy, setComprobanteBusy] = useState(false);
-  const [comprobanteShare, setComprobanteShare] = useState<{ text: string; filename: string }>({
+  const [comprobanteShare, setComprobanteShare] = useState<{
+    text: string;
+    filename: string;
+    phone?: string | null;
+  }>({
     text: "",
     filename: "comprobante.png",
   });
@@ -177,6 +181,7 @@ export function BookingCard({
           setComprobanteShare({
             text: String(data.share.text || ""),
             filename: String(data.share.filename || "comprobante.png"),
+            phone: data.share.phone || null,
           });
         }
       } else {
@@ -799,6 +804,7 @@ export function BookingCard({
                             setComprobanteShare({
                               text: String(data.share.text || ""),
                               filename: String(data.share.filename || "comprobante.png"),
+                              phone: data.share.phone || null,
                             });
                           }
                           setComprobanteStatus(
@@ -836,7 +842,7 @@ export function BookingCard({
                         filename: comprobanteShare.filename,
                         title: "Comprobante de servicio",
                         text: comprobanteShare.text,
-                        phone: booking.customer_phone,
+                        phone: comprobanteShare.phone || booking.customer_phone,
                       });
                       setComprobanteStatus(
                         r.mode === "share"

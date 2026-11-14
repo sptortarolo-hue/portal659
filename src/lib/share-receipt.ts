@@ -7,6 +7,8 @@
  *   con nombre y abre el chat de WhatsApp con el texto ya escrito (el usuario
  *   adjunta la imagen descargada).
  */
+import { toE164 } from "@/lib/phone";
+
 export type ShareOutcome = {
   ok: boolean;
   mode: "share" | "download" | "cancelled" | "error";
@@ -50,7 +52,7 @@ export async function shareReceiptImage(opts: {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(href), 4000);
 
-    const phone = String(opts.phone || "").replace(/\D/g, "");
+    const phone = toE164(opts.phone) || String(opts.phone || "").replace(/\D/g, "");
     if (phone) {
       window.open(
         `https://wa.me/${phone}?text=${encodeURIComponent(opts.text)}`,

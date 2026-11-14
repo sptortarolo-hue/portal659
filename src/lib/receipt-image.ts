@@ -36,7 +36,6 @@ export interface ReceiptCardInput {
   printSocial?: boolean | null;
 
   /** Color de acento (por rubro) y datos para el encabezado. */
-  accent?: string | null;
   categoryLabel?: string | null;
   neighborhood?: string | null;
 
@@ -84,25 +83,17 @@ const MAX_W = W - PAD * 2;
 const C_TEXT = "#0f172a";
 const C_MUTED = "#64748b";
 const C_FAINT = "#94a3b8";
-const C_RULE = "#e2e8f0";
-const C_BOX = "#f8fafc";
 const AR_TZ = "America/Argentina/Buenos_Aires";
 
-export const VERTICAL_ACCENTS: Record<string, string> = {
-  gastronomia: "#ff6b4a",
-  comercio: "#10b981",
-  servicio: "#0ea5e9",
-  moda: "#8b5cf3",
-  salud: "#ec4899",
-  estetica: "#f472b6",
-  taller: "#f97316",
-};
-export const DEFAULT_ACCENT = "#2563eb";
-
-export function accentForVertical(vertical?: string | null): string {
-  if (!vertical) return DEFAULT_ACCENT;
-  return VERTICAL_ACCENTS[vertical] || DEFAULT_ACCENT;
-}
+/**
+ * Identidad del Portal 659: azul base + lima en los detalles.
+ * (La lima `#a3e635` no se lee sobre blanco → para el texto se usa la
+ * variante fuerte `#4d7c0f`, la misma que usa el panel del portal en claro.)
+ */
+const PORTAL_BLUE = "#4f46e5";
+const PORTAL_LIME = "#a3e635";
+const PORTAL_LIME_STRONG = "#4d7c0f";
+const PORTAL_LIME_SOFT = "#f7fee7";
 
 type Align = "left" | "right" | "center";
 type Seg = { text: string; size: number; font: "b" | "r"; color: string; align: Align };
@@ -149,7 +140,6 @@ export async function renderReceiptCard(input: ReceiptCardInput): Promise<Buffer
     const PI = await loadPureImage();
     const sharp = await loadSharp();
 
-    const accent = input.accent || DEFAULT_ACCENT;
 
     // Canvas auxiliar: sólo para medir y envolver texto.
     const probe = PI.make(8, 8);
@@ -191,7 +181,7 @@ export async function renderReceiptCard(input: ReceiptCardInput): Promise<Buffer
               text: input.isFiscal ? "FACTURA C" : "Comprobante de servicio",
               size: 40,
               font: "b",
-              color: accent,
+              color: PORTAL_BLUE,
               align: "left",
             },
           ],
@@ -378,8 +368,8 @@ export async function renderReceiptCard(input: ReceiptCardInput): Promise<Buffer
     totalLines.push({
       h: lineH(40),
       segs: [
-        { text: "Total", size: 38, font: "b", color: accent, align: "left" },
-        { text: money(input.total), size: 38, font: "b", color: accent, align: "right" },
+        { text: "Total", size: 38, font: "b", color: PORTAL_LIME_STRONG, align: "left" },
+        { text: money(input.total), size: 38, font: "b", color: PORTAL_LIME_STRONG, align: "right" },
       ],
     });
     if (input.amountPaid != null && input.amountPaid > 0 && Number(input.amountPaid) !== Number(input.total) && !(input.depositPaid && input.depositPaid > 0)) {
@@ -421,8 +411,8 @@ export async function renderReceiptCard(input: ReceiptCardInput): Promise<Buffer
     blocks.push({
       kind: "lines",
       gapBefore: 26,
-      bg: C_BOX,
-      accent,
+      bg: PORTAL_LIME_SOFT,
+      accent: PORTAL_LIME,
       padX: 36,
       padY: 26,
       lines: totalLines,
@@ -524,7 +514,7 @@ export async function renderReceiptCard(input: ReceiptCardInput): Promise<Buffer
             text: "Reservá tu próximo turno",
             size: 26,
             font: "b",
-            color: accent,
+            color: PORTAL_LIME_STRONG,
             align: "left",
           },
         ],
@@ -609,7 +599,7 @@ export async function renderReceiptCard(input: ReceiptCardInput): Promise<Buffer
     let y = 0;
     for (const b of blocks) {
       if (b.kind === "header") {
-        ctx.fillStyle = accent;
+        ctx.fillStyle = PORTAL_BLUE;
         ctx.fillRect(0, 0, W, HEADER_H);
         const logoSize = 172;
         const logoY = Math.round((HEADER_H - logoSize) / 2);
@@ -656,9 +646,9 @@ export async function renderReceiptCard(input: ReceiptCardInput): Promise<Buffer
 
       if (b.kind === "rule") {
         y += b.gapBefore || 0;
-        ctx.fillStyle = C_RULE;
-        ctx.fillRect(PAD, y, MAX_W, 2);
-        y += 2;
+        ctx.fillStyle = PORTAL_LIME;
+        ctx.fillRect(PAD, y, MAX_W, 3);
+        y += 3;
         continue;
       }
 

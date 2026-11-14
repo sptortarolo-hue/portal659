@@ -39,7 +39,7 @@ require.extensions[".ts"] = function (mod, filename) {
 };
 
 const sharp = require("sharp");
-const { renderReceiptCard, accentForVertical } = require("../src/lib/receipt-image.ts");
+const { renderReceiptCard } = require("../src/lib/receipt-image.ts");
 
 const outPath =
   process.env.PORTAL659_CHECK_OUT || path.join(os.tmpdir(), "portal659-receipt-check.png");
@@ -78,6 +78,17 @@ async function analyze(png) {
   const bands = 5;
   const counts = new Array(bands).fill(0);
   const saturated = new Array(bands).fill(0);
+  // Identidad Portal 659: azul #4f46e5 + lima #a3e635 (y la lima fuerte #4d7c0f).
+  const BLUE = [79, 70, 229];
+  const LIME = [163, 230, 53];
+  const LIME_STRONG = [77, 124, 15];
+  let blue = 0;
+  let lime = 0;
+  let limeStrong = 0;
+
+  const near = (r, g, b, [tr, tg, tb], tol = 26) =>
+    Math.abs(r - tr) <= tol && Math.abs(g - tg) <= tol && Math.abs(b - tb) <= tol;
+
   for (let y = 0; y < info.height; y++) {
     const band = Math.min(bands - 1, Math.floor((y / info.height) * bands));
     for (let x = 0; x < info.width; x++) {
@@ -87,14 +98,16 @@ async function analyze(png) {
       const b = data[i + 2];
       if ((r + g + b) / 3 < 160) counts[band]++;
       if (Math.max(r, g, b) - Math.min(r, g, b) > 40) saturated[band]++;
+      if (near(r, g, b, BLUE)) blue++;
+      if (near(r, g, b, LIME)) lime++;
+      if (near(r, g, b, LIME_STRONG)) limeStrong++;
     }
   }
-  return { counts, saturated, width: info.width, height: info.height };
+  return { counts, saturated, blue, lime, limeStrong, width: info.width, height: info.height };
 }
 
 async function main() {
   const logoUrl = await makeTestLogo();
-  const accent = accentForVertical("estetica");
 
   const png = await renderReceiptCard({
     storeName: "Peluquería y Estética Demo",
@@ -104,7 +117,6 @@ async function main() {
     whatsapp: "11 5555 1234",
     instagram: "pelu.demo",
     facebook: "peludemo",
-    accent,
     categoryLabel: "Peluquería y estética",
     neighborhood: "Sicardi",
     customerName: "Ana Gómez",
@@ -142,12 +154,26 @@ async function main() {
   if (meta.width !== 1080) fail(`ancho esperado 1080, obtenido ${meta.width}`);
   if (!meta.height || meta.height < 900) fail(`alto insuficiente: ${meta.height}`);
 
-  const { counts, saturated } = await analyze(png);
+  const { counts, saturated, blue, lime, limeStrong } = await analyze(png);
   console.log("[check-receipt-image] tinta por franja:", counts);
   console.log("[check-receipt-image] color por franja :", saturated);
+  console.log(
+    "[check-receipt-image] portal → azul:",
+    blue,
+    "lima:",
+    lime,
+    "lima fuerte:",
+    limeStrong
+  );
 
-  // Franja 0: encabezado (franja de acento + logo + nombre).
+  // Franja 0: encabezado (franja azul del portal + logo + nombre).
   if (saturated[0] < 20000) fail("la franja del encabezado no tiene el color de acento");
+  // Identidad Portal 659: azul #4f46e5 en la franja del encabezado.
+  if (blue < 20000) fail(`falta el azul del portal (#4f46e5) en el comprobante (${blue} px)`);
+  // Detalles en lima: separadores + barra de la caja de totales.
+  if (lime < 2000) fail(`falta la lima del portal (#a3e635) en los detalles (${lime} px)`);
+  // El "Total" y "Reservá tu próximo turno" van en lima fuerte (legible).
+  if (limeStrong < 500) fail(`falta la lima fuerte (#4d7c0f) en los textos destacados (${limeStrong} px)`);
   // Franjas 1..4: el cuerpo tiene texto en todas.
   for (let i = 1; i < counts.length; i++) {
     if (counts[i] < 800) fail(`sin texto suficiente en la franja ${i} (${counts[i]})`);
@@ -157,10 +183,7 @@ async function main() {
   if (totalInk < 8000) fail(`muy poca tinta (${totalInk}): parece que no se dibujó el texto`);
 
   console.log(
-    `[check-receipt-image] OK → ${outPath} (${meta.width}x${meta.height}, tinta=${totalInk}, color=${saturated.reduce(
-      (a, b) => a + b,
-      0
-    )})`
+    `[check-receipt-image] OK → ${outPath} (${meta.width}x${meta.height}, tinta=${totalInk}, azul=${blue}, lima=${lime}, limaFuerte=${limeStrong})`
   );
 }
 

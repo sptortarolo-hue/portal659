@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { query, queryOne, queryMany } from "@/lib/db";
 import { getSiteUrl } from "@/lib/site-url";
-import { renderReceiptCard, accentForVertical } from "@/lib/receipt-image";
+import { renderReceiptCard } from "@/lib/receipt-image";
 import { sendOrLink } from "@/lib/wa-dispatch";
+import { toE164 } from "@/lib/phone";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 
@@ -217,11 +218,9 @@ export async function POST(
   ).catch(() => null);
 
   const storeName = v?.store_name || (vendor as any).store_name || "Comercio";
-  const vertical = (vendor as any).vertical || null;
   const slug = (vendor as any).slug || null;
   const categoryLabel = (vendor as any).category || null;
   const neighborhood = (vendor as any).neighborhood || null;
-  const accent = accentForVertical(vertical);
   const storeUrl = slug ? `${getSiteUrl()}/tienda/${slug}` : null;
 
   const png = await renderReceiptCard({
@@ -236,7 +235,6 @@ export async function POST(
     printAddress: printCfg?.print_address,
     printPhone: printCfg?.print_phone,
     printSocial: printCfg?.print_social,
-    accent,
     categoryLabel,
     neighborhood,
     customerName: booking.customer_name,
@@ -278,6 +276,8 @@ export async function POST(
   const imageUrl = `${getSiteUrl()}/uploads/receipts/${vendor.id}/${filename}`;
 
   // ---- Texto que acompaña a la imagen (lo único clickeable) ----
+  // OJO: no se manda el WhatsApp del local (es quien envía; al cliente le
+  // sobra). Se manda el link de reservas y las redes del local.
   const shareLines: string[] = [];
   const firstName = String(booking.customer_name || "").trim().split(/\s+/)[0];
   shareLines.push(
@@ -285,20 +285,18 @@ export async function POST(
       ? `Hola ${firstName} 👋 Gracias por tu visita a ${storeName}.`
       : `Gracias por tu visita a ${storeName}.`
   );
-  if (invoice?.number) shareLines.push(`Factura C N° ${invoice.number}`);
   if (storeUrl) shareLines.push(`Reservá tu próximo turno 👉 ${storeUrl}`);
-  const localWa = String(v?.whatsapp || v?.phone || "").replace(/\D/g, "");
-  if (localWa) shareLines.push(`WhatsApp 👉 https://wa.me/${localWa}`);
   if (v?.instagram) shareLines.push(`Instagram: @${String(v.instagram).replace(/^@/, "")}`);
   const shareText = shareLines.join("\n");
   const downloadName = `comprobante-${slug || "servicio"}.png`;
+  const customerE164 = toE164(booking.customer_phone);
 
   if (!wantSend) {
     return NextResponse.json({
       ok: true,
       url: imageUrl,
       mode: "manual",
-      share: { text: shareText, filename: downloadName },
+      share: { text: shareText, filename: downloadName, phone: customerE164 },
     });
   }
 
@@ -316,6 +314,6 @@ export async function POST(
     mode: result.mode,
     sent: result.ok,
     reason: result.reason,
-    share: { text: shareText, filename: downloadName },
+    share: { text: shareText, filename: downloadName, phone: customerE164 },
   });
 }

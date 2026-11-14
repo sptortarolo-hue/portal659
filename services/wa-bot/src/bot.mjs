@@ -436,6 +436,7 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
     }
     // cualquier otra cosa: repetir la oferta
     replies.push("¿Lo pedís de nuevo? Decime *sí* o *no*.");
+    replies.push(portalNavFooter());
     return;
   }
   if (state._pendingReorder && !state._awaitingReorder && RE_GREETING.test(text) && text.length < 40) {
@@ -542,6 +543,7 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
       state.handoffCount = 0;
       if (state.items.length === 0) {
         replies.push("Pedido vacío. Mandame lo que quieras, o *cancelar* para empezar de nuevo.");
+        replies.push(portalNavFooter());
         state.step = "idle";
         return await persist(state, vendor.id, waId, replies);
       }
@@ -601,7 +603,7 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
     return handoffHuman(vendor, waId, text, state);
   }
   const alts = alternativesText(text, products);
-  replies.push(`No te entendí bien. Escribime el pedido directo, ej: *"2 empanadas de carne y una coca"*. O mirá el menú: ${shopUrl(vendor)}` + (alts ? "\n\n" + alts : ""));
+  replies.push(`No te entendí bien. Decime qué querés hacer:\n1️⃣ Ver tiendas abiertas\n2️⃣ Ver todas las tiendas\n3️⃣ ¿Cómo comprar / pagar?\n4️⃣ ¿Tenés un comercio? Sumalo gratis\n5️⃣ Hablar con una persona\nO escribí tu pedido directo, ej: *"2 empanadas de carne y una coca"*.\n${alts ? "\n\n" + alts : ""}${portalNavFooter()}`);
 }
 
 // ———————————————————————————————————————————————————————————————————————————
@@ -709,7 +711,10 @@ async function handleStep({ vendor, text, state, replies, waId }) {
     if (/^(1|1️⃣)$/.test(t)) t = "sí";
     if (/^(2|2️⃣)$/.test(t)) t = "no";
     if (/^(3|3️⃣)$/.test(t)) {
-      replies.push("¿Qué querés modificar? (ej: \"sacá la coca\", \"poné 3 empanadas\", o *cancelar* para empezar de nuevo)");
+      replies.push("¿Qué querés modificar?");
+      replies.push("Ejemplos: *sacá la coca*, *poné 3 empanadas*, *cambiá 2 por 3 empanadas*");
+      replies.push("O escribí *cancelar* para empezar de nuevo.");
+      replies.push(portalNavFooter());
       return;
     }
     if (RE_CONFIRM.test(t)) {
@@ -877,6 +882,7 @@ async function handleStep({ vendor, text, state, replies, waId }) {
       return;
     }
     replies.push(`Para cambiar el pedido escribime qué querés (ej: *"cambia la coca por una sprite"*). O contestame *sí* para confirmar.`);
+    replies.push(portalNavFooter());
     return;
   }
 
@@ -1091,6 +1097,7 @@ async function handleStep({ vendor, text, state, replies, waId }) {
       const fieldsNow = missingFields(state, vendor);
       if (state.items.length === 0) {
         replies.push("Pedido vacío. Mandame lo que quieras, o *cancelar* para empezar de nuevo.");
+        replies.push(portalNavFooter());
         state.step = "idle";
         return await persist(state, vendor.id, waId, replies);
       }
@@ -1263,15 +1270,16 @@ function pendingQuestions(state) {
   if (config.waTone === "humano") return pendingQuestionsTone(state);
   const fields = state.pendingFields || missingFields(state);
   const lines = [];
-  if (fields.includes("method")) lines.push("1️⃣ ¿Lo *retirás* por el local o te lo *enviamos* a domicilio?");
-  if (fields.includes("address")) lines.push("📍 ¿A qué dirección te lo llevamos?");
-  if (fields.includes("name")) lines.push("👤 ¿A nombre de quién va el pedido?");
-  if (fields.includes("payment")) lines.push("💳 ¿Pagás en *efectivo* o por *transferencia*?");
+  let n = 0;
+  if (fields.includes("method")) lines.push(`1️⃣ ¿Lo *retirás* por el local o te lo *enviamos* a domicilio?`), n++;
+  if (fields.includes("address")) lines.push(`${n + 1}️⃣ ¿A qué dirección te lo llevamos?`), n++;
+  if (fields.includes("name")) lines.push(`${n + 1}️⃣ ¿A nombre de quién va el pedido?`), n++;
+  if (fields.includes("payment")) lines.push(`${n + 1}️⃣ ¿Pagás en *efectivo* o por *transferencia*?`), n++;
   const cart = state.items.length
     ? `Tu pedido:\n${state.items.map((i) => `• ${itemDisplay(i)}`).join("\n")}\n\n`
     : "";
   const questions = lines.length ? `${lines.join("\n")}\n\n` : "";
-  return `${cart}${questions}Decime lo que falte, todo junto o de a una cosa. 👇`;
+  return `${cart}${questions}Decime lo que falte, todo junto o de a una cosa. 👇${portalNavFooter()}`;
 }
 
 function itemDisplay(i) {
@@ -1405,7 +1413,11 @@ function summaryText(state, vendor, exactTotal = null) {
     state.customerName ? `Nombre: ${state.customerName}` : "",
     totalLine,
     "",
-    "¿Está todo bien? Decime *sí* para confirmar, o decime qué cambiar.",
+    "¿Está todo bien?",
+    "1️⃣ Sí, confirmar",
+    "2️⃣ No, cancelar",
+    "3️⃣ Modificar pedido",
+    portalNavFooter(),
   ].filter(Boolean).join("\n");
 }
 
@@ -1464,14 +1476,14 @@ function orderTotalEstimate(state, vendor) {
 function shortReGreet(state, vendor) {
   if (config.waTone === "humano") {
     if (state.items.length) {
-      return `¡Hola de nuevo! 👋 Tu pedido sigue acá:\n${state.items.map((i) => `• ${i.name} ×${i.qty}`).join("\n")}\n\n¿Seguimos con el pedido?`;
+      return `¡Hola de nuevo! 👋 Tu pedido sigue acá:\n${state.items.map((i) => `• ${i.name} ×${i.qty}`).join("\n")}\n\n¿Seguimos con el pedido?\n1️⃣ Sí, confirmar\n2️⃣ Modificar\n3️⃣ Cancelar\n${portalNavFooter()}`;
     }
-    return `¡Hola de nuevo! 👋 ¿Qué te puedo preparar hoy?`;
+    return `¡Hola de nuevo! 👋 ¿Qué te puedo preparar hoy?\n1️⃣ Ver tiendas abiertas\n2️⃣ Ver todas las tiendas\n3️⃣ ¿Cómo comprar / pagar?\n4️⃣ ¿Tenés un comercio? Sumalo gratis\n5️⃣ Hablar con una persona\n${portalNavFooter()}`;
   }
   if (state.items.length) {
-    return `¡Hola de nuevo! 👋 Tu pedido sigue acá:\n${state.items.map((i) => `• ${i.name} ×${i.qty}`).join("\n")}\n\n¿Seguimos?`;
+    return `¡Hola de nuevo! 👋 Tu pedido sigue acá:\n${state.items.map((i) => `• ${i.name} ×${i.qty}`).join("\n")}\n\n¿Seguimos con el pedido?\n1️⃣ Sí, confirmar\n2️⃣ Modificar\n3️⃣ Cancelar\n${portalNavFooter()}`;
   }
-  return `¡Hola de nuevo! 👋 ¿Qué te puedo preparar?`;
+  return `¡Hola de nuevo! 👋 ¿Qué te puedo preparar?\n1️⃣ Ver tiendas abiertas\n2️⃣ Ver todas las tiendas\n3️⃣ ¿Cómo comprar / pagar?\n4️⃣ ¿Tenés un comercio? Sumalo gratis\n5️⃣ Hablar con una persona\n${portalNavFooter()}`;
 }
 
 // ———————————————————————————————————————————————————————————————————————————
@@ -3224,15 +3236,14 @@ async function persist(state, vendorId, waId, replies) {
 function greetingText(vendor) {
   const url = shopUrl(vendor);
   if (config.waTone === "humano") {
-    return `${greetingTextTone(vendor, config.waTone)}\n\n📲 Mirá nuestro menú online:\n${url}\n¿Ya sabés qué pedir? Escribí directamente y te lo armo.`;
+    const g = greetingTextTone(vendor, config.waTone);
+    return `${g}\n\n📋 Menú online:\n${url}\n¿Qué querés pedir? Decime el nombre y la cantidad, o elegí una opción:\n1️⃣ Ver tiendas abiertas\n2️⃣ Ver todas las tiendas\n3️⃣ ¿Cómo comprar / pagar?\n4️⃣ ¿Tenés un comercio? Sumalo gratis\n5️⃣ Hablar con una persona\n${portalNavFooter()}`;
   }
   return `Hola 👋 Soy el asistente de *${vendor.store_name}*.
 
-📲 Pedí desde nuestro menú online:
-${url}
+📲 Mirá nuestro menú online:\n${url}
 
-¿Ya sabés qué pedir?
-Escribilo directamente y te lo confirmo.`;
+¿Qué querés pedir? Decime el nombre y la cantidad, o elegí una opción:\n1️⃣ Ver tiendas abiertas\n2️⃣ Ver todas las tiendas\n3️⃣ ¿Cómo comprar / pagar?\n4️⃣ ¿Tenés un comercio? Sumalo gratis\n5️⃣ Hablar con una persona\n${portalNavFooter()}`;
 }
 
 function transferText(vendor, total) {

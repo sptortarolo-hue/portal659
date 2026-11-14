@@ -6,7 +6,14 @@ import { getSiteUrl } from "@/lib/site-url";
 import { bookingReminderMessage, bookingWhenLabel } from "@/lib/booking-message";
 import { NextResponse } from "next/server";
 
-export const dynamic = "force-dynamic";
+function renderReminderText(template: string | null | undefined, vars: Record<string, string>): string | null {
+  if (!template || !template.trim()) return null;
+  let out = template;
+  for (const [k, v] of Object.entries(vars)) {
+    out = out.replace(new RegExp(`\\{${k}\\}`, "g"), v);
+  }
+  return out;
+}
 
 const TZ_AR = "America/Argentina/Buenos_Aires";
 
@@ -23,6 +30,11 @@ function arDate(offsetDays = 0): string {
     day: "2-digit",
   }).format(now);
   return parts; // YYYY-MM-DD
+}
+
+/** Hora AR actual (0-23). */
+function arHour(date = new Date()): number {
+  return Number(new Intl.DateTimeFormat("en-GB", { timeZone: TZ_AR, hour: "2-digit", hour12: false }).format(date));
 }
 
 /** Hora AR actual (HH:MM). */
@@ -56,6 +68,12 @@ type DueBooking = {
   service_id?: string | null;
   wa_reminders?: boolean | null;
   ficha_reminder_enabled?: boolean | null;
+  reminder_t24_enabled?: boolean | null;
+  reminder_t24_hour?: number | null;
+  reminder_t2_enabled?: boolean | null;
+  reminder_t2_hours?: number | null;
+  reminder_t24_text?: string | null;
+  reminder_t2_text?: string | null;
 };
 
 /** Ficha pendiente con require_before: crea borrador y devuelve link, o null. */
@@ -136,6 +154,7 @@ export async function GET(request: Request) {
   let svcSel = "";
   let waSel = "";
   let fichaSel = "";
+  let remSel = "";
   fichaCapable = false;
   try {
     const col = await queryOne<{ exists: boolean }>(
@@ -164,6 +183,18 @@ export async function GET(request: Request) {
       );
       if (fr?.exists === true) fichaSel = ", v.ficha_reminder_enabled";
     } catch { /* interruptor no disponible: se asume activado */ }
+    // Recordatorios configurables (migrate-reminder-hours.sql).
+    try {
+      const cols = ["reminder_t24_enabled", "reminder_t24_hour", "reminder_t2_enabled", "reminder_t2_hours", "reminder_t24_text", "reminder_t2_text"];
+      const exists = await Promise.all(cols.map((c) =>
+        queryOne<{ exists: boolean }>(
+          `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'vendors' AND column_name = $1) AS exists`,
+          [c]
+        ).catch(() => ({ exists: false }))
+      ));
+      const present = exists.map((r, i) => (r?.exists ? cols[i] : null)).filter(Boolean) as string[];
+      if (present.length > 0) remSel = ", " + present.map((c) => `v.${c}`).join(", ");
+    } catch { /* sin config: se asume defaults */ }
     fichaCapable = !!svc?.exists && !!tpl?.exists && !!ent?.exists;
   } catch { /* sin link */ }
 
@@ -181,7 +212,7 @@ export async function GET(request: Request) {
   const due24 = await queryMany<DueBooking>(
     `SELECT b.id, b.vendor_id, b.customer_name, b.customer_phone, b.product_name,
             b.booking_date::text AS booking_date, b.booking_time::text AS booking_time,
-            v.store_name, v.user_id${waSel}${fichaSel}${tokenSel}${svcSel}
+            v.store_name, v.user_id${waSel}${fichaSel}${tokenSel}${svcSel}${remSel}
      FROM bookings b JOIN vendors v ON v.id = b.vendor_id
      WHERE b.status = 'confirmed' AND b.booking_date = $1${previewFilter}
        AND NOT EXISTS (SELECT 1 FROM service_reminder_log l WHERE l.booking_id = b.id AND l.kind = 't24')`,
@@ -217,9 +248,16 @@ export async function GET(request: Request) {
       // WhatsApp por el número del comercio (opt-out vendors.wa_reminders,
       // solo diurno; si el relay no está vinculado se sigue con push).
       let channel: string | null = null;
-      if (b.wa_reminders !== false && isDaytimeAR() && b.customer_phone) {
+      if (b.wa_reminders !== false && b.reminder_t24_enabled !== false && isDaytimeAR() && b.customer_phone && arHour() >= (b.reminder_t24_hour ?? 18)) {
         const siteUrl = getSiteUrl(request);
-        const waBody = bookingReminderMessage({ ...msgOpts, origin: siteUrl });
+        const custom24 = renderReminderText(b.reminder_t24_text, {
+          nombre: String(b.customer_name || ""),
+          hora: String(b.booking_time).slice(0, 5),
+          fecha: String(b.booking_date),
+          servicio: String(b.product_name || ""),
+          link: b.confirm_token ? `${siteUrl}/turno/${b.confirm_token}` : siteUrl,
+        });
+        const waBody = custom24 || bookingReminderMessage({ ...msgOpts, origin: siteUrl });
         const wa = await sendWaText({ vendorId: b.vendor_id, waId: b.customer_phone, text: waBody });
         if (wa.sent) channel = "wa";
       }
@@ -257,15 +295,21 @@ export async function GET(request: Request) {
     const due2 = await queryMany<DueBooking>(
       `SELECT b.id, b.vendor_id, b.customer_name, b.customer_phone, b.product_name,
               b.booking_date::text AS booking_date, b.booking_time::text AS booking_time,
-              v.store_name, v.user_id${waSel}${tokenSel}
+              v.store_name, v.user_id${waSel}${tokenSel}${remSel}
        FROM bookings b JOIN vendors v ON v.id = b.vendor_id
        WHERE b.status = 'confirmed' AND b.booking_date = $1
-         AND b.booking_time >= $2 AND b.booking_time <= $3${previewFilter}
+         AND b.booking_time >= $2${previewFilter}
          AND NOT EXISTS (SELECT 1 FROM service_reminder_log l WHERE l.booking_id = b.id AND l.kind = 't2')`,
-      [todayAR, nowHHMM, in2hHHMM]
+      [todayAR, nowHHMM]
     ).catch(() => []);
     for (const b of due2 || []) {
       try {
+        // Ventana configurable por comercio (reminder_t2_hours, default 2h).
+        const t2h = b.reminder_t2_hours ?? 2;
+        const toMin = (hhmm: string) => { const [h, m] = hhmm.split(":").map(Number); return h * 60 + (m || 0); };
+        const diffMin = toMin(String(b.booking_time).slice(0, 5)) - toMin(nowHHMM);
+        if (diffMin < 0 || diffMin > t2h * 60) continue;
+        if (b.reminder_t2_enabled === false) continue;
         await notifyServiceClient(b.customer_phone, {
           title: "⏰ Tu turno es hoy",
           body: bookingReminderMessage({
@@ -281,17 +325,25 @@ export async function GET(request: Request) {
         let channel2: string | null = null;
         if (b.wa_reminders !== false && isDaytimeAR() && b.customer_phone) {
           const siteUrl = getSiteUrl(request);
+          const custom2 = renderReminderText(b.reminder_t2_text, {
+            nombre: String(b.customer_name || ""),
+            hora: String(b.booking_time).slice(0, 5),
+            fecha: String(b.booking_date),
+            servicio: String(b.product_name || ""),
+            link: b.confirm_token ? `${siteUrl}/turno/${b.confirm_token}` : siteUrl,
+          });
+          const waBody2 = custom2 || bookingReminderMessage({
+            customerName: b.customer_name,
+            when: "de hoy",
+            time: b.booking_time,
+            storeName: b.store_name,
+            origin: siteUrl,
+            token: b.confirm_token,
+          });
           const wa = await sendWaText({
             vendorId: b.vendor_id,
             waId: b.customer_phone,
-            text: bookingReminderMessage({
-              customerName: b.customer_name,
-              when: "de hoy",
-              time: b.booking_time,
-              storeName: b.store_name,
-              origin: siteUrl,
-              token: b.confirm_token,
-            }),
+            text: waBody2,
           });
           if (wa.sent) channel2 = "wa";
         }

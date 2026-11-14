@@ -50,7 +50,11 @@ export function summaryTextTone(state, vendor, exactTotal = null) {
     state.customerName ? `A nombre de ${state.customerName}` : "",
     totalLine,
     "",
-    "¿Está todo bien? Decime *sí* para confirmar, o decime qué cambiar.",
+    "¿Está todo bien?",
+    "1️⃣ Sí, confirmar",
+    "2️⃣ No, cancelar",
+    "3️⃣ Modificar pedido",
+    portalNavFooter(),
   ].filter(Boolean).join("\n");
 }
 
@@ -88,28 +92,35 @@ function orderTotalEstimateTone(state, vendor) {
 /** Preguntas pendientes en tono humano. */
 export function pendingQuestionsTone(state) {
   const lines = [];
-  if (state.pendingFields.includes("method")) lines.push("¿Lo retirás por el local o te lo envío a domicilio?");
-  if (state.pendingFields.includes("address")) lines.push("¿A qué dirección te lo llevo?");
-  if (state.pendingFields.includes("name")) lines.push("¿A nombre de quién va el pedido?");
-  if (state.pendingFields.includes("payment")) lines.push("¿Pagás en efectivo o por transferencia?");
+  let n = 0;
+  if (state.pendingFields.includes("method")) lines.push(`1️⃣ ¿Lo retirás por el local o te lo envío a domicilio?`), n++;
+  if (state.pendingFields.includes("address")) lines.push(`${n + 1}️⃣ ¿A qué dirección te lo llevo?`), n++;
+  if (state.pendingFields.includes("name")) lines.push(`${n + 1}️⃣ ¿A nombre de quién va el pedido?`), n++;
+  if (state.pendingFields.includes("payment")) lines.push(`${n + 1}️⃣ ¿Pagás en efectivo o por transferencia?`), n++;
   const cart = state.items.length
     ? `Tu pedido:\n${state.items.map((i) => `• ${itemDisplayTone(i)}`).join("\n")}\n\n`
     : "";
   const questions = lines.length ? `${lines.join("\n")}\n\n` : "";
-  return `${cart}${questions}Decime lo que falte, todo junto o de a una cosa. 👇`;
+  return `${cart}${questions}Decime lo que falte, todo junto o de a una cosa. 👇${portalNavFooter()}`;
 }
 
 /** Confirmación de baja confianza en tono humano. */
 export function lowConfidenceTone(items) {
   const resumen = items.map((p) => `${p.qty || 1}× ${p.name}`).join(", ");
-  return `No estoy seguro de haber entendido bien: ¿es ${resumen}? Decime *sí* o *no*.`;
+  return `No estoy seguro de haber entendido bien: ¿es ${resumen}?
+1️⃣ Sí, es eso
+2️⃣ No, no es eso
+${portalNavFooter()}`;
 }
 
 /** "¿Lo de siempre?" para re-pedido. */
 export function reorderTone(lastOrder) {
   const items = (lastOrder.items || []).map((i) => `• ${i.name} ×${i.qty}`).join("\n");
   return `Tu último pedido de *${lastOrder.storeName}*:${items ? "\n" + items : ""}
-¿Lo pedís de nuevo? Decime *sí* o *no*.`;
+¿Lo pedís de nuevo?
+1️⃣ Sí, confirmar
+2️⃣ No, cancelar
+${portalNavFooter()}`;
 }
 
 /** Despedida tras confirmar. */
@@ -121,11 +132,16 @@ export function confirmTone(order) {
 /** No encontró producto: sugiere la lista en tono humano. */
 export function noMatchTone(products) {
   const lines = products.slice(0, 8).map((p) => `• ${p.name} — $${Number(p.price).toLocaleString("es-AR")}`);
-  return `De eso no tengo por ahora. Esto es lo que hay:\n${lines.join("\n")}\n\n¿Algo de acá?`;
+  return `De eso no tengo por ahora. Esto es lo que hay:\n${lines.join("\n")}\n\n¿Algo de acá?\n${portalNavFooter()}`;
 }
 
 /** Respuesta a pregunta ("tenés coca?"). */
 export function answerTone(products) {
   const lines = products.slice(0, 8).map((p) => `• ${p.name} — $${Number(p.price).toLocaleString("es-AR")}`);
-  return `Sí, tenemos:\n${lines.join("\n")}\n\n¿Querés pedir alguna? Decime cuál y cuántas.`;
+  return `Sí, tenemos:\n${lines.join("\n")}\n\n¿Querés pedir alguna? Decime cuál y cuántas.\n${portalNavFooter()}`;
+}
+
+/** Pie de navegación común para el bot del portal. */
+export function portalNavFooter() {
+  return "(Escribí *volver* para el paso anterior, *cancelar* para salir, *inicio* para el menú principal)";
 }

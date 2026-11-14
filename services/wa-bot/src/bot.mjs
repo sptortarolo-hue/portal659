@@ -4,7 +4,7 @@ import { config } from "./config.mjs";
 import { getState, setState, clearState, forEachConversation } from "./state.mjs";
 import { getMenu, getMenuSync, matchProduct, matchAllProducts, normalizeForMatch, menuSummary } from "./menu.mjs";
 import { normalizeDraftItem, isValidDraftItem } from "./draft.mjs";
-import { greetingTextTone, summaryTextTone, pendingQuestionsTone, lowConfidenceTone, reorderTone, confirmTone, noMatchTone, answerTone } from "./talk.mjs";
+import { greetingTextTone, summaryTextTone, pendingQuestionsTone, lowConfidenceTone, reorderTone, confirmTone, noMatchTone, answerTone, portalNavFooter } from "./talk.mjs";
 import { parseWithLlm, parseByRules, normalizeEs, extractFromText, bareName, 
 classifyIntent, llmStats } from "./nlu.mjs";
 import { saveCorrection } from "./learning.mjs";
@@ -1976,10 +1976,6 @@ async function retrocederPortal(state, vendor, replies, waId) {
   }
 }
 
-/** Agrega el pie de navegación a cada respuesta del portal. */
-function portalNavFooter() {
-  return "(Escribí *volver* para el paso anterior, *cancelar* para salir, *inicio* para el menú principal)";
-}
 
 // — Capa 1 del bot del portal: contenido INFORMATIVO —
 // El bot del portal primero informa (qué es Portal 659, qué tiendas hay,
@@ -2267,6 +2263,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
           replies.push(lines.join("\n"));
           state.portalVendorList = stores.slice(0, 8).map((s) => ({ id: s.id, store_name: s.store_name, slug: s.slug || null }));
           replies.push("Respondé el número o el nombre de la tienda para ver su menú.");
+          replies.push(portalNavFooter());
         } else {
           replies.push(portalMainMenuText());
           replies.push("Respondé el número de una opción, o escribime el nombre de un producto para buscar. 🛒");
@@ -2887,6 +2884,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
         replies.push(products.slice(0, 20).map((p, i) => `${i + 1}) ${p.name} — $${p.price}`).join("\n"));
         const link = _link1;
         replies.push(`Mandame tu pedido (ej: "2 empanadas de carne y una coca").${link}`);
+        replies.push(portalNavFooter());
         // Enviar collage de imágenes del menú (best-effort).
         const _client = getClientByVendor(vendor.id);
         if (_client) {

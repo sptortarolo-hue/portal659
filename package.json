@@ -10,6 +10,7 @@
     "start": "next start",
     "lint": "next lint",
     "test": "jest",
+    "check:receipt": "node scripts/check-receipt-image.mjs && node scripts/check-share-receipt.mjs",
     "capture:manuales": "node scripts/capture-manuales.mjs"
   },
   "dependencies": {

@@ -5,6 +5,8 @@ import { getSiteUrl } from "@/lib/site-url";
 import { renderReceiptCard } from "@/lib/receipt-image";
 import { sendOrLink } from "@/lib/wa-dispatch";
 import { toE164 } from "@/lib/phone";
+import { buildReceiptText, paymentLabel } from "@/lib/receipt-text";
+import { getVendorWaBot } from "@/lib/wa-bot";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 
@@ -54,9 +56,8 @@ export async function POST(
   if (booking.is_preview === true) {
     return NextResponse.json({ error: "No se envían comprobantes de turnos de prueba" }, { status: 400 });
   }
-  if (!booking.customer_phone) {
-    return NextResponse.json({ error: "El turno no tiene teléfono del cliente" }, { status: 400 });
-  }
+  // Sin teléfono no se bloquea: se genera el comprobante igual y el comercio
+  // lo comparte a mano (el selector de contactos de WhatsApp).
 
   // ---- Factura fiscal vinculada (si se emitió) ----
   const invoice = await queryOne<{
@@ -223,6 +224,38 @@ export async function POST(
   const neighborhood = (vendor as any).neighborhood || null;
   const storeUrl = slug ? `${getSiteUrl()}/tienda/${slug}` : null;
 
+  const customerE164 = toE164(booking.customer_phone);
+  const firstName = String(booking.customer_name || "").trim().split(/\s+/)[0];
+  const receiptDate = formatDateEs(booking.booking_date);
+  const receiptTime = String(booking.booking_time || "").slice(0, 5);
+
+  // ---- Datos del comprobante (compartidos por la imagen y el texto) ----
+  const receiptData = {
+    storeName,
+    customerName: booking.customer_name,
+    serviceName,
+    staffName,
+    date: receiptDate,
+    time: receiptTime,
+    durationMin,
+    locationName,
+    notes,
+    productsUsed,
+    equipmentLabel,
+    diagnosis,
+    orderNo,
+    items,
+    total,
+    depositPaid,
+    amountPaid: amountPaid > 0 ? amountPaid : undefined,
+    paymentMethod: booking.payment_method,
+    invoiceNumber: invoice?.number || null,
+    cae: invoice?.cae || null,
+    isFiscal,
+    storeUrl,
+    instagram: v?.instagram || null,
+  };
+
   const png = await renderReceiptCard({
     storeName,
     logoUrl: v?.logo_url,
@@ -240,8 +273,8 @@ export async function POST(
     customerName: booking.customer_name,
     serviceName,
     staffName,
-    date: formatDateEs(booking.booking_date),
-    time: String(booking.booking_time || "").slice(0, 5),
+    date: receiptDate,
+    time: receiptTime,
     durationMin,
     locationName,
     notes,
@@ -255,6 +288,7 @@ export async function POST(
     depositPaid,
     amountPaid: amountPaid > 0 ? amountPaid : undefined,
     paymentMethod: booking.payment_method,
+    paymentLabel: paymentLabel(booking.payment_method),
     invoiceNumber: invoice?.number || null,
     cae: invoice?.cae || null,
     caeVto: invoice?.cae_expiry || null,
@@ -279,7 +313,6 @@ export async function POST(
   // OJO: no se manda el WhatsApp del local (es quien envía; al cliente le
   // sobra). Se manda el link de reservas y las redes del local.
   const shareLines: string[] = [];
-  const firstName = String(booking.customer_name || "").trim().split(/\s+/)[0];
   shareLines.push(
     firstName
       ? `Hola ${firstName} 👋 Gracias por tu visita a ${storeName}.`
@@ -289,21 +322,55 @@ export async function POST(
   if (v?.instagram) shareLines.push(`Instagram: @${String(v.instagram).replace(/^@/, "")}`);
   const shareText = shareLines.join("\n");
   const downloadName = `comprobante-${slug || "servicio"}.png`;
-  const customerE164 = toE164(booking.customer_phone);
+
+  // ---- Comprobante ESCRITO (fallback cuando no se puede adjuntar la imagen:
+  // al chat le llega el comprobante en texto, como los pedidos del bot) ----
+  const receiptText = buildReceiptText(receiptData);
+  const waText = receiptText || shareText;
+  // Chat del cliente: SIEMPRE con E.164 (armado acá, el front no normaliza).
+  const waUrl = customerE164
+    ? `https://wa.me/${customerE164}?text=${encodeURIComponent(waText)}`
+    : `https://wa.me/?text=${encodeURIComponent(waText)}`;
+
+  // ¿El bot de este comercio está vinculado? (si lo está, el server manda solo)
+  const bot = await getVendorWaBot(vendor.id).catch(() => null);
+  const botLinked = !!bot && bot.status === "linked" && bot.enabled !== false;
+
+  const share = {
+    text: shareText,
+    receiptText,
+    filename: downloadName,
+    phone: customerE164,
+    waUrl,
+    botLinked,
+    phoneMissing: !customerE164,
+  };
 
   if (!wantSend) {
     return NextResponse.json({
       ok: true,
       url: imageUrl,
       mode: "manual",
-      share: { text: shareText, filename: downloadName, phone: customerE164 },
+      share,
+    });
+  }
+
+  // Sin teléfono no se puede enviar solo: el comprobante queda para compartirlo
+  // a mano (el commerce elige el contacto en WhatsApp).
+  if (!customerE164) {
+    return NextResponse.json({
+      ok: true,
+      url: imageUrl,
+      mode: "manual",
+      reason: "sin_telefono",
+      share,
     });
   }
 
   const b64 = png.toString("base64");
   const result = await sendOrLink({
     vendorId: vendor.id,
-    phone: booking.customer_phone,
+    phone: customerE164,
     text: shareText,
     imageData: b64,
   });
@@ -314,6 +381,7 @@ export async function POST(
     mode: result.mode,
     sent: result.ok,
     reason: result.reason,
-    share: { text: shareText, filename: downloadName, phone: customerE164 },
+    manualUrl: result.url || waUrl,
+    share,
   });
 }

@@ -8,6 +8,7 @@ import {
   regularFontName,
   renderQrImage,
 } from "@/lib/printer-image";
+import { paymentLabel } from "@/lib/receipt-text";
 
 /**
  * Comprobante del servicio en PNG, "realzado" y apto para compartir por
@@ -103,15 +104,6 @@ type Block =
   | { kind: "rule"; gapBefore?: number }
   | { kind: "header" }
   | { kind: "gap"; h: number };
-
-const PAYMENT_LABELS: Record<string, string> = {
-  efectivo: "Efectivo",
-  transferencia: "Transferencia",
-  whatsapp: "Coordinado",
-  tarjeta: "Tarjeta",
-  credito: "Tarjeta/Online",
-  fiado: "Fiado",
-};
 
 function money(n: number): string {
   return `$${Number(n || 0).toLocaleString("es-AR")}`;
@@ -323,10 +315,7 @@ export async function renderReceiptCard(input: ReceiptCardInput): Promise<Buffer
     }
 
     // ---------------- Caja de totales ----------------
-    const payLabel =
-      input.paymentLabel ||
-      PAYMENT_LABELS[String(input.paymentMethod || "").toLowerCase()] ||
-      (input.paymentMethod ? String(input.paymentMethod) : "");
+    const payLabel = paymentLabel(input.paymentMethod, input.paymentLabel);
     const totalLines: Line[] = [];
     const subtotal =
       input.subtotal != null ? Number(input.subtotal) : Number(input.total || 0);

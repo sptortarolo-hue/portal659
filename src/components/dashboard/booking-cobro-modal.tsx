@@ -9,7 +9,7 @@ import { isFromPricing } from "@/lib/service-price";
 import { useBankAccounts, BankAccountPickerModal } from "@/components/vendor/bank-account-picker";
 import { bankAccountLabel, needsAccountPicker } from "@/lib/bank-accounts";
 import { ProductImage } from "@/components/product-image";
-import { shareReceiptImage } from "@/lib/share-receipt";
+import { shareReceiptImage, shareOutcomeMessage } from "@/lib/share-receipt";
 
 export type BookingCobroModalProps = {
   booking: any;
@@ -64,10 +64,14 @@ export function BookingCobroModal({
   const [sendingReceipt, setSendingReceipt] = useState(false);
   const [receiptShare, setReceiptShare] = useState<{
     text: string;
+    receiptText: string;
     filename: string;
     phone?: string | null;
+    waUrl?: string | null;
+    botLinked?: boolean;
   }>({
     text: "",
+    receiptText: "",
     filename: "comprobante.png",
   });
   const firstInput = useRef<HTMLInputElement>(null);
@@ -151,6 +155,104 @@ export function BookingCobroModal({
     if (active.length === 1) setTransferAccountId(active[0].id);
   }, [bankAccounts]);
 
+  // Al quedar registrado el cobro se genera el comprobante (imagen + textos)
+  // para que el botón de enviar pueda abrir el chat del cliente SIN awaits
+  // previos: si se abriera después, el navegador lo bloquea como popup.
+  useEffect(() => {
+    if (!done || !booking?.id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/vendor/bookings/${booking.id}/send-receipt`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ send: false }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (cancelled || !res.ok) return;
+        if (data.url) setReceiptImageUrl(data.url);
+        if (data.share) {
+          setReceiptShare({
+            text: String(data.share.text || ""),
+            receiptText: String(data.share.receiptText || ""),
+            filename: String(data.share.filename || "comprobante.png"),
+            phone: data.share.phone || null,
+            waUrl: data.share.waUrl || null,
+            botLinked: !!data.share.botLinked,
+          });
+        }
+      } catch {
+        /* sin conexión: el botón avisa */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [done, booking?.id]);
+
+  /**
+   * Un solo botón para mandarle el comprobante al cliente:
+   *  - bot vinculado → el server manda la imagen + el texto solo;
+   *  - sin bot pero el móvil puede adjuntar archivos → imagen adjunta (Web Share);
+   *  - sin bot y sin adjuntar (desktop/iOS) → chat del cliente con el
+   *    comprobante ESCRITO + PNG descargado.
+   */
+  async function enviarComprobante() {
+    setSendingReceipt(true);
+    setReceiptStatus(null);
+    try {
+      if (receiptShare.botLinked) {
+        const res = await fetch(`/api/vendor/bookings/${booking.id}/send-receipt`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ send: true }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          if (data.url) setReceiptImageUrl(data.url);
+          if (data.share) {
+            setReceiptShare((prev) => ({
+              ...prev,
+              text: String(data.share.text || prev.text),
+              receiptText: String(data.share.receiptText || prev.receiptText),
+              filename: String(data.share.filename || prev.filename),
+              phone: data.share.phone || prev.phone,
+              waUrl: data.share.waUrl || prev.waUrl,
+              botLinked: !!data.share.botLinked,
+            }));
+          }
+          setReceiptStatus(
+            data.mode === "auto"
+              ? "✅ Comprobante enviado por WhatsApp"
+              : "⚠️ El bot no pudo enviarlo: usá el link de abajo para mandarlo vos."
+          );
+        } else {
+          setReceiptStatus(data.error || "No se pudo enviar el comprobante");
+        }
+        return;
+      }
+
+      if (!receiptImageUrl) {
+        setReceiptStatus("Generando el comprobante…");
+        return;
+      }
+      const r = await shareReceiptImage({
+        url: receiptImageUrl,
+        filename: receiptShare.filename,
+        title: "Comprobante de servicio",
+        text: receiptShare.text,
+        receiptText: receiptShare.receiptText,
+        waUrl: receiptShare.waUrl,
+        phone: receiptShare.phone || booking.customer_phone,
+      });
+      setReceiptStatus(shareOutcomeMessage(r));
+    } catch {
+      setReceiptStatus("Sin conexión");
+    } finally {
+      setSendingReceipt(false);
+    }
+  }
+
   // (moved below)
 
   if (done) {
@@ -182,38 +284,24 @@ export function BookingCobroModal({
                 <a href={receiptImageUrl} download className="flex-1 min-w-[110px]">
                   <Button variant="outline" size="sm" className="w-full h-9">⬇️ Descargar imagen</Button>
                 </a>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1 min-w-[110px] h-9"
-                  onClick={async () => {
-                    setSendingReceipt(true);
-                    setReceiptStatus(null);
-                    const r = await shareReceiptImage({
-                      url: receiptImageUrl,
-                      filename: receiptShare.filename,
-                      title: "Comprobante de servicio",
-                      text: receiptShare.text,
-                      phone: receiptShare.phone || booking.customer_phone,
-                    });
-                    setReceiptStatus(
-                      r.mode === "share"
-                        ? "✅ Comprobante compartido"
-                        : r.mode === "download"
-                          ? r.message || "⬇️ Se descargó la imagen: adjuntala en WhatsApp"
-                          : r.mode === "cancelled"
-                            ? null
-                            : r.message || "No se pudo compartir"
-                    );
-                    setSendingReceipt(false);
-                  }}
-                >
-                  📤 Compartir
-                </Button>
               </div>
-              <p className="text-[10px] text-muted-foreground">
-                Compartí la imagen por WhatsApp (en el celular se abre con la foto lista para enviar).
-              </p>
+              {receiptShare.waUrl && (
+                <div className="space-y-1">
+                  <a
+                    href={receiptShare.waUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-primary underline underline-offset-2"
+                  >
+                    Abrir el chat de {String(booking.customer_name || "").trim().split(/\s+/)[0] || "la clienta"} en WhatsApp
+                  </a>
+                  {receiptShare.phone && (
+                    <p className="text-[10px] text-muted-foreground">
+                      WhatsApp: {receiptShare.phone}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )}
           <div className="flex gap-2">
@@ -221,42 +309,9 @@ export function BookingCobroModal({
               size="sm"
               className="h-9 flex-1"
               disabled={sendingReceipt}
-              onClick={async () => {
-                setSendingReceipt(true);
-                setReceiptStatus(null);
-                setReceiptImageUrl(null);
-                try {
-                  const res = await fetch(`/api/vendor/bookings/${booking.id}/send-receipt`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ send: true }),
-                  });
-                  const data = await res.json().catch(() => ({}));
-                  if (res.ok) {
-                    setReceiptImageUrl(data.url || null);
-                    if (data.share) {
-                      setReceiptShare({
-                        text: String(data.share.text || ""),
-                        filename: String(data.share.filename || "comprobante.png"),
-                        phone: data.share.phone || null,
-                      });
-                    }
-                    setReceiptStatus(
-                      data.mode === "auto"
-                        ? "✅ Comprobante enviado automáticamente por WhatsApp"
-                        : "📲 Guardá la imagen y compartila por WhatsApp"
-                    );
-                  } else {
-                    setReceiptStatus(data.error || "No se pudo generar el comprobante");
-                  }
-                } catch {
-                  setReceiptStatus("Sin conexión");
-                } finally {
-                  setSendingReceipt(false);
-                }
-              }}
+              onClick={enviarComprobante}
             >
-              {sendingReceipt ? "Generando…" : "📲 Enviar comprobante por WA"}
+              {sendingReceipt ? "Enviando…" : "📲 Enviar comprobante por WA"}
             </Button>
             <Button
               variant="outline"

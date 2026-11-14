@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ProductImage } from "@/components/product-image";
-import { shareReceiptImage } from "@/lib/share-receipt";
+import { shareReceiptImage, shareOutcomeMessage } from "@/lib/share-receipt";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -156,10 +156,14 @@ export function BookingCard({
   const [comprobanteBusy, setComprobanteBusy] = useState(false);
   const [comprobanteShare, setComprobanteShare] = useState<{
     text: string;
+    receiptText: string;
     filename: string;
     phone?: string | null;
+    waUrl?: string | null;
+    botLinked?: boolean;
   }>({
     text: "",
+    receiptText: "",
     filename: "comprobante.png",
   });
 
@@ -180,8 +184,11 @@ export function BookingCard({
         if (data.share) {
           setComprobanteShare({
             text: String(data.share.text || ""),
+            receiptText: String(data.share.receiptText || ""),
             filename: String(data.share.filename || "comprobante.png"),
             phone: data.share.phone || null,
+            waUrl: data.share.waUrl || null,
+            botLinked: !!data.share.botLinked,
           });
         }
       } else {
@@ -194,29 +201,66 @@ export function BookingCard({
     }
   }
 
-  async function sendComprobanteWa() {
+  /**
+   * Un solo botón para mandarle el comprobante al cliente:
+   *  - bot vinculado → el server manda la imagen + el texto solo;
+   *  - sin bot pero el móvil puede adjuntar archivos → imagen adjunta (Web Share);
+   *  - sin bot y sin adjuntar (desktop/iOS) → chat del cliente con el
+   *    comprobante ESCRITO + PNG descargado.
+   */
+  async function enviarComprobanteWa() {
     setComprobanteBusy(true);
     setComprobanteStatus(null);
     try {
-      const res = await fetch(`/api/vendor/bookings/${booking.id}/send-receipt`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ send: true }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        if (data.url) setComprobanteUrl(data.url);
-        setComprobanteStatus(
-          data.mode === "auto"
-            ? "✅ Comprobante enviado automáticamente por WhatsApp"
-            : "📲 Abrí WhatsApp para enviar el comprobante"
-        );
-        if (data.mode === "manual" && data.url) {
-          window.open(data.url, "_blank", "noopener,noreferrer");
+      // Con bot vinculado: el envío es del server (no necesita gesto del navegador).
+      if (comprobanteShare.botLinked) {
+        const res = await fetch(`/api/vendor/bookings/${booking.id}/send-receipt`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ send: true }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          if (data.url) setComprobanteUrl(data.url);
+          if (data.share) {
+            setComprobanteShare((prev) => ({
+              ...prev,
+              text: String(data.share.text || prev.text),
+              receiptText: String(data.share.receiptText || prev.receiptText),
+              filename: String(data.share.filename || prev.filename),
+              phone: data.share.phone || prev.phone,
+              waUrl: data.share.waUrl || prev.waUrl,
+              botLinked: !!data.share.botLinked,
+            }));
+          }
+          setComprobanteStatus(
+            data.mode === "auto"
+              ? "✅ Comprobante enviado por WhatsApp"
+              : "⚠️ El bot no pudo enviarlo: usá el link de abajo para mandarlo vos."
+          );
+        } else {
+          setComprobanteStatus(data.error || "No se pudo enviar el comprobante");
         }
-      } else {
-        setComprobanteStatus(data.error || "No se pudo enviar el comprobante");
+        return;
       }
+
+      // Sin bot: lo hace el navegador. OJO: se llama SIN awaits previos para
+      // que el chat se abra dentro del gesto del click (si no, el navegador lo
+      // bloquea como popup y no pasa nada).
+      if (!comprobanteUrl) {
+        setComprobanteStatus("Esperá a que se genere el comprobante…");
+        return;
+      }
+      const r = await shareReceiptImage({
+        url: comprobanteUrl,
+        filename: comprobanteShare.filename,
+        title: "Comprobante de servicio",
+        text: comprobanteShare.text,
+        receiptText: comprobanteShare.receiptText,
+        waUrl: comprobanteShare.waUrl,
+        phone: comprobanteShare.phone || booking.customer_phone,
+      });
+      setComprobanteStatus(shareOutcomeMessage(r));
     } catch {
       setComprobanteStatus("Sin conexión");
     } finally {
@@ -785,80 +829,31 @@ export function BookingCard({
                     <Button variant="outline" size="sm" className="w-full h-9">⬇️ Descargar</Button>
                   </a>
                   <Button
-                    variant="outline"
                     size="sm"
-                    className="flex-1 h-9"
-                    onClick={async () => {
-                      setComprobanteBusy(true);
-                      setComprobanteStatus(null);
-                      try {
-                        const res = await fetch(`/api/vendor/bookings/${booking.id}/send-receipt`, {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ send: true }),
-                        });
-                        const data = await res.json().catch(() => ({}));
-                        if (res.ok) {
-                          if (data.url) setComprobanteUrl(data.url);
-                          if (data.share) {
-                            setComprobanteShare({
-                              text: String(data.share.text || ""),
-                              filename: String(data.share.filename || "comprobante.png"),
-                              phone: data.share.phone || null,
-                            });
-                          }
-                          setComprobanteStatus(
-                            data.mode === "auto"
-                              ? "✅ Comprobante enviado automáticamente por WhatsApp"
-                              : "📲 Abrí WhatsApp para enviar el comprobante"
-                          );
-                          if (data.mode === "manual" && data.url) {
-                            const phone = String(booking.customer_phone || "").replace(/\D/g, "");
-                            if (phone) window.open(`https://wa.me/${phone}?text=${encodeURIComponent(data.share?.text || "Te envío el comprobante de tu servicio.")}`, "_blank", "noopener,noreferrer");
-                          }
-                        } else {
-                          setComprobanteStatus(data.error || "No se pudo enviar");
-                        }
-                      } catch {
-                        setComprobanteStatus("Sin conexión");
-                      } finally {
-                        setComprobanteBusy(false);
-                      }
-                    }}
+                    className="flex-1 min-w-[150px] h-9"
                     disabled={comprobanteBusy}
+                    onClick={enviarComprobanteWa}
                   >
                     {comprobanteBusy ? "Enviando…" : "📲 Enviar por WA"}
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 min-w-[110px] h-9"
-                    disabled={comprobanteBusy}
-                    onClick={async () => {
-                      setComprobanteBusy(true);
-                      setComprobanteStatus(null);
-                      const r = await shareReceiptImage({
-                        url: comprobanteUrl,
-                        filename: comprobanteShare.filename,
-                        title: "Comprobante de servicio",
-                        text: comprobanteShare.text,
-                        phone: comprobanteShare.phone || booking.customer_phone,
-                      });
-                      setComprobanteStatus(
-                        r.mode === "share"
-                          ? "✅ Comprobante compartido"
-                          : r.mode === "download"
-                            ? r.message || "⬇️ Se descargó la imagen: adjuntala en WhatsApp"
-                            : r.mode === "cancelled"
-                              ? null
-                              : r.message || "No se pudo compartir"
-                      );
-                      setComprobanteBusy(false);
-                    }}
-                  >
-                    📤 Compartir
-                  </Button>
                 </div>
+                {comprobanteShare.waUrl && (
+                  <div className="space-y-1">
+                    <a
+                      href={comprobanteShare.waUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-primary underline underline-offset-2"
+                    >
+                      Abrir el chat de {String(booking.customer_name || "").trim().split(/\s+/)[0] || "la clienta"} en WhatsApp
+                    </a>
+                    {comprobanteShare.phone && (
+                      <p className="text-[10px] text-muted-foreground">
+                        WhatsApp: {comprobanteShare.phone}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
             <Button variant="outline" size="sm" className="w-full h-9" onClick={() => setComprobanteOpen(false)}>

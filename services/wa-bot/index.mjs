@@ -19,6 +19,29 @@ const stats = { messages: 0, replies: 0, errors: 0, loggedOut: 0, limitsHit: 0 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const rand = (min, max) => Math.round(min + Math.random() * (max - min));
 
+// Teléfono en E.164 para el envío. El relay arma <num>@s.whatsapp.net, así
+// que el número tiene que ser el internacional: "011 15-1234-5678" →
+// "5491112345678", "11 5555-1234" → "5491155551234". Los JID/lid (con "@")
+// se respetan tal cual.
+function sendPhone(raw) {
+  const s = String(raw || "");
+  if (s.includes("@")) return s;
+  let n = s.replace(/[^\d]/g, "");
+  if (!n) return s;
+  if (n.startsWith("00")) n = n.slice(2);
+  if (n.startsWith("0")) n = n.slice(1); // trunk 0 (011 / 0XX)
+  if (n.startsWith("549")) return n; // ya es E.164 de móvil AR
+  if (n.startsWith("54")) n = n.slice(2); // +54 sin el 9 de móvil
+  if (n.length === 10) return "549" + n; // local (11 5555-1234) → +549
+  if (n.length === 11 && n.startsWith("9")) return "549" + n;
+  // "011 15-5555-1234" → 2 del área + 15 + 8: el 15 es el prefijo móvil
+  // histórico → se saca (mismo criterio que toE164 en la app).
+  if (n.length === 12 && /^(\d{2})15\d{8}$/.test(n)) {
+    return "549" + n.slice(0, 2) + n.slice(4);
+  }
+  return "549" + n;
+}
+
 /** Delay humano antes de responder: base aleatoria en [min,max], +4ms por char
  *  del inbound (simula que leen). Nunca 0 — WhatsApp nota la inmediatez. */
 function humanDelay(textLen) {
@@ -124,16 +147,21 @@ const server = createServer(async (req, res) => {
     }
     await sleep(humanDelay(text.length));
     sendTyping(c, waId);
+    // El relay arma el JID con el número: tiene que ser E.164 (549...). Si la
+    // app mandó un teléfono en formato local ("011 15-...", "11 5555-...") el
+    // mensaje se perdía. Solo se normaliza para el ENVÍO: las claves de estado
+    // siguen usando el waId original (el JID del chat).
+    const sendId = sendPhone(waId);
     if (type === "image") {
-      sendImage(c, waId, body.data, text);
+      sendImage(c, sendId, body.data, text);
       feedPush({ vendorId, store: c.vendor?.store_name, kind: "send", waId, text: `[imagen] ${text}` });
       trackMessage(vendorId, waId, "out", text ? `📷 ${text}` : "📷 imagen");
     } else if (type === "document") {
-      sendDocument(c, waId, body.data, body.name || "documento.pdf", body.mime || "application/pdf");
+      sendDocument(c, sendId, body.data, body.name || "documento.pdf", body.mime || "application/pdf");
       feedPush({ vendorId, store: c.vendor?.store_name, kind: "send", waId, text: `[documento] ${body.name || "documento.pdf"}` });
       trackMessage(vendorId, waId, "out", `📄 ${body.name || "documento.pdf"}`);
     } else {
-      sendText(c, waId, text);
+      sendText(c, sendId, text);
       feedPush({ vendorId, store: c.vendor?.store_name, kind: "send", waId, text });
       trackMessage(vendorId, waId, "out", text);
     }

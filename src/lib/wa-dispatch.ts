@@ -1,4 +1,5 @@
 import { sendWaText } from "@/lib/wa-send";
+import { toE164 } from "@/lib/phone";
 
 /**
  * Envío "inteligente" de un mensaje de WhatsApp:
@@ -17,7 +18,11 @@ export async function sendOrLink(input: {
   imageName?: string;
 }): Promise<{ mode: "auto" | "manual"; ok: boolean; url?: string; reason?: string }> {
   const wabotUrl = (process.env.WABOT_URL || "http://wabot:8792").replace(/\/$/, "");
-  const phoneDigits = String(input.phone || "").replace(/\D/g, "");
+  // El relay arma el JID con el número (numero@s.whatsapp.net): tiene que ser
+  // E.164 (549...) o el mensaje se pierde. toE164 normaliza "011 15-...",
+  // "11 5555-..." y "+54 9 ..." al formato que usa WhatsApp.
+  const phoneDigits =
+    toE164(input.phone) || String(input.phone || "").replace(/\D/g, "");
   const manualUrl = phoneDigits
     ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(input.text)}`
     : undefined;
@@ -25,7 +30,7 @@ export async function sendOrLink(input: {
   try {
     const body: Record<string, unknown> = {
       vendorId: input.vendorId,
-      waId: input.phone,
+      waId: phoneDigits || input.phone,
       text: input.text,
       noState: true,
     };

@@ -145,7 +145,7 @@ async function main() {
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "repetir pedido" });
   show("re-pedido (portal)", r);
   const rp = (r.replies || []).join(" ");
-  if (!rp.includes("Empanada de carne") || !rp.includes("¿Confirmás") || !rp.includes("Che Sancho")) { console.log("!!! re-pedido no armó el carrito"); ok = false; }
+  if (!rp.includes("Empanada de carne") || !rp.includes("¿Lo pedís de nuevo?") || !rp.includes("Che Sancho")) { console.log("!!! re-pedido no armó el carrito"); ok = false; }
   else { console.log(">>> OK: re-pedido → carrito armado + confirmación"); }
   // Confirmar → crea el pedido (el mock ya tiene customerName, así que va directo a confirmar)
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "sí" });

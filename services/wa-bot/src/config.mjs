@@ -57,7 +57,7 @@ export const config = {
   waQuoteMode: process.env.WA_QUOTE_MODE || "off",
   // Tono del bot: "clasico" (textos actuales, sin cambio) o "humano"
   // (copys conversacionales, variantes rotadas por chat).
-  waTone: process.env.WA_TONE || "clasico",
+  waTone: process.env.WA_TONE || "humano",
   // Memoria del cliente: si esta en "on", el bot consulta /api/wa/customer al
   // iniciar una conversación nueva y no vuelve a preguntar nombre/dirección/
   // método/pago que ya se sepa. Tambien ofrece "lo de siempre" como re-pedido.

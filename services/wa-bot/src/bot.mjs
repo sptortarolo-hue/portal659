@@ -1262,7 +1262,7 @@ function pendingQuestions(state) {
     ? `Tu pedido:\n${state.items.map((i) => `• ${itemDisplay(i)}`).join("\n")}\n\n`
     : "";
   const questions = lines.length ? `${lines.join("\n")}\n\n` : "";
-  return `${cart}${questions}Respondé todo junto en un mensaje (ej: *"envío a calle 5 123, Juan, transferencia"*), o de a una cosa. 👇`;
+  return `${cart}${questions}Decime lo que falte, todo junto o de a una cosa. 👇`;
 }
 
 function itemDisplay(i) {
@@ -1395,7 +1395,7 @@ function summaryText(state, vendor) {
     state.customerName ? `Nombre: ${state.customerName}` : "",
     totalLine,
     "",
-    "¿Todo bien? Contestá *sí* para confirmar o *no* para cambiarlo.",
+    "¿Está todo bien? Decime *sí* para confirmar, o decime qué cambiar.",
   ].filter(Boolean).join("\n");
 }
 
@@ -1454,9 +1454,9 @@ function orderTotalEstimate(state, vendor) {
 function shortReGreet(state, vendor) {
   if (config.waTone === "humano") {
     if (state.items.length) {
-      return `¡Hola de nuevo! 👋 Tu pedido sigue acá:\n${state.items.map((i) => `• ${i.name} ×${i.qty}`).join("\n")}\n\n¿Seguimos?`;
+      return `¡Hola de nuevo! 👋 Tu pedido sigue acá:\n${state.items.map((i) => `• ${i.name} ×${i.qty}`).join("\n")}\n\n¿Seguimos con el pedido?`;
     }
-    return `¡Hola de nuevo! 👋 ¿Qué te puedo preparar?`;
+    return `¡Hola de nuevo! 👋 ¿Qué te puedo preparar hoy?`;
   }
   if (state.items.length) {
     return `¡Hola de nuevo! 👋 Tu pedido sigue acá:\n${state.items.map((i) => `• ${i.name} ×${i.qty}`).join("\n")}\n\n¿Seguimos?`;
@@ -3187,7 +3187,7 @@ async function persist(state, vendorId, waId, replies) {
 function greetingText(vendor) {
   const url = shopUrl(vendor);
   if (config.waTone === "humano") {
-    return `${greetingTextTone(vendor, config.waTone)}\n\n📲 Pedí desde nuestro menú online:\n${url}\n¿Ya sabés qué pedir? Escribilo directamente y te lo confirmo.`;
+    return `${greetingTextTone(vendor, config.waTone)}\n\n📲 Mirá nuestro menú online:\n${url}\n¿Ya sabés qué pedir? Escribí directamente y te lo armo.`;
   }
   return `Hola 👋 Soy el asistente de *${vendor.store_name}*.
 
@@ -3195,11 +3195,11 @@ function greetingText(vendor) {
 ${url}
 
 ¿Ya sabés qué pedir?
-Escribilo directamente y yo lo confirmo.`;
+Escribilo directamente y te lo confirmo.`;
 }
 
 function transferText(vendor, total) {
-  const lines = ["Para el pago:"];
+  const lines = ["💳 Para el pago:"];
   if (vendor.transfer_alias) lines.push(`Alias: ${vendor.transfer_alias}`);
   if (vendor.transfer_cbu) lines.push(`CBU: ${vendor.transfer_cbu}`);
   if (total != null) lines.push(`Monto: $${Number(total).toLocaleString("es-AR")}`);

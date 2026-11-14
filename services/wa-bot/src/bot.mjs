@@ -2192,26 +2192,35 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
         replies.push(portalStoreListLines(stores.slice(0, 5)));
         state.portalVendorList = stores.slice(0, 5).map((s) => ({ id: s.id, store_name: s.store_name, slug: s.slug || null }));
         if (stores.length > 5) replies.push(`(y ${stores.length - 5} más — escribí el nombre de la tienda para verla)`);
-        replies.push("¿Querés pedir de alguna? Respondé el número o el nombre. 🙌");
-        // Enviar logo de cada tienda como imagen (best-effort).
+        // Enviar imagen de producto destacado de cada tienda (o logo como fallback)
         const _client = getClientByVendor(vendor.id);
         if (_client) {
           for (const s of stores.slice(0, 5)) {
-            if (s.logo_url) {
-              try {
-                const imgRes = await fetch(s.logo_url, { signal: AbortSignal.timeout(8_000) });
+            try {
+              // Buscar el primer producto con imagen para mostrar en la carta de WhatsApp
+              const productWithImage = (s.products || []).find((p) => p.image_url) || (s.products || [])[0];
+              const imgUrl = productWithImage?.image_url || s.logo_url || null;
+
+              if (imgUrl) {
+                const imgRes = await fetch(imgUrl, { signal: AbortSignal.timeout(8_000) });
                 if (imgRes.ok) {
                   const buf = Buffer.from(await imgRes.arrayBuffer());
                   const b64 = buf.toString("base64");
-                  sendImage(_client, waId, b64, `🏪 ${s.store_name}`);
-                  console.log(`[bot][portal] logo enviado: ${s.store_name}`);
+                  const priceText = productWithImage?.price != null ? ` — $${Number(productWithImage.price).toLocaleString("es-AR")}` : '';
+                  const caption = `🏪 *${s.store_name}*${s.vertical ? ` — ${portalVerticalLabel(s.vertical)}` : ""}\n🍽️ ${productWithImage?.name || "Sin productos"}${priceText}\n🔗 ${config.publicUrl}/tienda/${s.slug}`;
+                  sendImage(_client, waId, b64, caption);
+                  console.log(`[bot][portal] imagen producto enviada: ${s.store_name} — ${productWithImage?.name || "sin productos"}`);
+                  continue;
                 }
-              } catch (e) {
-                console.error(`[bot][portal] error enviando logo ${s.store_name}: ${e?.message}`);
               }
+              // Fallback: solo texto si no hay imagen ni producto
+              replies.push(`🏪 *${s.store_name}*${s.vertical ? ` — ${portalVerticalLabel(s.vertical)}` : ""}\n🔗 ${config.publicUrl}/tienda/${s.slug}`);
+            } catch (e) {
+              console.error(`[bot][portal] error enviando imagen producto ${s.store_name}: ${e?.message}`);
             }
           }
         }
+        replies.push("¿Querés pedir de alguna? Respondé el número o el nombre. 🙌");
         replies.push(portalNavFooter());
         return await persist(state, vendor.id, waId, replies);
       }

@@ -27,6 +27,8 @@ export function CategoryNav({ sections, catalog = false }: { sections: { name: s
   const [active, setActive] = useState(0);
   const [query, setQuery] = useState("");
   const [matches, setMatches] = useState<number | null>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
   const navRef = useRef<HTMLElement>(null);
   const params = useSearchParams();
 
@@ -64,6 +66,27 @@ export function CategoryNav({ sections, catalog = false }: { sections: { name: s
     nav.scrollTo({ left, behavior: "smooth" });
   }, [active]);
 
+  const updateScrollState = useCallback(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    setCanScrollLeft(nav.scrollLeft > 4);
+    setCanScrollRight(nav.scrollLeft + nav.clientWidth < nav.scrollWidth - 4);
+  }, []);
+
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    updateScrollState();
+    const onScroll = () => updateScrollState();
+    nav.addEventListener("scroll", onScroll, { passive: true });
+    const ro = new ResizeObserver(() => updateScrollState());
+    ro.observe(nav);
+    return () => {
+      nav.removeEventListener("scroll", onScroll);
+      ro.disconnect();
+    };
+  }, [updateScrollState, sections]);
+
   const goTo = useCallback((i: number) => {
     const el = document.getElementById(`seccion-${i}`);
     if (!el) return;
@@ -73,6 +96,12 @@ export function CategoryNav({ sections, catalog = false }: { sections: { name: s
     const offset = isMobile ? 184 : 96;
     const top = el.getBoundingClientRect().top + window.scrollY - offset;
     window.scrollTo({ top, behavior: "smooth" });
+  }, []);
+
+  const scrollNav = useCallback((dir: -1 | 1) => {
+    const nav = navRef.current;
+    if (!nav) return;
+    nav.scrollBy({ left: dir * nav.clientWidth * 0.8, behavior: "smooth" });
   }, []);
 
   // Deep link ?cat=<slug> → scrollea a esa sección (una vez, al montar).
@@ -132,26 +161,60 @@ export function CategoryNav({ sections, catalog = false }: { sections: { name: s
           )}
         </div>
       )}
-      <nav
-        ref={navRef}
-        className="sticky top-[152px] sm:top-16 z-30 -mx-4 px-4 py-2 bg-background/95 backdrop-blur-sm border-b border-border flex gap-2 overflow-x-auto mb-6"
-      >
-        {sections.map((s, i) => (
+      <div className="relative mb-6">
+        {canScrollLeft && (
           <button
-            key={s.name}
             type="button"
-            data-index={i}
-            onClick={() => goTo(i)}
-            className={`whitespace-nowrap rounded-full border px-4 py-1.5 text-sm font-medium transition-colors ${
-              active === i
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-border bg-card text-muted-foreground hover:border-primary hover:text-primary"
-            }`}
+            aria-label="Categorías anteriores"
+            onClick={() => scrollNav(-1)}
+            className="hidden sm:flex absolute left-0 top-1/2 -translate-y-1/2 z-40 h-8 w-8 items-center justify-center rounded-full border border-border bg-card/95 text-foreground shadow-md backdrop-blur-sm hover:bg-card transition"
           >
-            {s.name}
+            ‹
           </button>
-        ))}
-      </nav>
+        )}
+        {canScrollRight && (
+          <button
+            type="button"
+            aria-label="Más categorías"
+            onClick={() => scrollNav(1)}
+            className="hidden sm:flex absolute right-0 top-1/2 -translate-y-1/2 z-40 h-8 w-8 items-center justify-center rounded-full border border-border bg-card/95 text-foreground shadow-md backdrop-blur-sm hover:bg-card transition"
+          >
+            ›
+          </button>
+        )}
+        {canScrollLeft && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute left-0 top-0 bottom-0 w-8 z-30 bg-gradient-to-r from-background to-transparent"
+          />
+        )}
+        {canScrollRight && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 z-30 bg-gradient-to-l from-background to-transparent"
+          />
+        )}
+        <nav
+          ref={navRef}
+          className="sticky top-[152px] sm:top-16 z-30 -mx-4 px-4 py-2 bg-background/95 backdrop-blur-sm border-b border-border flex gap-2 overflow-x-auto scrollbar-hide snap-x snap-mandatory scroll-smooth mb-0"
+        >
+          {sections.map((s, i) => (
+            <button
+              key={s.name}
+              type="button"
+              data-index={i}
+              onClick={() => goTo(i)}
+              className={`snap-start shrink-0 whitespace-nowrap rounded-full border px-4 py-1.5 text-sm font-medium transition-colors ${
+                active === i
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-card text-muted-foreground hover:border-primary hover:text-primary"
+              }`}
+            >
+              {s.name}
+            </button>
+          ))}
+        </nav>
+      </div>
     </>
   );
 }

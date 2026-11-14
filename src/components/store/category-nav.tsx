@@ -161,13 +161,13 @@ export function CategoryNav({ sections, catalog = false }: { sections: { name: s
           )}
         </div>
       )}
-      <div className="relative mb-6">
+      <div className="relative sticky top-[152px] sm:top-16 z-30 -mx-4 px-4 py-2 bg-background/95 backdrop-blur-sm border-b border-border mb-6">
         {canScrollLeft && (
           <button
             type="button"
             aria-label="Categorías anteriores"
             onClick={() => scrollNav(-1)}
-            className="hidden sm:flex absolute left-0 top-1/2 -translate-y-1/2 z-40 h-8 w-8 items-center justify-center rounded-full border border-border bg-card/95 text-foreground shadow-md backdrop-blur-sm hover:bg-card transition"
+            className="hidden sm:flex absolute left-1 top-1/2 -translate-y-1/2 z-40 h-7 w-7 items-center justify-center rounded-full border border-border bg-card/95 text-foreground shadow-md backdrop-blur-sm hover:bg-card transition text-base leading-none"
           >
             ‹
           </button>
@@ -177,7 +177,7 @@ export function CategoryNav({ sections, catalog = false }: { sections: { name: s
             type="button"
             aria-label="Más categorías"
             onClick={() => scrollNav(1)}
-            className="hidden sm:flex absolute right-0 top-1/2 -translate-y-1/2 z-40 h-8 w-8 items-center justify-center rounded-full border border-border bg-card/95 text-foreground shadow-md backdrop-blur-sm hover:bg-card transition"
+            className="hidden sm:flex absolute right-1 top-1/2 -translate-y-1/2 z-40 h-7 w-7 items-center justify-center rounded-full border border-border bg-card/95 text-foreground shadow-md backdrop-blur-sm hover:bg-card transition text-base leading-none"
           >
             ›
           </button>
@@ -185,18 +185,18 @@ export function CategoryNav({ sections, catalog = false }: { sections: { name: s
         {canScrollLeft && (
           <div
             aria-hidden
-            className="pointer-events-none absolute left-0 top-0 bottom-0 w-8 z-30 bg-gradient-to-r from-background to-transparent"
+            className="pointer-events-none absolute left-0 top-0 bottom-0 w-8 z-20 bg-gradient-to-r from-background to-transparent"
           />
         )}
         {canScrollRight && (
           <div
             aria-hidden
-            className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 z-30 bg-gradient-to-l from-background to-transparent"
+            className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 z-20 bg-gradient-to-l from-background to-transparent"
           />
         )}
         <nav
           ref={navRef}
-          className="sticky top-[152px] sm:top-16 z-30 -mx-4 px-4 py-2 bg-background/95 backdrop-blur-sm border-b border-border flex gap-2 overflow-x-auto scrollbar-hide snap-x snap-mandatory scroll-smooth mb-0"
+          className="flex gap-2 overflow-x-auto scrollbar-hide snap-x snap-mandatory scroll-smooth"
         >
           {sections.map((s, i) => (
             <button

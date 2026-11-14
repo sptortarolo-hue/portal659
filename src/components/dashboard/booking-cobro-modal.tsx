@@ -58,6 +58,7 @@ export function BookingCobroModal({
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const [receiptStatus, setReceiptStatus] = useState<string | null>(null);
+  const [receiptImageUrl, setReceiptImageUrl] = useState<string | null>(null);
   const [sendingReceipt, setSendingReceipt] = useState(false);
   const firstInput = useRef<HTMLInputElement>(null);
 
@@ -89,6 +90,7 @@ export function BookingCobroModal({
     setErr(null);
     setDone(false);
     setReceiptStatus(null);
+    setReceiptImageUrl(null);
     setFinalPrice(String(snapshotTotal));
     setAmountToCharge("");
     setAmountReceived("");
@@ -157,6 +159,28 @@ export function BookingCobroModal({
           {receiptStatus && (
             <p className="text-xs text-muted-foreground">{receiptStatus}</p>
           )}
+          {receiptImageUrl && (
+            <div className="space-y-2">
+              <img src={receiptImageUrl} alt="Comprobante" className="w-full rounded-lg border border-border" />
+              <div className="flex gap-2">
+                <a href={receiptImageUrl} download className="flex-1">
+                  <Button variant="outline" size="sm" className="w-full h-9">⬇️ Descargar imagen</Button>
+                </a>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 h-9"
+                  onClick={() => {
+                    const phone = String(booking.customer_phone || "").replace(/\D/g, "");
+                    if (phone) window.open(`https://wa.me/${phone}?text=${encodeURIComponent("Te envío el comprobante de tu servicio.")}`, "_blank", "noopener,noreferrer");
+                  }}
+                >
+                  💬 Abrir WhatsApp
+                </Button>
+              </div>
+              <p className="text-[10px] text-muted-foreground">Guardá la imagen y compartila por WhatsApp (adjuntala al chat).</p>
+            </div>
+          )}
           <div className="flex gap-2">
             <Button
               size="sm"
@@ -165,6 +189,7 @@ export function BookingCobroModal({
               onClick={async () => {
                 setSendingReceipt(true);
                 setReceiptStatus(null);
+                setReceiptImageUrl(null);
                 try {
                   const res = await fetch(`/api/vendor/bookings/${booking.id}/send-receipt`, {
                     method: "POST",
@@ -173,16 +198,14 @@ export function BookingCobroModal({
                   });
                   const data = await res.json().catch(() => ({}));
                   if (res.ok) {
+                    setReceiptImageUrl(data.url || null);
                     setReceiptStatus(
                       data.mode === "auto"
                         ? "✅ Comprobante enviado automáticamente por WhatsApp"
-                        : "📲 Abrí WhatsApp para enviar el comprobante"
+                        : "📲 Guardá la imagen y compartila por WhatsApp"
                     );
-                    if (data.mode === "manual" && data.url) {
-                      window.open(data.url, "_blank", "noopener,noreferrer");
-                    }
                   } else {
-                    setReceiptStatus(data.error || "No se pudo enviar el comprobante");
+                    setReceiptStatus(data.error || "No se pudo generar el comprobante");
                   }
                 } catch {
                   setReceiptStatus("Sin conexión");
@@ -191,7 +214,7 @@ export function BookingCobroModal({
                 }
               }}
             >
-              {sendingReceipt ? "Enviando…" : "📲 Enviar comprobante por WA"}
+              {sendingReceipt ? "Generando…" : "📲 Enviar comprobante por WA"}
             </Button>
             <Button
               variant="outline"

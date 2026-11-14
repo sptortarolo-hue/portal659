@@ -103,7 +103,7 @@ export async function renderReceiptImage(input: TicketImageInput): Promise<Buffe
       const fs = l.size || 14;
       const fw = l.bold ? "bold" : "normal";
       svgParts.push(
-        `<text x="${padding}" y="${y}" font-size="${fs}" font-weight="${fw}" font-family="monospace" fill="${l.color || "black"}">${esc(l.text)}</text>`
+        `<text x="${padding}" y="${y}" font-size="${fs}" font-weight="${fw}" font-family="DejaVu Sans, sans-serif" fill="${l.color || "black"}">${esc(l.text)}</text>`
       );
       y += lineHeight;
     }

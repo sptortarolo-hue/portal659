@@ -2701,8 +2701,7 @@ function VendorDashboardInner() {
           <div className="bg-card rounded-2xl p-6 max-w-sm w-full text-center" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-display text-xl font-semibold mb-1">Compartí tu vidriera</h3>
             <p className="text-sm text-muted-foreground mb-4">
-              Eleg\u00ed qu\u00e9 compartir: la <span className="font-medium">Tienda</span> (compra online con
-              carrito) o el <span className="font-medium">Cat\u00e1logo</span> (solo lectura, sin carrito).
+              Eleg\u00ed qu\u00e9 compartir.
             </p>
             <div className="flex gap-2 mb-4">
               <button
@@ -2733,23 +2732,15 @@ function VendorDashboardInner() {
             <div className="space-y-2">
               <a
                 href={`https://wa.me/?text=${encodeURIComponent(
-                  `Mir\u00e1 a ${vendor.store_name} en Portal 659 \ud83d\uded2\n${window.location.origin}/tienda/${vendor.slug}\n\nEscribiles directo por WhatsApp \u2014 0% comisi\u00f3n`
+                  shareTarget === "tienda"
+                    ? `Mir\u00e1 a ${vendor.store_name} en Portal 659 \ud83d\uded2\n${window.location.origin}/tienda/${vendor.slug}\n\nEscribiles directo por WhatsApp \u2014 0% comisi\u00f3n`
+                    : `Mir\u00e1 ${isRetail ? "el cat\u00e1logo" : "la carta"} de ${vendor.store_name} en Portal 659 ${isRetail ? "\ud83d\uded2" : "\ud83d\udccb"}\n${window.location.origin}/carta/${vendor.slug}`
                 )}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block w-full rounded-xl bg-green-500 text-white text-sm font-medium py-2.5 hover:bg-green-600 transition-colors"
               >
-                \ud83d\udcac Compartir tienda
-              </a>
-              <a
-                href={`https://wa.me/?text=${encodeURIComponent(
-                  `Mir\u00e1 ${isRetail ? "el cat\u00e1logo" : "la carta"} de ${vendor.store_name} en Portal 659 ${isRetail ? "\ud83d\uded2" : "\ud83d\udccb"}\n${window.location.origin}/carta/${vendor.slug}`
-                )}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block w-full rounded-xl bg-green-600 text-white text-sm font-medium py-2.5 hover:bg-green-700 transition-colors"
-              >
-                \ud83d\udcac {isRetail ? "Compartir cat\u00e1logo" : "Compartir carta"}
+                \ud83d\udcac {shareTarget === "tienda" ? "Compartir tienda" : isRetail ? "Compartir cat\u00e1logo" : "Compartir carta"}
               </a>
               <div className="grid grid-cols-2 gap-2">
                 {qrDataUrl && (

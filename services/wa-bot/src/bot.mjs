@@ -8,7 +8,7 @@ import { greetingTextTone, summaryTextTone, pendingQuestionsTone, lowConfidenceT
 import { parseWithLlm, parseByRules, normalizeEs, extractFromText, bareName, 
 classifyIntent, llmStats } from "./nlu.mjs";
 import { saveCorrection } from "./learning.mjs";
-import { trackEvent } from "./telemetry.mjs";
+import { trackEvent, trackMessage } from "./telemetry.mjs";
 import { getClientByVendor, sendText, sendTyping, sendPaused, sendImage, sendDocument } from "./relay.mjs";
 import { getServices, buildGreeting, isServiceVertical } from "./services.mjs";
 import { feedPush } from "./metrics.mjs";
@@ -262,7 +262,7 @@ export async function handleInbound({ vendor, waId, body, waPhone, timestamp }) 
 
     // Handoff explícito (disponible incluso durante la pausa).
     if (RE_HUMAN.test(text) || RE_AYUDA.test(text)) {
-      try { (await import("./telemetry.mjs")).trackEvent(vendor.id, "handoff", waId, { reason: "ayuda" }); } catch {}
+      try { trackEvent(vendor.id, "handoff", waId, { reason: "ayuda" }); } catch {}
       return await handoffHuman(vendor, waId, text, state);
     }
 
@@ -401,7 +401,7 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
     if (/^(s[i\u00ed]|si|yes|ok|dale|confirmo|claro)$/i.test(t)) {
       const lo = state._pendingReorder;
       const products = await getMenu(vendor.id);
-      mergeItems(state, (lo.items || []).map((p) => ({
+      mergeItems(state, vendor.id, (lo.items || []).map((p) => ({
         offerId: p.offerId || p.id,
         variantId: p.variantId,
         name: p.name,
@@ -479,7 +479,7 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
     if (/^(s[i\u00ed]|si|yes|ok|dale|confirmo|claro)\b/i.test(t)) {
       const items = pc.items || [];
       if (items.length) {
-        mergeItems(state, items.map((p) => ({ offerId: p.offerId || p.id, variantId: p.variantId, name: p.name, qty: Math.max(1, Number(p.qty) || 1), modifiers: p.modifiers || [] })));
+        mergeItems(state, vendor.id, items.map((p) => ({ offerId: p.offerId || p.id, variantId: p.variantId, name: p.name, qty: Math.max(1, Number(p.qty) || 1), modifiers: p.modifiers || [] })));
         applyContactFields(state, pc.parsed || {});
       }
       state.pendingConfirm = null;
@@ -577,7 +577,7 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
     }
     const isAddition = /\b(agrega|agregar|tambi\u00e9n|tambien|suma|sumar|m\u00e1s|mas)(?=[\s.,!]|$)/i.test(text);
     if (isAddition && state.items.length > 0) {
-      mergeItems(state, (parsed.items || []).map((p) => ({
+      mergeItems(state, vendor.id, (parsed.items || []).map((p) => ({
         offerId: p.offerId || p.id,
         variantId: p.variantId,
         name: p.name,
@@ -739,12 +739,14 @@ async function handleStep({ vendor, text, state, replies, waId }) {
             replies.push("¿Querés cambiar algo del pedido o lo armamos de nuevo?");
             return await persist(state, vendor.id, waId, replies);
           }
+          // Guardar total exacto del quote para mostrarlo al cliente en el resumen
+          state._quoteTotal = quote.total;
         }
       }
       let order;
       try {
         order = await createOrder(vendor.id, state);
-        try { (await import("./telemetry.mjs")).trackEvent(vendor.id, "order_created", waId, { orderId: order?.orderId || order?.id, total: order?.total, items: state.items?.length }); } catch {}
+        try { trackEvent(vendor.id, "order_created", waId, { orderId: order?.orderId || order?.id, total: order?.total, items: state.items?.length }); } catch {}
       } catch (e) {
         const msg = String(e?.message || "");
         // Manejo amigable: si el comercio está cerrado o sin stock, sugerir
@@ -850,13 +852,14 @@ async function handleStep({ vendor, text, state, replies, waId }) {
     );
     let changed = false;
     if (parsed?.method && parsed.method !== state.method) { state.method = parsed.method; changed = true; }
+    try { trackEvent(vendor.id, "funnel_method_selected", waId, { method: parsed.method }); } catch {}
     if (parsed?.customerAddress && parsed.customerAddress !== state.customerAddress) { state.customerAddress = parsed.customerAddress; changed = true; }
     if (parsed?.customerName && parsed.customerName !== state.customerName) { state.customerName = parsed.customerName; changed = true; }
     if (parsed?.payment && parsed.payment !== state.payment) { state.payment = parsed.payment; changed = true; }
     if (parsed?.items?.length) {
       const isAddition = /\b(agrega|agregar|tambi\u00e9n|tambien|suma|sumar|m\u00e1s|mas)(?=[\s.,!]|$)/i.test(t);
       if (isAddition && state.items.length > 0) {
-        mergeItems(state, (parsed.items || []).map((p) => ({
+        mergeItems(state, vendor.id, (parsed.items || []).map((p) => ({
           offerId: p.offerId || p.id,
           variantId: p.variantId,
           name: p.name,
@@ -1051,6 +1054,7 @@ async function handleStep({ vendor, text, state, replies, waId }) {
   // Un valor re-afirmado (ej. "retiro" cuando ya era retiro) cuenta como progreso:
   // evita handoff prematuro por repetir una confirmación.
   if (parsed?.method) { state.method = parsed.method; got = true; }
+  try { trackEvent(vendor.id, "funnel_method_selected", waId, { method: parsed.method }); } catch {}
   if (parsed?.customerAddress) { state.customerAddress = parsed.customerAddress; got = true; }
   if (parsed?.customerName) { state.customerName = parsed.customerName; got = true; }
   if (parsed?.payment) { state.payment = parsed.payment; got = true; }
@@ -1226,6 +1230,11 @@ function advanceAndAsk(state, vendor, replies) {
     // Todo completo: resumen (con total estimado) + confirmación.
     state.step = "confirm";
     console.log(`[bot] transición → confirm (items=${state.items.length}, vendor=${vendor?.store_name || vendor?.id || "?"})`);
+    // Funnel: resumen mostrado para confirmación
+    // try {
+    //   const evt = { items: state.items.length };
+    //   await trackEvent(vendor.id, "funnel_confirm_shown", waId, evt);
+    // } catch {}
     replies.push(summaryText(state, vendor));
     return;
   }
@@ -1384,9 +1393,9 @@ function summaryText(state, vendor, exactTotal = null) {
     state.payment === "transferencia" ? "🏦 Transferencia" :
     state.payment === "efectivo" ? "💵 Efectivo" : "💳 Coordinamos por WhatsApp";
   const estimate = orderTotalEstimate(state, vendor);
-  const totalToShow = exactTotal != null ? exactTotal : estimate.total;
+  const totalToShow = state._quoteTotal != null ? state._quoteTotal : (exactTotal != null ? exactTotal : estimate.total);
   const totalLine = totalToShow != null
-    ? `💰 Total: $${Math.round(totalToShow).toLocaleString("es-AR")}${exactTotal != null ? "" : (estimate.aprox ? " (aprox)" : "")}`
+    ? `💰 Total: $${Math.round(totalToShow).toLocaleString("es-AR")}${state._quoteTotal != null ? "" : (exactTotal != null ? "" : (estimate.aprox ? " (aprox)" : ""))}`
     : "";
   return [
     "✅ Tu pedido:",
@@ -1499,7 +1508,7 @@ function applyContactFields(state, parsed) {
   if (parsed.payment === "transferencia" || parsed.payment === "efectivo") state.payment = parsed.payment;
 }
 
-function mergeItems(state, newItems) {
+function mergeItems(state, newItems, vendorId) {
   for (const p of newItems) {
     const it = normalizeDraftItem(p);
     if (!isValidDraftItem(it)) continue;
@@ -1509,7 +1518,13 @@ function mergeItems(state, newItems) {
       (i) => i.offerId === it.offerId && (i.variantId || null) === variantId && (i.modifiers || []).length === mods.length
     );
     if (existing) existing.qty = Math.max(1, Number(existing.qty || 0) + it.qty);
-    else state.items.push({ name: it.name, offerId: it.offerId, variantId: it.variantId, qty: it.qty, unit: it.unit, weightKg: it.weightKg, modifiers: it.modifiers, comboMembers: it.comboMembers, note: it.note });
+    else {
+      state.items.push({ name: it.name, offerId: it.offerId, variantId: it.variantId, qty: it.qty, unit: it.unit, weightKg: it.weightKg, modifiers: it.modifiers, comboMembers: it.comboMembers, note: it.note });
+      // Funnel: ítem agregado al carrito
+      try {
+        trackEvent(vendorId, "funnel_item_added", waId, { offerId: it.offerId, name: it.name, qty: it.qty });
+      } catch {}
+    }
   }
   // Dedupe de defensa: jamás dos entradas del mismo producto+variante+mods.
   const seen = new Map();
@@ -1783,6 +1798,10 @@ async function handoffHuman(vendor, waId, text, state) {
   const { bumpHandoff } = await import("./metrics.mjs");
   bumpHandoff(vendor.id, vendor.store_name, waId, text);
   await notifyHandoff(vendor.id, waId, text);
+  // Funnel: handoff a persona
+  try {
+    trackEvent(vendor.id, "funnel_handoff", waId, { reason: text.slice(0, 100) });
+  } catch {}
   return { replies: [`Enseguida te atiende una persona de *${vendor.store_name}* 🙌`] };
 }
 
@@ -1875,6 +1894,8 @@ async function sendPortalMenu(state, vendor, waId, replies) {
   replies.push("");
   replies.push("Respondé el número de una opción o escribime el nombre de un producto para buscar. 🛒");
   replies.push(portalNavFooter());
+  // Funnel: menú mostrado
+  try { trackEvent(vendor.id, "funnel_menu_shown", waId, {}); } catch {}
   return await persist(state, vendor.id, waId, replies);
 }
 
@@ -2090,7 +2111,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
     if (state.history.length > 16) state.history = state.history.slice(-16);
 
     if (RE_HUMAN.test(text) || RE_AYUDA.test(text)) {
-      try { (await import("./telemetry.mjs")).trackEvent(vendor.id, "handoff", waId, { reason: "ayuda" }); } catch {}
+      try { trackEvent(vendor.id, "handoff", waId, { reason: "ayuda" }); } catch {}
       return await handoffHuman(vendor, waId, text, state);
     }
 
@@ -2129,7 +2150,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
 
       // 4) B2B: "tengo un comercio", "quiero sumar mi negocio", "cómo me doy de alta".
       if (B2B_RE.test(_low) && !menuNum) {
-        try { (await import("./telemetry.mjs")).trackEvent(vendor.id, "b2b_query", waId, {}); } catch {}
+        try { trackEvent(vendor.id, "b2b_query", waId, {}); } catch {}
         greetIfNew();
         replies.push(portalB2BText());
         return await persist(state, vendor.id, waId, replies);
@@ -2137,7 +2158,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
 
       // 5) Hablar con una persona.
       if (menuNum === "5") {
-        try { (await import("./telemetry.mjs")).trackEvent(vendor.id, "handoff", waId, { reason: "menu_5" }); } catch {}
+        try { trackEvent(vendor.id, "handoff", waId, { reason: "menu_5" }); } catch {}
         return await handoffHuman(vendor, waId, text, state);
       }
 
@@ -2150,7 +2171,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
 
       // 4) Opción 4 del menú (B2B) por número.
       if (menuNum === "4") {
-        try { (await import("./telemetry.mjs")).trackEvent(vendor.id, "b2b_query", waId, { via: "menu" }); } catch {}
+        try { trackEvent(vendor.id, "b2b_query", waId, { via: "menu" }); } catch {}
         greetIfNew();
         replies.push(portalB2BText());
         return await persist(state, vendor.id, waId, replies);
@@ -2158,7 +2179,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
 
       // 1) Tiendas abiertas (máx 5, con link al micrositio).
       if (menuNum === "1" || (OPEN_STORES_RE.test(_low) && !hasStoreList && !ALL_STORES_RE.test(_low))) {
-        try { (await import("./telemetry.mjs")).trackEvent(vendor.id, "open_stores", waId, {}); } catch {}
+        try { trackEvent(vendor.id, "open_stores", waId, {}); } catch {}
         const stores = (await portalStores()).filter((s) => s.store_open === true);
         if (stores.length === 0) {
           greetIfNew();
@@ -2197,7 +2218,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
 
       // 2) Todas las tiendas, agrupadas por rubro.
       if (menuNum === "2" || ALL_STORES_RE.test(_low) || GREETING_RE.test(_low)) {
-        try { (await import("./telemetry.mjs")).trackEvent(vendor.id, "all_stores", waId, {}); } catch {}
+        try { trackEvent(vendor.id, "all_stores", waId, {}); } catch {}
         const stores = await portalStores();
         if (stores.length === 0) {
           greetIfNew();
@@ -2238,7 +2259,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
     //   del teléfono y responde estado + link de seguimiento. —
     const RE_STATUS = /(?:c[oó]mo (?:va|est[aá])|d[oó]nde (?:est[aá]|va)|estado|seguimiento|mi pedido|rastrear|track)/i;
     if (RE_STATUS.test(text) && !/^(hola|buenas|buenos|chau|adios|gracias|ok|si|no|cancelar|ayuda|menu|menú|comercios)$/i.test(text.trim())) {
-      try { (await import("./telemetry.mjs")).trackEvent(vendor.id, "status_query", waId, {}); } catch {}
+      try { trackEvent(vendor.id, "status_query", waId, {}); } catch {}
       const rawPhone = state.customerPhone || waId;
       const phone = String(rawPhone).startsWith("lid:") ? waId : rawPhone;
       try {
@@ -2365,7 +2386,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
     //   teléfono y pide confirmación antes de crear el nuevo pedido. —
     const RE_REORDER = /(?:repetir|repetime|repetirme|lo mismo|de nuevo|otra vez|el mismo pedido|pedime lo de siempre|repetir pedido|repetir el pedido|repetirme el pedido)/i;
     if (RE_REORDER.test(text) && !/^(hola|buenas|buenos|chau|adios|gracias|ok|si|no|cancelar|ayuda|menu|menú|comercios)$/i.test(text.trim())) {
-      try { (await import("./telemetry.mjs")).trackEvent(vendor.id, "reorder", waId, {}); } catch {}
+      try { trackEvent(vendor.id, "reorder", waId, {}); } catch {}
       const rawPhone = state.customerPhone || waId;
       const phone = String(rawPhone).startsWith("lid:") ? waId : rawPhone;
       try {
@@ -2816,6 +2837,10 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
         state.currentVendorSlug = chosen.slug || storeInfo.slug || null;
         state.currentVendorTransfer = { alias: storeInfo.transfer_alias || null, cbu: storeInfo.transfer_cbu || null, holder: storeInfo.transfer_holder || null };
         state.currentVendorDelivery = storeInfo.delivery_options || "ambos";
+        // Funnel: tienda seleccionada
+        try {
+          trackEvent(vendor.id, "funnel_store_selected", waId, { storeId: chosen.id, storeName: chosen.store_name });
+        } catch {}
         // Aviso si está cerrado (pero permitimos pedir igual).
         if (storeInfo.store_open === false) {
           replies.push(`⚠️ *${chosen.store_name}* está cerrado ahora. ${storeInfo.next_open_text || ""} Podés ver el menú y hacer el pedido para cuando abra.`);
@@ -2902,6 +2927,8 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
         state.currentVendorSlug = nameHit.slug || storeInfo2.slug || null;
         state.currentVendorTransfer = { alias: storeInfo2.transfer_alias || null, cbu: storeInfo2.transfer_cbu || null, holder: storeInfo2.transfer_holder || null };
         state.currentVendorDelivery = storeInfo2.delivery_options || "ambos";
+        // Funnel: tienda seleccionada
+        try { trackEvent(vendor.id, "funnel_store_selected", waId, { storeId: nameHit.id, storeName: nameHit.store_name }); } catch {}
         if (storeInfo2.store_open === false) {
           replies.push(`⚠️ *${nameHit.store_name}* está cerrado ahora. ${storeInfo2.next_open_text || ""} Podés ver el menú y hacer el pedido para cuando abra.`);
         }
@@ -3088,7 +3115,7 @@ export async function sweepStaleConversations() {
       sendTyping(client, waId);
       sendText(client, waId, `Enseguida te atiende una persona de *${vendor.store_name}* 🙌`);
       sendPaused(client, waId);
-      try { (await import("./telemetry.mjs")).trackMessage(vendorId, waId, "out", `Enseguida te atiende una persona de *${vendor.store_name}* 🙌`); } catch {}
+      try { trackMessage(vendorId, waId, "out", `Enseguida te atiende una persona de *${vendor.store_name}* 🙌`); } catch {}
     } catch { /* el push al dueño va igual */ }
 
     // Push al dueño con contexto (teléfono + último mensaje) — la "nota interna".
@@ -3140,8 +3167,8 @@ export async function sweepAbandonedCarts() {
       if (sent) {
         state.nudgeSent = true;
         await setState(vendorId, waId, state).catch(() => {});
-        try { (await import("./telemetry.mjs")).trackEvent(vendorId, "cart_abandoned", waId, { items: state.items?.length }); } catch {}
-        try { (await import("./telemetry.mjs")).trackMessage(vendorId, waId, "out", nudgeMsg); } catch {}
+        try { trackEvent(vendorId, "cart_abandoned", waId, { items: state.items?.length }); } catch {}
+        try { trackMessage(vendorId, waId, "out", nudgeMsg); } catch {}
         console.log(`[nudge] ${vendor.store_name} (${waId}) carrito abandonado -> recordatorio enviado`);
       }
     } catch (e) {

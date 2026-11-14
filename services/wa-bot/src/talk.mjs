@@ -29,7 +29,7 @@ export function greetingTextTone(vendor, tone) {
 }
 
 /** Resumen del pedido en tono humano (vs summaryText en clasico). */
-export function summaryTextTone(state, vendor) {
+export function summaryTextTone(state, vendor, exactTotal = null) {
   const lines = state.items.map((i) => `• ${itemDisplayTone(i)}`).join("\n");
   const method = state.method === "delivery"
     ? `🛵 Te lo llevo a: ${state.customerAddress}`
@@ -38,8 +38,9 @@ export function summaryTextTone(state, vendor) {
     state.payment === "transferencia" ? "🏦 Transferencia" :
     state.payment === "efectivo" ? "💵 Efectivo" : "💳 Se coordina por WhatsApp";
   const estimate = orderTotalEstimateTone(state, vendor);
-  const totalLine = estimate.total != null
-    ? `💰 Total: $${Math.round(estimate.total).toLocaleString("es-AR")}${estimate.aprox ? " (aprox.)" : ""}`
+  const totalToShow = exactTotal != null ? exactTotal : estimate.total;
+  const totalLine = totalToShow != null
+    ? `💰 Total: $${Math.round(totalToShow).toLocaleString("es-AR")}${exactTotal != null ? "" : (estimate.aprox ? " (aprox.)" : "")}`
     : "";
   return [
     `Tu pedido de *${vendor.store_name || "el comercio"}:`,

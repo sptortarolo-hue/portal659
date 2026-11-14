@@ -1652,9 +1652,24 @@ async function handleServiceConcierge({ vendor, text, state, replies, waId }) {
     state.step = "idle";
     try {
       const { vendor: v, services } = await getServices(vendor.id);
-      replies.push(buildGreeting(v || vendor, services));
+      const vv = v || vendor;
+      // Logo del local como imagen (si existe) antes del texto.
+      if (vv?.logo_url) {
+        try {
+          const logoRes = await fetch(vv.logo_url, { signal: AbortSignal.timeout(8_000) });
+          if (logoRes.ok) {
+            const buf = Buffer.from(await logoRes.arrayBuffer());
+            const b64 = buf.toString("base64");
+            const client = getClientByVendor(vendor.id);
+            if (client && client.ws && client.ws.readyState === 1) {
+              sendImage(client, waId, b64, vv.store_name || "");
+              await sleep(humanDelay(0));
+            }
+          }
+        } catch { /* sin logo: se sigue con el texto */ }
+      }
+      replies.push(buildGreeting(vv, services));
     } catch (e) {
-      // Fallback: saludo mínimo con link al micrositio.
       const url = vendor?.slug ? `${config.publicUrl}/tienda/${vendor.slug}#reservar-turno` : "";
       replies.push(`¡Hola! 👋 Soy el asistente de "${vendor.store_name}".\n\n${url ? `Reservá tu turno online:\n${url}` : ""}`);
     }

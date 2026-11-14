@@ -56,6 +56,9 @@ export function BookingCobroModal({
   const [receptorCond, setReceptorCond] = useState("6");
   const [err, setErr] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [done, setDone] = useState(false);
+  const [receiptStatus, setReceiptStatus] = useState<string | null>(null);
+  const [sendingReceipt, setSendingReceipt] = useState(false);
   const firstInput = useRef<HTMLInputElement>(null);
 
   const { accounts: bankAccounts } = useBankAccounts();
@@ -83,7 +86,9 @@ export function BookingCobroModal({
   const vuelto = Number(amountReceived) - amount;
 
   useEffect(() => {
-    if (!open) { setErr(null); return; }
+    setErr(null);
+    setDone(false);
+    setReceiptStatus(null);
     setFinalPrice(String(snapshotTotal));
     setAmountToCharge("");
     setAmountReceived("");
@@ -133,6 +138,74 @@ export function BookingCobroModal({
     const active = (bankAccounts || []).filter((a: any) => a.active !== false);
     if (active.length === 1) setTransferAccountId(active[0].id);
   }, [bankAccounts]);
+
+  // (moved below)
+
+  if (done) {
+    return (
+      <div
+        className="fixed inset-0 z-[60] flex items-center justify-center"
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { onSuccess(); onClose(); }} />
+        <div className="relative z-[61] w-full max-w-md mx-4 rounded-2xl border border-border bg-card p-5 shadow-xl space-y-3">
+          <h2 className="text-sm font-semibold">✅ Cobro registrado</h2>
+          <p className="text-xs text-muted-foreground">
+            El turno quedó atendido y cobrado. ¿Enviar el comprobante por WhatsApp al cliente?
+          </p>
+          {receiptStatus && (
+            <p className="text-xs text-muted-foreground">{receiptStatus}</p>
+          )}
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              className="h-9 flex-1"
+              disabled={sendingReceipt}
+              onClick={async () => {
+                setSendingReceipt(true);
+                setReceiptStatus(null);
+                try {
+                  const res = await fetch(`/api/vendor/bookings/${booking.id}/send-receipt`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ send: true }),
+                  });
+                  const data = await res.json().catch(() => ({}));
+                  if (res.ok) {
+                    setReceiptStatus(
+                      data.mode === "auto"
+                        ? "✅ Comprobante enviado automáticamente por WhatsApp"
+                        : "📲 Abrí WhatsApp para enviar el comprobante"
+                    );
+                    if (data.mode === "manual" && data.url) {
+                      window.open(data.url, "_blank", "noopener,noreferrer");
+                    }
+                  } else {
+                    setReceiptStatus(data.error || "No se pudo enviar el comprobante");
+                  }
+                } catch {
+                  setReceiptStatus("Sin conexión");
+                } finally {
+                  setSendingReceipt(false);
+                }
+              }}
+            >
+              {sendingReceipt ? "Enviando…" : "📲 Enviar comprobante por WA"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 flex-1"
+              onClick={() => { onSuccess(); onClose(); }}
+            >
+              Cerrar
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!open) return null;
 
@@ -220,7 +293,8 @@ export function BookingCobroModal({
           /* sin conexión a impresora: se ignora */
         }
       }
-      onSuccess();
+      setDone(true);
+      return;
     } catch {
       setErr("Sin conexión");
     } finally {

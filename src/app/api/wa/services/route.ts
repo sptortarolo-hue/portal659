@@ -25,8 +25,9 @@ export async function GET(request: Request) {
     hours: string | null;
     open_override: boolean | null;
     slug: string | null;
+    logo_url: string | null;
   }>(
-    `SELECT id, store_name, vertical, hours, open_override, slug
+    `SELECT id, store_name, vertical, hours, open_override, slug, logo_url
      FROM vendors WHERE id = $1 LIMIT 1`,
     [vendorId]
   );
@@ -75,6 +76,7 @@ export async function GET(request: Request) {
       open_text: openStatusText(storeOpen),
       next_open_text: nextOpen,
       slug: vendor.slug,
+      logo_url: vendor.logo_url,
       microsite_url: micrositeUrl,
       reserve_url: micrositeUrl ? `${micrositeUrl}#reservar-turno` : null,
     },

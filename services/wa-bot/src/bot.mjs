@@ -30,6 +30,7 @@ const DEFAULT_STATE = {
   pendingMods: null,  // { offerId, group, options, max } — opciones requeridas pendientes
   pendingProduct: null, // { label, options, qty, fromRedeclare } — producto genérico a desambiguar
   pendingConfirm: null, // { items } - confirmacion de baja confianza
+  portalStep: null,     // menu | open_stores | all_stores | select_store | cart | method | details | confirm | awaiting_receipt | completed
 };
 
 const AWAITING_RECEIPT_TTL = 15 * 60; // 15 min para acreditar el comprobante
@@ -50,6 +51,10 @@ const RE_GREETING = /^(hola|buenas|buen día|buenos días|buenas tardes|buenas n
 // Intención de PREGUNTA ("empanadas tenés?", "cuánto sale la pizza?", "hay coca?"):
 // se RESPONDE con la lista, nunca se ordena.
 const RE_ASKWORDS = /\b(tenés|tenes|tienen|hay|queda|quedan|cuánto|cuanto|cuánta|cuantas|precio|precios|sale|cuesta|cuestan|vale)\b/i;
+// Comandos de navegación (disponibles en cualquier paso del bot del portal)
+const RE_BACK   = /^(volver|atrás|atras|anterior)$/i;
+const RE_HOME   = /^(inicio|principio|menu|menú)$/i;
+const RE_CANCEL_ALL = /^(cancelar|no gracias|basta)$/i;
 
 function normalizePhone(waId) {
   const s = String(waId || "");
@@ -194,6 +199,36 @@ export async function handleInbound({ vendor, waId, body, waPhone, timestamp }) 
     state.touchedAt = Date.now();
     // Timestamp del mensaje entrante (anti-mensajes-viejos tras reconexión del relay).
     if (timestamp) state.lastMsgTs = timestamp;
+
+    // — Comandos de navegación (disponibles en cualquier paso) —
+    const navCmd = RE_BACK.test(text) ? "back"
+      : RE_HOME.test(text) ? "home"
+      : RE_CANCEL_ALL.test(text) ? "cancel_all"
+      : null;
+    if (navCmd) {
+      if (navCmd === "home") {
+        state.portalStep = null;
+        state.currentVendorId = null;
+        state.currentVendorName = null;
+        state.currentVendorSlug = null;
+        state.items = [];
+        state.method = null;
+        state.payment = null;
+        state.customerName = null;
+        state.customerAddress = null;
+        state.welcomed = true;
+        await persist(state, vendor.id, waId, []);
+        return await sendPortalMenu(state, vendor, waId, replies);
+      }
+      if (navCmd === "cancel_all") {
+        state._cleared = true;
+        await clearState(vendor.id, waId);
+        return { replies: ["Ok, cancelé todo. Cuando quieras retomamos. 👍"] };
+      }
+      if (navCmd === "back") {
+        return await retrocederPortal(state, vendor, replies, waId);
+      }
+    }
 
     // — Memoria del cliente (WA_MEMORY=on): al iniciar una conversación nueva,
     //  cargamos el último pedido no cancelado de los últimos 90 días y
@@ -1825,6 +1860,93 @@ async function fetchCustomer(vendorId, phone) {
   }
 }
 
+/** Envía el menú corto de 5 opciones del portal (capa 1 informativa). */
+async function sendPortalMenu(state, vendor, waId, replies) {
+  const greetName = state.customerName ? ` ${state.customerName}` : "";
+  replies.push(`¡Hola${greetName}! 👋 Soy el asistente de *Portal 659*, el centro comercial de tu barrio.`);
+  replies.push("");
+  replies.push("¿Qué querés hacer?");
+  replies.push("1️⃣ Ver tiendas abiertas");
+  replies.push("2️⃣ Ver todas las tiendas");
+  replies.push("3️⃣ ¿Cómo comprar / pagar?");
+  replies.push("4️⃣ ¿Tenés un comercio? Sumalo gratis");
+  replies.push("5️⃣ Hablar con una persona");
+  replies.push("");
+  replies.push("Respondé el número de una opción o escribime el nombre de un producto para buscar. 🛒");
+  replies.push(portalNavFooter());
+  return await persist(state, vendor.id, waId, replies);
+}
+
+/** Retrocede un paso en el flujo del portal, conservando lo ya cargado. */
+async function retrocederPortal(state, vendor, replies, waId) {
+  const step = state.portalStep;
+  switch (step) {
+    case "select_store":
+      state.portalStep = null;
+      state.currentVendorId = null;
+      state.currentVendorName = null;
+      state.currentVendorSlug = null;
+      replies.push("Volvimos al listado de tiendas. ¿Qué querés hacer?");
+      replies.push("1️⃣ Ver tiendas abiertas");
+      replies.push("2️⃣ Ver todas las tiendas");
+      replies.push("3️⃣ ¿Cómo comprar / pagar?");
+      replies.push("4️⃣ ¿Tenés un comercio? Sumalo gratis");
+      replies.push("5️⃣ Hablar con una persona");
+      replies.push("");
+      replies.push("Respondé el número de una opción o escribime el nombre de un producto. 🛒");
+      return await persist(state, vendor.id, waId, replies);
+
+    case "cart":
+      state.portalStep = "select_store";
+      replies.push("Volvimos a la tienda. ¿Qué querés pedir? Decime el nombre y la cantidad.");
+      replies.push("(Escribí *volver* para elegir otra tienda, *inicio* para el menú principal)");
+      return await persist(state, vendor.id, waId, replies);
+
+    case "method":
+      state.portalStep = "cart";
+      replies.push("Tu pedido:");
+      replies.push((state.items || []).map((i) => `• ${i.name} ×${i.qty}`).join("\n") || "(vacío)");
+      replies.push("¿Seguimos con el pedido o querés agregar algo más?");
+      replies.push("(Escribí *volver* para elegir otra tienda, *inicio* para el menú principal)");
+      return await persist(state, vendor.id, waId, replies);
+
+    case "details":
+      state.portalStep = "method";
+      const methodLabel = state.method === "delivery" ? "domicilio" : "retiro";
+      replies.push(`¿Lo retirás por el local o te lo enviamos a domicilio? (ahora: ${methodLabel})`);
+      replies.push("1️⃣ Retiro en el local");
+      replies.push("2️⃣ Envío a domicilio");
+      replies.push("");
+      replies.push("Respondé *retiro* o *domicilio*, o decime *volver* para cambiar el pedido.");
+      return await persist(state, vendor.id, waId, replies);
+
+    case "confirm":
+      state.portalStep = "details";
+      replies.push("Casi lo tenemos. Solo falta:");
+      if (state.method === "delivery" && !state.customerAddress) replies.push("📍 ¿A qué dirección te lo llevamos?");
+      if (!state.customerName) replies.push("👤 ¿A nombre de quién va el pedido?");
+      replies.push("(Escribí *volver* para cambiar el método de entrega, *inicio* para el menú principal)");
+      return await persist(state, vendor.id, waId, replies);
+
+    case "awaiting_receipt":
+      state.portalStep = "confirm";
+      replies.push("Volvimos al resumen del pedido. ¿Está todo bien? Decime *sí* para confirmar.");
+      return await persist(state, vendor.id, waId, replies);
+
+    default:
+      // menu, open_stores, all_stores o null → ir al menú principal
+      state.portalStep = null;
+      state.currentVendorId = null;
+      state.items = [];
+      return await sendPortalMenu(state, vendor, waId, replies);
+  }
+}
+
+/** Agrega el pie de navegación a cada respuesta del portal. */
+function portalNavFooter() {
+  return "(Escribí *volver* para el paso anterior, *cancelar* para salir, *inicio* para el menú principal)";
+}
+
 // — Capa 1 del bot del portal: contenido INFORMATIVO —
 // El bot del portal primero informa (qué es Portal 659, qué tiendas hay,
 // cómo comprar/pagar, cómo sumar un comercio) y recién después arma pedidos.
@@ -2049,6 +2171,26 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
         state.portalVendorList = stores.slice(0, 5).map((s) => ({ id: s.id, store_name: s.store_name, slug: s.slug || null }));
         if (stores.length > 5) replies.push(`(y ${stores.length - 5} más — escribí el nombre de la tienda para verla)`);
         replies.push("¿Querés pedir de alguna? Respondé el número o el nombre. 🙌");
+        // Enviar logo de cada tienda como imagen (best-effort).
+        const _client = getClientByVendor(vendor.id);
+        if (_client) {
+          for (const s of stores.slice(0, 5)) {
+            if (s.logo_url) {
+              try {
+                const imgRes = await fetch(s.logo_url, { signal: AbortSignal.timeout(8_000) });
+                if (imgRes.ok) {
+                  const buf = Buffer.from(await imgRes.arrayBuffer());
+                  const b64 = buf.toString("base64");
+                  sendImage(_client, waId, b64, `🏪 ${s.store_name}`);
+                  console.log(`[bot][portal] logo enviado: ${s.store_name}`);
+                }
+              } catch (e) {
+                console.error(`[bot][portal] error enviando logo ${s.store_name}: ${e?.message}`);
+              }
+            }
+          }
+        }
+        replies.push(portalNavFooter());
         return await persist(state, vendor.id, waId, replies);
       }
 

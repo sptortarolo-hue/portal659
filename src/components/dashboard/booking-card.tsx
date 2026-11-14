@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -147,6 +148,64 @@ export function BookingCard({
   // "Productos usados" (texto libre) es de estética: en taller los insumos se
   // cargan como repuestos reales de la orden, así que el campo no se muestra.
   const isTaller = (vendor as any)?.vertical === "taller";
+  const [comprobanteOpen, setComprobanteOpen] = useState(false);
+  const [comprobanteUrl, setComprobanteUrl] = useState<string | null>(null);
+  const [comprobanteStatus, setComprobanteStatus] = useState<string | null>(null);
+  const [comprobanteBusy, setComprobanteBusy] = useState(false);
+
+  async function openComprobante() {
+    setComprobanteOpen(true);
+    setComprobanteUrl(null);
+    setComprobanteStatus(null);
+    setComprobanteBusy(true);
+    try {
+      const res = await fetch(`/api/vendor/bookings/${booking.id}/send-receipt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ send: false }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.url) {
+        setComprobanteUrl(data.url);
+      } else {
+        setComprobanteStatus(data.error || "No se pudo generar el comprobante");
+      }
+    } catch {
+      setComprobanteStatus("Sin conexión");
+    } finally {
+      setComprobanteBusy(false);
+    }
+  }
+
+  async function sendComprobanteWa() {
+    setComprobanteBusy(true);
+    setComprobanteStatus(null);
+    try {
+      const res = await fetch(`/api/vendor/bookings/${booking.id}/send-receipt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ send: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        if (data.url) setComprobanteUrl(data.url);
+        setComprobanteStatus(
+          data.mode === "auto"
+            ? "✅ Comprobante enviado automáticamente por WhatsApp"
+            : "📲 Abrí WhatsApp para enviar el comprobante"
+        );
+        if (data.mode === "manual" && data.url) {
+          window.open(data.url, "_blank", "noopener,noreferrer");
+        }
+      } else {
+        setComprobanteStatus(data.error || "No se pudo enviar el comprobante");
+      }
+    } catch {
+      setComprobanteStatus("Sin conexión");
+    } finally {
+      setComprobanteBusy(false);
+    }
+  }
   const dateOnly = String(booking.booking_date || "").slice(0, 10);
   const productLabel = nz(booking.product_label || booking.product_name);
   const serviceStaffLabel = [nz(booking.service_label), nz(booking.staff_label)].filter(Boolean).join(" · ");
@@ -561,7 +620,7 @@ export function BookingCard({
                 variant="outline"
                 className="h-7 text-xs"
                 title="Ver comprobante emitido"
-                onClick={() => onNavigate?.("caja")}
+                onClick={() => openComprobante()}
               >
                 🧾 Comprobante
               </Button>
@@ -688,6 +747,67 @@ export function BookingCard({
           </div>
         )}
       </div>
+      {comprobanteOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center" role="dialog" aria-modal="true">
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setComprobanteOpen(false)} />
+          <div className="relative z-[61] w-full max-w-md mx-4 rounded-2xl border border-border bg-card p-5 shadow-xl space-y-3">
+            <h2 className="text-sm font-semibold">🧾 Comprobante emitido</h2>
+            {comprobanteBusy && <p className="text-xs text-muted-foreground">Generando comprobante…</p>}
+            {comprobanteStatus && <p className="text-xs text-muted-foreground">{comprobanteStatus}</p>}
+            {comprobanteUrl && (
+              <div className="space-y-2">
+                <img src={comprobanteUrl} alt="Comprobante" className="w-full rounded-lg border border-border" />
+                <div className="flex gap-2">
+                  <a href={comprobanteUrl} download className="flex-1">
+                    <Button variant="outline" size="sm" className="w-full h-9">⬇️ Descargar</Button>
+                  </a>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 h-9"
+                    onClick={async () => {
+                      setComprobanteBusy(true);
+                      setComprobanteStatus(null);
+                      try {
+                        const res = await fetch(`/api/vendor/bookings/${booking.id}/send-receipt`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ send: true }),
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (res.ok) {
+                          if (data.url) setComprobanteUrl(data.url);
+                          setComprobanteStatus(
+                            data.mode === "auto"
+                              ? "✅ Comprobante enviado automáticamente por WhatsApp"
+                              : "📲 Abrí WhatsApp para enviar el comprobante"
+                          );
+                          if (data.mode === "manual" && data.url) {
+                            const phone = String(booking.customer_phone || "").replace(/\D/g, "");
+                            if (phone) window.open(`https://wa.me/${phone}?text=${encodeURIComponent("Te envío el comprobante de tu servicio.")}`, "_blank", "noopener,noreferrer");
+                          }
+                        } else {
+                          setComprobanteStatus(data.error || "No se pudo enviar");
+                        }
+                      } catch {
+                        setComprobanteStatus("Sin conexión");
+                      } finally {
+                        setComprobanteBusy(false);
+                      }
+                    }}
+                    disabled={comprobanteBusy}
+                  >
+                    {comprobanteBusy ? "Enviando…" : "📲 Enviar por WA"}
+                  </Button>
+                </div>
+              </div>
+            )}
+            <Button variant="outline" size="sm" className="w-full h-9" onClick={() => setComprobanteOpen(false)}>
+              Cerrar
+            </Button>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

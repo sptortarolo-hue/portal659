@@ -661,6 +661,7 @@ export default async function TiendaPage({
     deliveryFee: v.delivery_fee != null ? Number(v.delivery_fee) : null,
     freeDeliveryMin: v.free_delivery_min != null ? Number(v.free_delivery_min) : null,
     deliveryOptions: v.delivery_options || "ambos",
+    paymentMethods: v.payment_methods || null,
     deliveryMode: ((v as any).delivery_mode === "zones" ? "zones" : "flat") as "flat" | "zones",
     deliveryAreaText: (v as any).delivery_area_text != null ? String((v as any).delivery_area_text) : null,
     deliveryZones,

@@ -326,6 +326,20 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
       .catch(() => {});
   }, [vendor?.id]);
 
+  // Medios de pago habilitados por el comercio (payment_methods, comma-separated).
+  // Lista vacía => se muestran todos (retrocompatibilidad).
+  const paymentMethodsList = vendor?.paymentMethods
+    ? String(vendor.paymentMethods).split(",").map((x) => x.trim()).filter(Boolean)
+    : [];
+  const paymentMethodsAllowAll = paymentMethodsList.length === 0;
+  const pmAllows = (key: string) => paymentMethodsAllowAll || paymentMethodsList.includes(key);
+  const showPayCoordinar = true;
+  const showPayEfectivo = pmAllows("Efectivo");
+  const showPayTransferencia = pmAllows("Transferencia") || shipActive;
+  const showPayMp = pmAllows("Mercado Pago") && mpConfigured;
+  const payOptionCount = (showPayCoordinar ? 1 : 0) + (showPayEfectivo ? 1 : 0) + (showPayTransferencia ? 1 : 0) + (showPayMp ? 1 : 0);
+  const payGridCols = payOptionCount <= 1 ? "grid-cols-1" : payOptionCount === 2 ? "grid-cols-2" : payOptionCount === 3 ? "grid-cols-3" : "grid-cols-4";
+
   // Compra 100% giftcards: no hay retiro ni delivery — entrega digital por
   // WhatsApp al teléfono del comprador (se pide abajo si falta).
   const isGiftOnly = items.length > 0 && items.every((i) => (i as any).isGift === true);
@@ -1291,7 +1305,8 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
               🏦 Transferencia (el envío extendido se paga por adelantado)
             </p>
           ) : (
-          <div className={`grid ${mpDeferred && mpConfigured ? "grid-cols-2" : "grid-cols-3"} gap-2 mt-1`}>
+          <div className={`grid ${payGridCols} gap-2 mt-1`}>
+{showPayCoordinar && (
             <button
               type="button"
               onClick={() => setPaymentMethod("whatsapp")}
@@ -1303,6 +1318,8 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
             >
               📱 Coordinar
             </button>
+            )}
+{showPayEfectivo && (
             <button
               type="button"
               onClick={() => setPaymentMethod("efectivo")}
@@ -1319,6 +1336,9 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
                 </span>
               )}
             </button>
+
+            )}
+{showPayTransferencia && (
             <button
               type="button"
               onClick={() => setPaymentMethod("transferencia")}
@@ -1330,7 +1350,8 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
             >
               🏦 Transferencia
             </button>
-            {mpDeferred && mpConfigured && (
+            )}
+            {mpDeferred && mpConfigured && showPayMp && (
               <button
                 type="button"
                 onClick={() => setPaymentMethod("mercadopago")}

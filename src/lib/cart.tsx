@@ -83,6 +83,8 @@ export type CartVendor = {
   freeDeliveryMin?: number | null;
   /** "ambos" | "retiro" | "domicilio" — el checkout solo ofrece lo habilitado. */
   deliveryOptions?: string | null;
+  /** Medios de pago configurados por el comercio (string comma-separated). */
+  paymentMethods?: string | null;
   /** "flat" (default) | "zones" (hasta 3 tarifas por zona). */
   deliveryMode?: "flat" | "zones" | null;
   /** Área habitual en lenguaje barrial ("¿estás dentro de …?"). */
@@ -143,6 +145,7 @@ function loadCart(): CartState {
               deliveryFee: parsed.vendor.deliveryFee ?? null,
               freeDeliveryMin: parsed.vendor.freeDeliveryMin ?? null,
               deliveryOptions: parsed.vendor.deliveryOptions ?? null,
+              paymentMethods: parsed.vendor.paymentMethods ?? null,
               deliveryMode: parsed.vendor.deliveryMode ?? null,
               deliveryAreaText: parsed.vendor.deliveryAreaText ?? null,
               deliveryZones: Array.isArray(parsed.vendor.deliveryZones) ? parsed.vendor.deliveryZones : undefined,

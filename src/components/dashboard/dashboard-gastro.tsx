@@ -64,6 +64,7 @@ const PAYMENT_OPTIONS = [
   { label: "Crédito", value: "Crédito", icon: "💳" },
   { label: "Mercado Pago", value: "Mercado Pago", icon: "📱" },
   { label: "Transferencia", value: "Transferencia", icon: "🏦" },
+  { label: "Coordinar", value: "Coordinar", icon: "📱" },
 ];
 
 const DELIVERY_OPTIONS = [

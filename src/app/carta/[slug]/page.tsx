@@ -86,6 +86,7 @@ export default async function CartaPage({ params }: { params: Promise<{ slug: st
     deliveryFee: null,
     freeDeliveryMin: null,
     deliveryOptions: v.delivery_options || "ambos",
+    paymentMethods: v.payment_methods || null,
     deliveryMode: "flat" as const,
     deliveryAreaText: null,
     deliveryZones: [],

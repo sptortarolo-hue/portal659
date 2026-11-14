@@ -163,6 +163,7 @@ export default async function PromoPage({
     storeName: v.store_name,
     whatsapp: v.whatsapp || "",
     vertical: v.vertical,
+    paymentMethods: v.payment_methods || null,
     cashDiscountPct:
       String(v.payment_methods || "")
         .split(",")

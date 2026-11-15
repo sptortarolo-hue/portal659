@@ -31,6 +31,7 @@ const DEFAULT_STATE = {
   pendingProduct: null, // { label, options, qty, fromRedeclare } — producto genérico a desambiguar
   pendingConfirm: null, // { items } - confirmacion de baja confianza
   portalStep: null,     // menu | open_stores | all_stores | select_store | cart | method | details | confirm | awaiting_receipt | completed
+  deliveryWindow: null, // turno de entrega elegido (ej: "2026-11-15|18:00-20:00")
 };
 
 const AWAITING_RECEIPT_TTL = 15 * 60; // 15 min para acreditar el comprobante
@@ -1221,6 +1222,54 @@ async function handleStep({ vendor, text, state, replies, waId }) {
   if (parsed?.customerName) { state.customerName = parsed.customerName; got = true; }
   if (parsed?.payment) { state.payment = parsed.payment; got = true; }
 
+  // Si el cliente eligió delivery y aún no eligió horario, mostrar los horarios disponibles
+  if (state.method === "delivery" && !state.deliveryWindow) {
+    const deliverySlots = await fetchDeliverySlots(vendor.id, new Date().toISOString().slice(0, 10));
+    if (deliverySlots && deliverySlots.slots && deliverySlots.slots.length > 0) {
+      const slots = deliverySlots.slots.filter((s) => s.available);
+      if (slots.length > 0) {
+        state.deliverySelectionPending = true;
+        replies.push("¿Qué horario de entrega preferís?");
+        replies.push(slots.map((s, i) => `${i + 1}️⃣ ${s.time}`).join("\n"));
+        replies.push(portalNavFooter());
+        return await persist(state, vendor.id, waId, replies);
+      }
+    }
+  }
+
+  // Si el cliente eligió un horario de entrega
+  if (state.deliverySelectionPending) {
+    const numMatch = t.match(/^(\d+)$/);
+    if (numMatch) {
+      const n = Number(numMatch[1]);
+      const deliverySlots = await fetchDeliverySlots(vendor.id, new Date().toISOString().slice(0, 10));
+      if (deliverySlots && deliverySlots.slots) {
+        const slots = deliverySlots.slots.filter((s) => s.available);
+        const chosen = slots[n - 1];
+        if (chosen) {
+          state.deliveryWindow = chosen.time;
+          state.deliverySelectionPending = false;
+          replies.push(`✅ Horario de entrega: ${chosen.time}`);
+          // Verificar si falta algo más
+          const missing = missingFields(state, vendor);
+          if (missing.length === 0) {
+            state.step = "confirm";
+            replies.push(summaryText(state, vendor));
+            return await persist(state, vendor.id, waId, replies);
+          }
+          state.step = "flow";
+          state.pendingFields = missing;
+          replies.push(pendingQuestions(state));
+          return await persist(state, vendor.id, waId, replies);
+        }
+      }
+      replies.push("No encontré ese horario. Probá con otro número.");
+      replies.push(portalNavFooter());
+      return await persist(state, vendor.id, waId, replies);
+    }
+  }
+
+
   // Productos en la respuesta: distinguir AGREGAR de RE-DECLARAR.
   //  - Verbos de suma ("agregá/también/más") y el parseo NO devolvió el
   //    carrito completo → se SUMAN los items nuevos.
@@ -1416,7 +1465,10 @@ function missingFields(state, vendor) {
     else if (deliveryOpts === "domicilio") state.method = "delivery";
     else out.push("method");
   }
-  if (state.method === "delivery" && !state.customerAddress) out.push("address");
+  if (state.method === "delivery") {
+    if (!state.customerAddress) out.push("address");
+    if (!state.deliveryWindow) out.push("deliveryWindow");
+  }
   if (!state.customerName) out.push("name");
   if (!state.payment && acceptsTransfer(vendor)) out.push("payment");
   return out;
@@ -2056,6 +2108,22 @@ async function fetchQuote(vendorId, items, method, paymentMethod) {
     return await res.json();
   } catch (e) {
     console.error(`[bot] quote fetch fail: ${e?.message}`);
+    return null;
+  }
+}
+
+/** Consulta los horarios de entrega disponibles para un comercio en una fecha dada.
+ *  Devuelve { slots: [{time, available}], estimated, closed } o null si falla. */
+async function fetchDeliverySlots(vendorId, date) {
+  try {
+    const res = await fetch(`${config.appUrl}/api/slot-availability?vendorId=${encodeURIComponent(vendorId)}&date=${date}`, {
+      headers: { Authorization: `Bearer ${config.waBotSecret}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) {
+    console.error(`[bot] slot-availability fetch fail: ${e?.message}`);
     return null;
   }
 }

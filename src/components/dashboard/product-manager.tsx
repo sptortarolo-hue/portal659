@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PhotoPicker } from "@/components/ui/photo-picker";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
@@ -804,7 +805,7 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
         )}
 
         <div><Label>Fotos extra ({galleryUrls.length}/{MAX_EXTRA_IMAGES}) — frente, espalda/en modelo, detalle de tela, escala</Label>
-          <Input type="file" accept="image/*" multiple disabled={galleryUrls.length >= MAX_EXTRA_IMAGES} onChange={(e) => handleGalleryUpload(e.target.files)} />
+          <PhotoPicker multiple disabled={galleryUrls.length >= MAX_EXTRA_IMAGES} onFiles={(files) => handleGalleryUpload(files as any)} />
           {galleryUrls.length > 0 && (
             <div className="flex gap-2 mt-2 flex-wrap">
               {galleryUrls.map((g, i) => {
@@ -843,7 +844,9 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <div><Label>Foto principal (portada)</Label><Input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0] || null; if (f) { const src = URL.createObjectURL(f); onCrop?.("offer", src); setOffFile(f); setOffPreview(src); } }} />{offPreview && <img src={offPreview} alt="Portada" className="mt-2 h-16 w-full object-cover rounded-lg" />}</div>
+          <div><Label>Foto principal (portada)</Label>
+            <PhotoPicker onFile={(f) => { if (f) { const src = URL.createObjectURL(f); onCrop?.("offer", src); setOffFile(f); setOffPreview(src); } }} />
+            {offPreview && <img src={offPreview} alt="Portada" className="mt-2 h-16 w-full object-cover rounded-lg" />}</div>
         </div>
 
         <div><Label>Descripción</Label><Textarea value={offDesc} onChange={(e) => setOffDesc(e.target.value)} /></div>

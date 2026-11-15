@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PhotoPicker } from "@/components/ui/photo-picker";
 import type { Equipment, EquipmentKind } from "@/lib/equipment";
 import {
   EQUIPMENT_KINDS,
@@ -179,20 +180,12 @@ export function EquipmentPicker({ phone, customerName, value, onChange }: Props)
           />
         )}
         <div className="flex items-center gap-2">
-          <label className="cursor-pointer rounded-md border border-border bg-card px-2 py-1 text-[11px] font-medium hover:bg-muted">
-            {photoBusy ? "Subiendo..." : value.photo_url ? "📷 Cambiar foto" : "📷 Agregar foto"}
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              disabled={photoBusy}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void uploadPhoto(f);
-              }}
-            />
-          </label>
+          <PhotoPicker
+            disabled={photoBusy}
+            cameraLabel={photoBusy ? "Subiendo..." : value.photo_url ? "📷 Cambiar foto" : "📷 Agregar foto"}
+            galleryLabel={photoBusy ? "Subiendo..." : "🖼️ Galería"}
+            onFile={(f) => { if (f) void uploadPhoto(f); }}
+          />
           <span className="text-[10px] text-muted-foreground">Condición al ingreso</span>
           {photoMsg && <span className="text-[10px] text-muted-foreground">{photoMsg}</span>}
         </div>

@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { Modal } from "@/components/ui/modal";
+import { PhotoPicker } from "@/components/ui/photo-picker";
 import { servicePriceLabel } from "@/lib/service-price";
 
 type Service = {
@@ -466,23 +467,19 @@ export function EsteticaServicesManager({ onChanged, canChargeDeposits = true, i
                   <button type="button" onClick={() => patch({ imageUrl: "" })} className="text-xs text-red-600 hover:underline">Quitar</button>
                 </>
               ) : (
-                <label className="inline-flex items-center gap-2 rounded-md border border-input px-3 py-2 text-xs font-medium cursor-pointer hover:bg-muted">
-                  {uploadingPhoto ? "Subiendo..." : "📷 Subir foto"}
-                  <input
-                    type="file" accept="image/*" className="hidden"
-                    onChange={async (e) => {
-                      const f = e.target.files?.[0];
-                      if (!f) return;
-                      setUploadingPhoto(true);
-                      const url = await uploadServicePhoto(f);
-                      setUploadingPhoto(false);
-                      if (url) patch({ imageUrl: url });
-                      else setMsg("No se pudo subir la foto");
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
+                <PhotoPicker
+                  disabled={uploadingPhoto}
+                  onFile={async (f) => {
+                    if (!f) return;
+                    setUploadingPhoto(true);
+                    const url = await uploadServicePhoto(f);
+                    setUploadingPhoto(false);
+                    if (url) patch({ imageUrl: url });
+                    else setMsg("No se pudo subir la foto");
+                  }}
+                />
               )}
+              {uploadingPhoto && <p className="text-xs text-muted-foreground">Subiendo...</p>}
             </div>
           </div>
           {/* Estado */}
@@ -697,20 +694,14 @@ export function EsteticaStaffManager({ onChanged }: { onChanged?: () => void }) 
                         <button type="button" onClick={() => setEditPhoto("")} className="text-xs text-red-600 hover:underline">Quitar</button>
                       </>
                     ) : (
-                      <label className="inline-flex items-center gap-2 rounded-md border border-input px-3 py-2 text-xs font-medium cursor-pointer hover:bg-muted">
-                        📷 Foto
-                        <input
-                          type="file" accept="image/*" className="hidden"
-                          onChange={async (e) => {
-                            const f = e.target.files?.[0];
-                            if (!f) return;
-                            const url = await uploadStaffPhoto(f);
-                            if (url) setEditPhoto(url);
-                            else setMsg("No se pudo subir la foto");
-                            e.target.value = "";
-                          }}
-                        />
-                      </label>
+                      <PhotoPicker
+                        onFile={async (f) => {
+                          if (!f) return;
+                          const url = await uploadStaffPhoto(f);
+                          if (url) setEditPhoto(url);
+                          else setMsg("No se pudo subir la foto");
+                        }}
+                      />
                     )}
                   </div>
                 </div>
@@ -741,23 +732,18 @@ export function EsteticaStaffManager({ onChanged }: { onChanged?: () => void }) 
                 <button type="button" onClick={() => setPhotoUrl("")} className="text-xs text-red-600 hover:underline">Quitar</button>
               </>
             ) : (
-              <label className="inline-flex items-center gap-2 rounded-md border border-input px-3 py-2 text-xs font-medium cursor-pointer hover:bg-muted">
-                {uploadingStaffPhoto ? "Subiendo..." : "📷 Subir foto"}
-                <input
-                  type="file" accept="image/*" className="hidden"
-                  onChange={async (e) => {
-                    const f = e.target.files?.[0];
+              <PhotoPicker
+                  disabled={uploadingStaffPhoto}
+                  onFile={async (f) => {
                     if (!f) return;
                     setUploadingStaffPhoto(true);
                     const url = await uploadStaffPhoto(f);
                     setUploadingStaffPhoto(false);
                     if (url) setPhotoUrl(url);
                     else setMsg("No se pudo subir la foto");
-                    e.target.value = "";
                   }}
                 />
-              </label>
-            )}
+              )}
           </div>
         </div>
         {staffLocations.length > 0 && (

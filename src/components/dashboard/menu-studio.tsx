@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PhotoPicker } from "@/components/ui/photo-picker";
 import { Modal } from "@/components/ui/modal";
 import {
   OfferForm,
@@ -921,13 +922,7 @@ export function MenuStudio({
   const galleryNode = (
     <div>
       <Label>Fotos extra ({galleryUrls.length}/{MAX_EXTRA_IMAGES}) — frente, opciones, variantes</Label>
-      <Input
-        type="file"
-        accept="image/*"
-        multiple
-        disabled={galleryUrls.length >= MAX_EXTRA_IMAGES}
-        onChange={(e) => { handleGalleryUpload(e.target.files); e.target.value = ""; }}
-      />
+      <PhotoPicker multiple disabled={galleryUrls.length >= MAX_EXTRA_IMAGES} onFiles={(files) => { handleGalleryUpload(files as any); }} />
       {galleryUrls.length > 0 && (
         <div className="flex gap-2 mt-2 flex-wrap">
           {galleryUrls.map((g, i) => (

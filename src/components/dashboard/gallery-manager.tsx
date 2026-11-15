@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { PhotoPicker } from "@/components/ui/photo-picker";
 import { Input } from "@/components/ui/input";
 import { ProductImage } from "@/components/product-image";
 
@@ -56,8 +57,7 @@ export function GalleryManager({
     load();
   }, [load]);
 
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+  async function handleUpload(file: File) {
     if (!file) return;
     setUploading(true);
     setError("");
@@ -168,22 +168,10 @@ export function GalleryManager({
         {savingOrder && <span className="text-xs text-muted-foreground">Guardando orden…</span>}
       </div>
       <div>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          onChange={handleUpload}
-          className="hidden"
-        />
-        <Button
-          type="button"
-          onClick={() => fileRef.current?.click()}
+        <PhotoPicker
           disabled={uploading}
-          className="w-full"
-          variant="outline"
-        >
-          {uploading ? "Subiendo..." : addLabel}
-        </Button>
+          onFile={(f) => { if (f) void handleUpload(f); }}
+        />
       </div>
       {error && <p className="text-xs text-red-600">{error}</p>}
       {items.length === 0 ? (

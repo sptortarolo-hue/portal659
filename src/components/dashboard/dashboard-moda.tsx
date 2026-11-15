@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PhotoPicker } from "@/components/ui/photo-picker";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -569,7 +570,9 @@ export default function DashboardModa({
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <div><Label>Foto principal (portada)</Label><Input type="file" accept="image/*" onChange={(e) => handleOfferFileSelect(e.target.files?.[0] || null)} />{offPreview && <img src={offPreview} alt="Portada" className="mt-2 h-16 w-full object-cover rounded-lg" />}</div>
+          <div><Label>Foto principal (portada)</Label>
+            <PhotoPicker onFile={(f) => handleOfferFileSelect(f)} />
+            {offPreview && <img src={offPreview} alt="Portada" className="mt-2 h-16 w-full object-cover rounded-lg" />}</div>
         </div>
 
         <div><Label>Descripción</Label><Textarea value={offDesc} onChange={(e) => setOffDesc(e.target.value)} /></div>

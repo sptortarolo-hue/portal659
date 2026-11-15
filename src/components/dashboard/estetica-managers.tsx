@@ -98,7 +98,7 @@ function formFromService(s: Service): ServiceFormState {
  * `canChargeDeposits`: la seña online sólo se puede cobrar con Mercado Pago o
  * Stripe conectado; sin ninguno de los dos, los campos de seña se muestran
  * deshabilitados con el aviso (configurarla no tendría efecto). */
-export function EsteticaServicesManager({ onChanged, canChargeDeposits = true }: { onChanged?: () => void; canChargeDeposits?: boolean }) {
+export function EsteticaServicesManager({ onChanged, canChargeDeposits = true, isEstetica = true }: { onChanged?: () => void; canChargeDeposits?: boolean; isEstetica?: boolean }) {
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [missing, setMissing] = useState(false);
@@ -312,7 +312,9 @@ export function EsteticaServicesManager({ onChanged, canChargeDeposits = true }:
         <p className="text-xs text-muted-foreground">Cargando...</p>
       ) : services.length === 0 ? (
         <p className="text-xs text-muted-foreground">
-          Todavía no cargaste servicios. Ejemplos: Semipermanente (60 min), Lifting de pestañas (90 min), Perfilado de cejas (30 min).
+          {isEstetica
+            ? "Todavía no cargaste servicios. Ejemplos: Semipermanente (60 min), Lifting de pestañas (90 min), Perfilado de cejas (30 min)."
+            : "Todavía no cargaste servicios."}
         </p>
       ) : (
         <div className="space-y-1.5">

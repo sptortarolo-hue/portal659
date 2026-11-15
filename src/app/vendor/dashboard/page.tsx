@@ -2057,7 +2057,7 @@ function VendorDashboardInner() {
                 </TabErrorBoundary>
               ) : isHybrid && tab === "servicios" ? (
                 <TabErrorBoundary tab="servicios">
-                <EsteticaServicesManager onChanged={() => loadData()} canChargeDeposits={canChargeDeposits} />
+                <EsteticaServicesManager onChanged={() => loadData()} canChargeDeposits={canChargeDeposits} isEstetica={isEstetica} />
                 </TabErrorBoundary>
               ) : isHybrid && tab === "config" ? (
               <div className="flex gap-4 items-start">

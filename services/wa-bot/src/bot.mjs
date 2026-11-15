@@ -448,7 +448,50 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
     replies.push(itemsTxt || "(sin ítems)");
     replies.push(`Total: $${Number(lo.total || 0).toLocaleString("es-AR")}`);
     replies.push("¿Lo pedís de nuevo? Decime *sí* o *no*.");
+    replies.push(portalNavFooter());
     return;
+  }
+
+  // — Comandos globales disponibles en cualquier paso del flujo —
+  const lower = text.toLowerCase();
+
+  // Ver carrito
+  if (/^(ver carrito|mi carrito|cesta|mi carrito de compras)$/i.test(lower)) {
+    if (!state.currentVendorId) {
+      replies.push("Primero elegí una tienda. Escribí *comercios* para ver la lista.");
+      replies.push(portalNavFooter());
+      return await persist(state, vendor.id, waId, replies);
+    }
+    if (state.items.length === 0) {
+      replies.push("Tu carrito está vacío. Mandame tu pedido, ej: *2 empanadas de carne y una coca*.");
+      replies.push(portalNavFooter());
+      return await persist(state, vendor.id, waId, replies);
+    }
+    const lines = state.items.map((i) => `• ${i.name} ×${i.qty} — $${(i.price || 0) * i.qty}`);
+    const subtotal = state.items.reduce((s, i) => s + ((i.price || 0) * i.qty), 0);
+    replies.push(`🛒 Tu carrito:\n${lines.join("\n")}\nTotal: $${subtotal.toLocaleString("es-AR")}`);
+    replies.push(portalNavFooter());
+    return await persist(state, vendor.id, waId, replies);
+  }
+
+  // Ver menú / productos de la tienda elegida
+  if (/^(ver menú|ver menu|ver catálogo|ver catalogo|ver productos|ver productos de)/i.test(lower)) {
+    if (!state.currentVendorId) {
+      replies.push("Primero elegí una tienda. Escribí *comercios* para ver la lista.");
+      replies.push(portalNavFooter());
+      return await persist(state, vendor.id, waId, replies);
+    }
+    const products = await getMenu(vendor.currentVendorId);
+    if (products.length === 0) {
+      replies.push("Esta tienda no tiene productos cargados todavía.");
+      replies.push(portalNavFooter());
+      return await persist(state, vendor.id, waId, replies);
+    }
+    replies.push(`📋 Menú de *${state.currentVendorName || "el comercio"}*:`);
+    replies.push(products.slice(0, 10).map((p, i) => `${i + 1}) ${p.name} — $${p.price}`).join("\n"));
+    replies.push(`¿Qué querés pedir? Decime el nombre y la cantidad, ej: *"2 empanadas de carne"*`);
+    replies.push(portalNavFooter());
+    return await persist(state, vendor.id, waId, replies);
   }
 
   // Saludo solo la PRIMERA vez (welcomed flag). Después se contesta con las
@@ -690,6 +733,43 @@ function findCartItemIndex(items, search) {
 
 async function handleStep({ vendor, text, state, replies, waId }) {
   let t = text.trim();
+
+  // Comandos globales disponibles en cualquier paso del flujo
+  const lower = text.toLowerCase();
+
+  // Ver carrito
+  if (/^(ver carrito|mi carrito|cesta|mi carrito de compras)$/i.test(lower)) {
+    if (state.items.length === 0) {
+      replies.push("Tu carrito está vacío. Mandame tu pedido, ej: *2 empanadas de carne y una coca*.");
+      replies.push(portalNavFooter());
+      return await persist(state, vendor.id, waId, replies);
+    }
+    const lines = state.items.map((i) => `• ${i.name} ×${i.qty} — $${(i.price || 0) * i.qty}`);
+    const subtotal = state.items.reduce((s, i) => s + ((i.price || 0) * i.qty), 0);
+    replies.push(`🛒 Tu carrito:\n${lines.join("\n")}\nTotal: $${subtotal.toLocaleString("es-AR")}`);
+    replies.push(portalNavFooter());
+    return await persist(state, vendor.id, waId, replies);
+  }
+
+  // Ver menú / productos de la tienda elegida
+  if (/^(ver menú|ver menu|ver catálogo|ver catalogo|ver productos|ver productos de)/i.test(lower)) {
+    if (!state.currentVendorId) {
+      replies.push("Primero elegí una tienda. Escribí *comercios* para ver la lista.");
+      replies.push(portalNavFooter());
+      return await persist(state, vendor.id, waId, replies);
+    }
+    const products = await getMenu(vendor.currentVendorId);
+    if (products.length === 0) {
+      replies.push("Esta tienda no tiene productos cargados todavía.");
+      replies.push(portalNavFooter());
+      return await persist(state, vendor.id, waId, replies);
+    }
+    replies.push(`📋 Menú de *${state.currentVendorName || "el comercio"}*:`);
+    replies.push(products.slice(0, 10).map((p, i) => `${i + 1}) ${p.name} — $${p.price}`).join("\n"));
+    replies.push(`¿Qué querés pedir? Decime el nombre y la cantidad, ej: *"2 empanadas de carne"*`);
+    replies.push(portalNavFooter());
+    return await persist(state, vendor.id, waId, replies);
+  }
 
   // En confirm: "sí" crea; "no" cancela; edición del carrito (sacar/cambiar
   // cantidad) se aplica sin reiniciar el pedido; el resto = corrección.

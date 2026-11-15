@@ -194,6 +194,9 @@ export async function POST(
   // ---- Datos del local ----
   const v = await queryOne<{
     store_name: string;
+    slug: string | null;
+    category: string | null;
+    neighborhood: string | null;
     logo_url: string | null;
     address: string | null;
     phone: string | null;
@@ -201,7 +204,7 @@ export async function POST(
     instagram: string | null;
     facebook: string | null;
   }>(
-    `SELECT store_name, logo_url, address, phone, whatsapp, instagram, facebook
+    `SELECT store_name, slug, category, neighborhood, logo_url, address, phone, whatsapp, instagram, facebook
      FROM vendors WHERE id = $1 LIMIT 1`,
     [vendor.id]
   ).catch(() => null);
@@ -219,9 +222,9 @@ export async function POST(
   ).catch(() => null);
 
   const storeName = v?.store_name || (vendor as any).store_name || "Comercio";
-  const slug = (vendor as any).slug || null;
-  const categoryLabel = (vendor as any).category || null;
-  const neighborhood = (vendor as any).neighborhood || null;
+  const slug = v?.slug || (vendor as any).slug || null;
+  const categoryLabel = v?.category || (vendor as any).category || null;
+  const neighborhood = v?.neighborhood || (vendor as any).neighborhood || null;
   const storeUrl = slug ? `${getSiteUrl()}/tienda/${slug}` : null;
 
   const customerE164 = toE164(booking.customer_phone);
@@ -319,7 +322,10 @@ export async function POST(
       : `Gracias por tu visita a ${storeName}.`
   );
   if (storeUrl) shareLines.push(`Reservá tu próximo turno 👉 ${storeUrl}`);
-  if (v?.instagram) shareLines.push(`Instagram: @${String(v.instagram).replace(/^@/, "")}`);
+  if (v?.instagram) {
+    const igHandle = String(v.instagram).replace(/^@/, "").replace(/^https?:\/\/(www\.)?instagram\.com\//i, "");
+    shareLines.push(`Instagram: https://www.instagram.com/${igHandle}`);
+  }
   const shareText = shareLines.join("\n");
   const downloadName = `comprobante-${slug || "servicio"}.png`;
 

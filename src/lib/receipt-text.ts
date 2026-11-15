@@ -83,13 +83,8 @@ export function buildReceiptText(input: ReceiptTextInput): string {
   const store = String(input.storeName || "").trim();
   if (store) lines.push(`*${store}*`);
 
-  const firstName = String(input.customerName || "").trim().split(/\s+/)[0];
-  lines.push("");
-  lines.push(
-    firstName
-      ? `Hola ${firstName} 👋 Gracias por tu visita.`
-      : "Gracias por tu visita."
-  );
+  // (El saludo "Hola ... Gracias por tu visita." va en el texto corto que se
+  // manda antes; acá no se repite para no duplicar.)
 
   // ---- Datos del turno ----
   const detalle: string[] = [];
@@ -170,12 +165,9 @@ export function buildReceiptText(input: ReceiptTextInput): string {
   }
 
   // ---- Cierre ----
-  lines.push("");
   if (input.storeUrl) {
+    lines.push("");
     lines.push(`Reservá tu próximo turno 👉 ${input.storeUrl}`);
-  }
-  if (input.instagram) {
-    lines.push(`Instagram: @${String(input.instagram).replace(/^@/, "")}`);
   }
 
   return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();

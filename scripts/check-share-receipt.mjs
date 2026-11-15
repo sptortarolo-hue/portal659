@@ -91,7 +91,6 @@ const texto = buildReceiptText({
 for (const esperado of [
   "🧾 *Tu comprobante de servicio*",
   "*Peluquería Demo*",
-  "Hola Ana 👋",
   "• Servicio: Corte + Barba",
   "• Profesional: Carla",
   "• Fecha: 14/11/2026 · 10:30",
@@ -105,8 +104,9 @@ for (const esperado of [
   "Factura C N° 0001-00001234",
   "CAE: 71234567890123",
   "Reservá tu próximo turno 👉 https://www.portal659.com.ar/tienda/pelu-demo",
-  "Instagram: @peludemo",
 ]) {
+  // (El saludo "Hola ... Gracias por tu visita." se quitó del comprobante
+  // escrito: va en el texto corto que se manda antes, para no duplicar.)
   if (!texto.includes(esperado)) fail(`el comprobante escrito no tiene: ${esperado}`);
 }
 ok("el comprobante escrito tiene todos los datos");

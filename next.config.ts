@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  allowedDevOrigins: ["*"],
+  allowedDevOrigins: ["http://localhost:3000", "http://127.0.0.1:3000"],
   images: {
     // Las subidas se guardan con URL absoluta (getSiteUrl): para next/image
     // eso es "remoto" aunque sea el mismo servidor. Sin esto, 400.

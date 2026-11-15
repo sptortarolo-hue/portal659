@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { useBankAccounts, BankAccountPickerModal } from "@/components/vendor/bank-account-picker";
 import { bankAccountLabel, needsAccountPicker } from "@/lib/bank-accounts";
+import { openWaWindowSync, navigateWaWindow, closeWaWindow } from "@/lib/open-wa";
 import { apartadoInfo } from "@/lib/apartado";
 import {
   ORDER_STATUS_COLORS,
@@ -581,27 +582,33 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
     setWeighedBusy(true);
     setWeighedMsg("");
     setWeighedErr("");
+    // Pestaña vacía dentro del gesto del click (si se abriera tras el fetch,
+    // el navegador la bloquea como popup y no pasa nada).
+    const win = openWaWindowSync();
     try {
       const res = await fetch(`/api/vendor/orders/${order.id}/send-weighed-order`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.ok) {
         if (data.sent) {
+          closeWaWindow(win);
           setWeighedMsg("Pedido pesado enviado por WhatsApp ✅");
           return;
         }
         if (data.text && customerPhone) {
-          window.open(`https://wa.me/${customerPhone}?text=${encodeURIComponent(data.text)}`, "_blank");
+          navigateWaWindow(win, `https://wa.me/${customerPhone}?text=${encodeURIComponent(data.text)}`);
           setWeighedMsg("El bot no está conectado — se abrió tu WhatsApp con el mensaje listo.");
           return;
         }
+        closeWaWindow(win);
         setWeighedMsg("Enviado");
         return;
       }
       if ((res.status === 502 || res.ok) && data.text && customerPhone) {
-        window.open(`https://wa.me/${customerPhone}?text=${encodeURIComponent(data.text)}`, "_blank");
+        navigateWaWindow(win, `https://wa.me/${customerPhone}?text=${encodeURIComponent(data.text)}`);
         setWeighedMsg("El bot no está conectado — se abrió tu WhatsApp con el mensaje listo.");
         return;
       }
+      closeWaWindow(win);
       setWeighedErr(data.error || "No se pudo enviar el pedido pesado");
     } catch {
       setWeighedErr("Error de red. Probá de nuevo.");
@@ -1686,7 +1693,21 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
               )}
               <FiscalBillButton orderId={order.id} />
               {contextualWa && (
-                <Button variant="outline" className="w-full border-green-200 bg-green-50 text-green-700 hover:bg-green-100" onClick={async () => { try { const res = await fetch("/api/vendor/orders/" + order.id + "/send-wa", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: contextualWa.text }) }); const data = await res.json().catch(() => ({})); if (res.ok && data.mode === "manual" && data.url) window.open(data.url, "_blank", "noopener,noreferrer"); } catch { window.open(contextualWa.url, "_blank", "noopener,noreferrer"); } }}>
+                <Button variant="outline" className="w-full border-green-200 bg-green-50 text-green-700 hover:bg-green-100" onClick={async () => {
+                  // Se abre la pestaña VACÍA dentro del gesto del click (síncrono)
+                  // y después se navega a la URL: si se abriera tras el fetch,
+                  // el navegador la bloquea como popup y no pasa nada.
+                  const win = openWaWindowSync();
+                  try {
+                    const res = await fetch("/api/vendor/orders/" + order.id + "/send-wa", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: contextualWa.text }) });
+                    const data = await res.json().catch(() => ({}));
+                    // Bot conectado → el server ya lo mandó: se cierra la pestaña vacía.
+                    if (res.ok && data.mode === "auto") { closeWaWindow(win); return; }
+                    if (res.ok && data.mode === "manual" && data.url) { navigateWaWindow(win, data.url); return; }
+                    if (res.ok && data.url) { navigateWaWindow(win, data.url); return; }
+                    closeWaWindow(win);
+                  } catch { navigateWaWindow(win, contextualWa.url); }
+                }}>
                   {contextualWa.label}
                 </Button>
               )}

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { LivePreview } from "@/components/dashboard/shared";
+import { openWaWindowSync, navigateWaWindow, closeWaWindow } from "@/lib/open-wa";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
 import { GalleryManager } from "@/components/dashboard/gallery-manager";
 import { LocationPicker } from "./location-picker";
@@ -979,10 +980,18 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
   }
 
   async function shareQuoteWa(q: any) {
+    // La pestaña se abre dentro del gesto del click (síncrono) y se navega
+    // recién con el texto armado: así el navegador no la bloquea como popup.
+    const win = openWaWindowSync();
     try {
       const text = await buildQuoteShareText(q);
-      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
+      if (text) {
+        navigateWaWindow(win, `https://wa.me/?text=${encodeURIComponent(text)}`);
+      } else {
+        closeWaWindow(win);
+      }
     } catch {
+      closeWaWindow(win);
       setMsg("No se pudo armar el mensaje de WhatsApp.");
     }
   }
@@ -1224,11 +1233,15 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
   }
 
   // Prorroga la entrega: guarda la nueva fecha y ofrece avisar al cliente.
-  async function handleExtendSave(id: string, newDate: string, notify: boolean) {    if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) {
+  async function handleExtendSave(id: string, newDate: string, notify: boolean) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) {
       setMsg("Elegí una fecha válida");
       return;
     }
     const prev = String(extendOrder?.delivery_date || "").slice(0, 10);
+    // Pestaña vacía dentro del gesto del click (si se abriera tras el fetch,
+    // el navegador la bloquea como popup y no pasa nada).
+    const win = openWaWindowSync();
     try {
       const res = await fetch(`/api/vendor/bookings/${id}`, {
         method: "PATCH",
@@ -1253,12 +1266,14 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
           orderNo: order.work_order_no,
           newDeliveryISO: newDate,
         });
-        window.open(`https://wa.me/${String(order.customer_phone).replace(/[^0-9]/g, "")}?text=${encodeURIComponent(text)}`, "_blank");
+        navigateWaWindow(win, `https://wa.me/${String(order.customer_phone).replace(/[^0-9]/g, "")}?text=${encodeURIComponent(text)}`);
         setMsg("Entrega prorrogada. Se abrió WhatsApp con el aviso para el cliente.");
       } else {
+        closeWaWindow(win);
         setMsg("Entrega prorrogada");
       }
     } catch {
+      closeWaWindow(win);
       setMsg("Error de conexión");
     }
   }
@@ -1290,13 +1305,17 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
       setMsg("No encontré el presupuesto vinculado a esta orden.");
       return;
     }
+    // La pestaña se abre dentro del gesto del click (síncrono) y se navega
+    // recién con el texto armado: así el navegador no la bloquea como popup.
+    const win = openWaWindowSync();
     const text = await buildQuoteShareText(quote);
     const phone = String(quote.customer_phone || booking.customer_phone || "").replace(/\D/g, "");
     if (phone.length < 8) {
+      closeWaWindow(win);
       setMsg("El cliente no tiene teléfono para WhatsApp.");
       return;
     }
-    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, "_blank");
+    navigateWaWindow(win, `https://wa.me/${phone}?text=${encodeURIComponent(text)}`);
     setMsg("Presupuesto listo para enviar por WhatsApp.");
   }
 

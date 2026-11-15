@@ -74,11 +74,26 @@ export function canShareFiles(): boolean {
   }
 }
 
-/** Abre el chat de WhatsApp. Devuelve false si el navegador lo bloqueó. */
+/** ¿El dispositivo es mobile (Android/iPhone)? */
+function isMobileDevice(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
+/** Convierte un link wa.me a scheme whatsapp:// para abrir la app directamente. */
+function toAppUrl(waUrl: string): string {
+  const m = waUrl.match(/wa\.me\/(\d+)\?text=(.+)/);
+  if (m) return `whatsapp://send?phone=${m[1]}&text=${m[2]}`;
+  return waUrl;
+}
+
+/** Abre el chat de WhatsApp. En mobile usa whatsapp:// (abre la app); en desktop
+ *  usa wa.me (abre WhatsApp Web). Devuelve false si el navegador lo bloqueó. */
 function openWa(waUrl: string): boolean {
   if (typeof window === "undefined") return false;
   try {
-    const w = window.open(waUrl, "_blank");
+    const url = isMobileDevice() ? toAppUrl(waUrl) : waUrl;
+    const w = window.open(url, "_blank");
     if (w) {
       try {
         w.opener = null;
@@ -86,6 +101,18 @@ function openWa(waUrl: string): boolean {
         /*noop*/
       }
       return true;
+    }
+    // Si whatsapp:// no abrió nada (desktop sin app), caer a wa.me
+    if (isMobileDevice() && url !== waUrl) {
+      const w2 = window.open(waUrl, "_blank");
+      if (w2) {
+        try {
+          w2.opener = null;
+        } catch {
+          /*noop*/
+        }
+        return true;
+      }
     }
     return false;
   } catch {

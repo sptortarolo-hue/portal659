@@ -292,6 +292,15 @@ export function BookingCobroModal({
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-xs text-primary underline underline-offset-2"
+                    onClick={(e) => {
+                      if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+                        const m = receiptShare.waUrl?.match(/wa\.me\/(\d+)\?text=(.+)/);
+                        if (m) {
+                          e.preventDefault();
+                          window.open(`whatsapp://send?phone=${m[1]}&text=${m[2]}`, "_blank");
+                        }
+                      }
+                    }}
                   >
                     Abrir el chat de {String(booking.customer_name || "").trim().split(/\s+/)[0] || "la clienta"} en WhatsApp
                   </a>

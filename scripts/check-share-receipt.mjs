@@ -103,7 +103,6 @@ for (const esperado of [
   "Seña pagada: $20.000",
   "Factura C N° 0001-00001234",
   "CAE: 71234567890123",
-  "Reservá tu próximo turno 👉 https://www.portal659.com.ar/tienda/pelu-demo",
 ]) {
   // (El saludo "Hola ... Gracias por tu visita." se quitó del comprobante
   // escrito: va en el texto corto que se manda antes, para no duplicar.)

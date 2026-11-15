@@ -164,11 +164,8 @@ export function buildReceiptText(input: ReceiptTextInput): string {
     if (input.cae) lines.push(`CAE: ${input.cae}`);
   }
 
-  // ---- Cierre ----
-  if (input.storeUrl) {
-    lines.push("");
-    lines.push(`Reservá tu próximo turno 👉 ${input.storeUrl}`);
-  }
+  // (El link de reserva va solo en el texto corto que se manda antes, para no
+  // repetirlo acá.)
 
   return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }

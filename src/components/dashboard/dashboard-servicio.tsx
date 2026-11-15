@@ -29,7 +29,7 @@ import { OrderExtendModal } from "@/components/dashboard/order-extend-modal";
 import { EsteticaWaitlistManager, type WaitEntry } from "@/components/dashboard/estetica-managers";
 import { StaffManager } from "@/components/vendor/staff-manager";
 import { arToday } from "@/lib/booking-schedule";
-import { bookingReminderMessage, bookingWhenLabel } from "@/lib/booking-message";
+import { bookingReminderMessage, bookingWhenLabel, turnoDateLabel, turnoTimeLabel } from "@/lib/booking-message";
 import { isOrderBooking, type AgendaBooking } from "@/lib/agenda";
 import { isoTodayAR, quoteFollowUpText, quoteNeedsFollowUp, workOrderExtensionText, defaultDeliveryISO, type WorkOrderBoardFilter } from "@/lib/work-order";
 import { loadDraft, saveDraft } from "@/lib/draft";
@@ -122,14 +122,25 @@ function ServicioHoy({
   const pendingQuotes = (quotes || []).filter((q) => q.status === "pending" || q.status === "responded");
   // Turnos = citas reales. Las órdenes de servicio (kind='orden') NO son
   // turnos: viven en el tablero del taller y tienen su propio bloque en Hoy.
+  // Desde hoy en adelante: un turno viejo (pendiente o confirmado) no es
+  // "próximo" ni "por confirmar" — queda en la agenda y el historial.
+  const hoyISO = arToday();
   const pendingBookings = (bookings || []).filter(
-    (b: any) => b.status === "pending" && !isOrderBooking(b)
+    (b: any) =>
+      b.status === "pending" &&
+      !isOrderBooking(b) &&
+      String(b.booking_date || "").slice(0, 10) >= hoyISO
   );
   const newOrders = (orders || []).filter((o: any) =>
     ["new", "preparing", "ready", "sent"].includes(String(o.status)) && String(o.channel || "app") === "app" && !o.is_preview
   );
   const upcoming = (bookings || [])
-    .filter((b: any) => b.status === "confirmed" && b.booking_date && !isOrderBooking(b))
+    .filter((b: any) =>
+      b.status === "confirmed" &&
+      b.booking_date &&
+      !isOrderBooking(b) &&
+      String(b.booking_date).slice(0, 10) >= hoyISO
+    )
     .sort((a: any, b: any) => String(a.booking_date).localeCompare(String(b.booking_date)) || String(a.booking_time || "").localeCompare(String(b.booking_time || "")))
     .slice(0, 3);
   const paidThisMonth = (quotes || [])
@@ -221,7 +232,7 @@ function ServicioHoy({
             {pendingBookings.slice(0, 3).map((b: any) => (
               <div key={b.id} className="flex items-center gap-2 text-xs rounded-lg bg-muted px-2.5 py-2">
                 <span className="flex-1 min-w-0 truncate">
-                  <strong>{b.customer_name || "Sin nombre"}</strong>{(b as any).kind === "orden" ? " 🛠️ orden" : ""} · {b.booking_date} {b.booking_time || ""}
+                  <strong>{b.customer_name || "Sin nombre"}</strong>{(b as any).kind === "orden" ? " 🛠️ orden" : ""} · {turnoDateLabel(b.booking_date, hoyISO)} {turnoTimeLabel(b.booking_time)}
                 </span>
                 {waLinkFor(b.customer_phone) && (
                   <a href={waLinkFor(b.customer_phone)!} target="_blank" rel="noopener noreferrer" className="text-green-600 font-medium flex-shrink-0">📲</a>
@@ -238,7 +249,7 @@ function ServicioHoy({
             {upcoming.map((b: any) => (
               <div key={b.id} className="flex items-center gap-2 text-xs rounded-lg border border-border px-2.5 py-2">
                 <span className="flex-1 min-w-0 truncate">
-                  <strong>{b.customer_name || "Sin nombre"}</strong>{(b as any).kind === "orden" ? " 🛠️ orden" : ""} · {b.booking_date} {b.booking_time || ""}
+                  <strong>{b.customer_name || "Sin nombre"}</strong>{(b as any).kind === "orden" ? " 🛠️ orden" : ""} · {turnoDateLabel(b.booking_date, hoyISO)} {turnoTimeLabel(b.booking_time)}
                 </span>
                 {waLinkFor(b.customer_phone) && (
                   <a href={waLinkFor(b.customer_phone)!} target="_blank" rel="noopener noreferrer" className="text-green-600 font-medium flex-shrink-0">📲</a>

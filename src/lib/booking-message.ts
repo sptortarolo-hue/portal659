@@ -40,6 +40,31 @@ export function bookingWhenLabel(dateISO?: string | null): string {
   return `del ${d}/${m}`;
 }
 
+const MESES_CORTOS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+/**
+ * Fecha legible para listas de turnos (panel): "Hoy" | "Mañana" |
+ * "15 nov" (mismo año) | "15 nov 2026" (otro año).
+ * Client-safe: la fecha de "hoy" se puede inyectar (tests / TZ fija).
+ */
+export function turnoDateLabel(dateISO?: string | null, todayISO?: string): string {
+  const iso = String(dateISO || "").slice(0, 10);
+  if (!iso) return "";
+  const today = todayISO || arISODate(0);
+  if (iso === today) return "Hoy";
+  if (iso === arISODate(1)) return "Mañana";
+  const [y, m, d] = iso.split("-");
+  if (!y || !m || !d) return "";
+  const mes = MESES_CORTOS[Number(m) - 1] || m;
+  const dia = Number(d);
+  return Number(y) === Number(today.slice(0, 4)) ? `${dia} ${mes}` : `${dia} ${mes} ${y}`;
+}
+
+/** Hora del turno como "HH:MM" (aceba "HH:MM:SS" o basura). */
+export function turnoTimeLabel(time?: string | null): string {
+  return String(time || "").slice(0, 5);
+}
+
 export type BookingReminderOptions = {
   customerName?: string | null;
   /** "de mañana" | "de hoy" | "del 03/11" (ver `bookingWhenLabel`). */

@@ -326,11 +326,16 @@ export async function POST(
   // ---- Comprobante ESCRITO (fallback cuando no se puede adjuntar la imagen:
   // al chat le llega el comprobante en texto, como los pedidos del bot) ----
   const receiptText = buildReceiptText(receiptData);
-  const waText = receiptText || shareText;
   // Chat del cliente: SIEMPRE con E.164 (armado acá, el front no normaliza).
+  // Se mandan AMBOS textos: primero el saludo corto, después el comprobante
+  // escrito (el usuario pidió "antes del comprobante se envía un mensaje con
+  // texto, con el nombre y agradeciendo").
+  const combinedText = receiptText
+    ? `${shareText}\n\n${receiptText}`
+    : shareText;
   const waUrl = customerE164
-    ? `https://wa.me/${customerE164}?text=${encodeURIComponent(waText)}`
-    : `https://wa.me/?text=${encodeURIComponent(waText)}`;
+    ? `https://wa.me/${customerE164}?text=${encodeURIComponent(combinedText)}`
+    : `https://wa.me/?text=${encodeURIComponent(combinedText)}`;
 
   // ¿El bot de este comercio está vinculado? (si lo está, el server manda solo)
   const bot = await getVendorWaBot(vendor.id).catch(() => null);
@@ -368,20 +373,44 @@ export async function POST(
   }
 
   const b64 = png.toString("base64");
-  const result = await sendOrLink({
+
+  // 1) Primero el texto corto (saludo + reserva + Instagram) como mensaje
+  //    separado: "antes del comprobante se envía un mensaje con texto".
+  const textResult = await sendOrLink({
     vendorId: vendor.id,
     phone: customerE164,
     text: shareText,
+  });
+
+  // 2) Después la imagen del comprobante (sin caption: el texto ya se mandó).
+  const imageResult = await sendOrLink({
+    vendorId: vendor.id,
+    phone: customerE164,
+    text: "",
     imageData: b64,
   });
+
+  // En modo manual (bot no conectado) el chat se abre con AMBOS textos:
+  // primero el saludo, después el comprobante escrito.
+  const manualCombinedText = receiptText
+    ? `${shareText}\n\n${receiptText}`
+    : shareText;
+  const manualWaUrl = customerE164
+    ? `https://wa.me/${customerE164}?text=${encodeURIComponent(manualCombinedText)}`
+    : `https://wa.me/?text=${encodeURIComponent(manualCombinedText)}`;
 
   return NextResponse.json({
     ok: true,
     url: imageUrl,
-    mode: result.mode,
-    sent: result.ok,
-    reason: result.reason,
-    manualUrl: result.url || waUrl,
-    share,
+    mode: imageResult.mode,
+    sent: imageResult.ok,
+    reason: imageResult.reason,
+    manualUrl: imageResult.url || manualWaUrl,
+    share: {
+      ...share,
+      text: shareText,
+      waUrl: manualWaUrl,
+      botLinked: imageResult.mode === "auto",
+    },
   });
 }

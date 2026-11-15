@@ -46,12 +46,6 @@ export async function getServices(vendorId) {
   }
 }
 
-function fmtPrice(s) {
-  if (s.price != null && Number.isFinite(s.price)) return `$${Number(s.price).toLocaleString("es-AR")}`;
-  if (s.price_from != null && Number.isFinite(s.price_from)) return `Desde $${Number(s.price_from).toLocaleString("es-AR")}`;
-  return "";
-}
-
 /**
  * Arma el saludo inicial (info + link de reserva).
  * @param {VendorInfo} vendor
@@ -62,32 +56,6 @@ export function buildGreeting(vendor, services) {
   const name = vendor?.store_name || "el comercio";
   const lines = [];
   lines.push(`¡Hola! 👋 Soy el asistente de "${name}".`);
-  lines.push("");
-
-  if (services && services.length > 0) {
-    // Destacados primero, luego el resto; máx 8.
-    const ordered = [...services].sort((a, b) => (b.featured_today ? 1 : 0) - (a.featured_today ? 1 : 0));
-    const shown = ordered.slice(0, 8);
-    lines.push("Nuestros servicios:");
-    for (const s of shown) {
-      const dur = s.duration_min ? `${s.duration_min} min` : "";
-      const price = fmtPrice(s);
-      const parts = [s.name, dur, price].filter(Boolean);
-      lines.push(`• ${parts.join(" — ")}`);
-    }
-    if (ordered.length > shown.length) {
-      lines.push(`…y ${ordered.length - shown.length} más en el link.`);
-    }
-    lines.push("");
-  }
-
-  if (vendor?.hours) {
-    lines.push(`🕐 Horarios: ${vendor.hours}`);
-  }
-  const status = vendor?.store_open === false
-    ? `📍 Estado: Cerrado · Abrimos ${vendor?.next_open_text || "pronto"}`
-    : "📍 Estado: Abierto ahora";
-  lines.push(status);
   lines.push("");
 
   if (vendor?.reserve_url) {

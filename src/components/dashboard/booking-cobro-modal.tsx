@@ -201,6 +201,7 @@ export function BookingCobroModal({
     setSendingReceipt(true);
     setReceiptStatus(null);
     try {
+      // Si el bot está vinculado, intentar envío automático primero.
       if (receiptShare.botLinked) {
         const res = await fetch(`/api/vendor/bookings/${booking.id}/send-receipt`, {
           method: "POST",
@@ -221,17 +222,20 @@ export function BookingCobroModal({
               botLinked: !!data.share.botLinked,
             }));
           }
-          setReceiptStatus(
-            data.mode === "auto"
-              ? "✅ Comprobante enviado por WhatsApp"
-              : "⚠️ El bot no pudo enviarlo: usá el link de abajo para mandarlo vos."
-          );
+
+          if (data.mode === "auto") {
+            setReceiptStatus("✅ Comprobante enviado por WhatsApp");
+            return;
+          }
+          // Bot vinculado pero no pudo enviar → caer al mismo path que si no
+          // estuviera activado (Web Share en Android / wa.me en desktop).
         } else {
           setReceiptStatus(data.error || "No se pudo enviar el comprobante");
+          // Si falló por error del server, caer al path manual igual.
         }
-        return;
       }
 
+      // Path manual (sin bot, o bot que no pudo enviar): Web Share / wa.me.
       if (!receiptImageUrl) {
         setReceiptStatus("Generando el comprobante…");
         return;

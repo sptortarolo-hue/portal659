@@ -212,7 +212,7 @@ export function BookingCard({
     setComprobanteBusy(true);
     setComprobanteStatus(null);
     try {
-      // Con bot vinculado: el envío es del server (no necesita gesto del navegador).
+      // Con bot vinculado: intentar envío automático primero.
       if (comprobanteShare.botLinked) {
         const res = await fetch(`/api/vendor/bookings/${booking.id}/send-receipt`, {
           method: "POST",
@@ -233,20 +233,20 @@ export function BookingCard({
               botLinked: !!data.share.botLinked,
             }));
           }
-          setComprobanteStatus(
-            data.mode === "auto"
-              ? "✅ Comprobante enviado por WhatsApp"
-              : "⚠️ El bot no pudo enviarlo: usá el link de abajo para mandarlo vos."
-          );
+
+          if (data.mode === "auto") {
+            setComprobanteStatus("✅ Comprobante enviado por WhatsApp");
+            return;
+          }
+          // Bot vinculado pero no pudo enviar → caer al mismo path que si no
+          // estuviera activado (Web Share en Android / wa.me en desktop).
         } else {
           setComprobanteStatus(data.error || "No se pudo enviar el comprobante");
+          // Si falló por error del server, caer al path manual igual.
         }
-        return;
       }
 
-      // Sin bot: lo hace el navegador. OJO: se llama SIN awaits previos para
-      // que el chat se abra dentro del gesto del click (si no, el navegador lo
-      // bloquea como popup y no pasa nada).
+      // Path manual (sin bot, o bot que no pudo enviar): Web Share / wa.me.
       if (!comprobanteUrl) {
         setComprobanteStatus("Esperá a que se genere el comprobante…");
         return;

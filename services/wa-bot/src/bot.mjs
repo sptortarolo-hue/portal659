@@ -607,6 +607,10 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
       applyContactFields(state, parsed);
       const options = matchAllProducts(products, bareName(pp.said) || pp.said);
       if (options.length === 1) {
+        // Si el producto tiene variantes, preguntar cuál quiere antes de agregar
+        if (options[0].variants && options[0].variants.length > 0) {
+          if (askVariant(state, options[0], replies)) return;
+        }
         attachChosen(state, options[0], pp.qty, soloAmbiguo && !shouldMerge0, pp);
         state.handoffCount = 0;
         if (maybeAskRequiredMods(state, products, replies)) return;
@@ -622,7 +626,33 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
     }
     const isAddition = /\b(agrega|agregar|tambi\u00e9n|tambien|suma|sumar|m\u00e1s|mas)(?=[\s.,!]|$)/i.test(text);
     if (isAddition && state.items.length > 0) {
-      mergeItems(state, vendor.id, (parsed.items || []).map((p) => ({
+      // Para cada ítem, si tiene variantes y no las eligió aún, preguntar cuál
+      const itemsToAdd = [];
+      for (const p of parsed.items) {
+        const prod = products.find((x) => String(x.id) === String(p.offerId || p.id));
+        if (prod && Array.isArray(prod.variants) && prod.variants.length > 0 && !p.variantId) {
+          // Tiene variantes y no las eligió aún - preguntar cuál
+          state.pendingVariant = {
+            productId: p.offerId || p.id,
+            productName: p.name,
+            price: p.price,
+            variants: prod.variants,
+            qty: Math.max(1, Number(p.qty) || 1),
+          };
+          state.step = "flow";
+          state.pendingFields = missingFields(state, vendor);
+          const variantLines = prod.variants.map((v, i) => {
+            const colorPart = v.color || "—";
+            const tallePart = v.talle ? ` talle ${v.talle}` : "";
+            const pricePart = v.price != null ? ` — $${Number(v.price).toLocaleString("es-AR")}` : "";
+            return `${i + 1}️⃣ ${colorPart}${tallePart}${pricePart}`;
+          });
+          replies.push(`🥟 ${p.name} — ¿qué variante querés?\n${variantLines.join("\n")}\n\nRespedí el número de la variante, ej: *"1"* o *"negra talle M"*.${extra}`);
+          return await persist(state, vendor.id, waId, replies);
+        }
+        itemsToAdd.push(p);
+      }
+      mergeItems(state, vendor.id, itemsToAdd.map((p) => ({
         offerId: p.offerId || p.id,
         variantId: p.variantId,
         name: p.name,
@@ -787,8 +817,54 @@ async function handleStep({ vendor, text, state, replies, waId }) {
       replies.push("¿Confirmás? 1️⃣ Sí  2️⃣ No  3️⃣ Modificar");
       return;
     }
-    // Opciones numeradas: 1=Sí, 2=No, 3=Modificar
-    if (/^(1|1️⃣)$/.test(t)) t = "sí";
+    // Manejo de variante pendiente: el cliente eligió un producto con variantes
+    // y debe elegir cuál. Responde con un número o el nombre de la variante.
+    if (state.pendingVariant) {
+      const pv = state.pendingVariant;
+      const variants = pv.variants || [];
+      let chosenVariant = null;
+
+      // Intentar resolver por número (ej: "1")
+      const numMatch = t.match(/^(\d+)$/);
+      if (numMatch) {
+        const n = Number(numMatch[1]);
+        if (n >= 1 && n <= variants.length) {
+          chosenVariant = variants[n - 1];
+        }
+      }
+      // Si no es número, intentar por nombre (ej: "negra talle M")
+      if (!chosenVariant) {
+        const tNorm = normForMatch(t);
+        chosenVariant = variants.find((v) => {
+          const vName = `${v.color || ''} ${v.talle || ''}`.toLowerCase().trim();
+          return vNorm === tNorm || vNorm.includes(tNorm) || tNorm.includes(vNorm);
+        });
+      }
+
+      if (chosenVariant) {
+        // Agregar el ítem al carrito con la variante elegida
+        mergeItems(state, vendor.id, [{
+          offerId: pv.productId,
+          variantId: chosenVariant.id,
+          name: pv.productName,
+          qty: pv.qty,
+          modifiers: [],
+        }]);
+        state.pendingVariant = null;
+        state.handoffCount = 0;
+        const talleStr = chosenVariant.talle ? ` talle ${chosenVariant.talle}` : '';
+        replies.push(`✅ Agregué: ${pv.name} ${chosenVariant.color || ''}${talleStr} ×${pv.qty}`);
+        // Mostrar resumen actual y seguir con el flujo
+        if (maybeAskRequiredMods(state, products, replies)) return;
+        advanceAndAsk(state, vendor, replies);
+        return;
+      } else {
+        replies.push(`No encontré esa variante. Opciones:${variants.map((v, i) => `\n${i + 1}️⃣ ${v.color || "—"}${v.talle ? ` talle ${v.talle}` : ""}`).join("\n")}`);
+        replies.push(portalNavFooter());
+        return await persist(state, vendor.id, waId, replies);
+      }
+    }
+
     if (/^(2|2️⃣)$/.test(t)) t = "no";
     if (/^(3|3️⃣)$/.test(t)) {
       replies.push("¿Qué querés modificar?");
@@ -1442,6 +1518,35 @@ function pendingProductAsk(state) {
   return `🥟 ${label} — ¿cuántas querés y de cuál?\n${lines}${qtyPart}\n\nRespondé todo junto (ej: *"2 carne"* o *"3 de jamón y queso"*).`;
 }
 
+/** Pregunta al cliente qué variante quiere cuando un producto tiene varias.
+ *  Devuelve true si preguntó y quedó esperando respuesta (state.pendingVariant).
+ *  Si no hay variantes o ya eligió una, devuelve false. */
+function askVariant(state, product, replies) {
+  const variants = Array.isArray(product.variants) ? product.variants : [];
+  if (!variants.length) return false;
+
+  // Si ya eligió variante, no preguntar de nuevo
+  if (state.pendingVariant && state.pendingVariant.productId === product.id) return false;
+
+  const lines = variants.map((v, i) => {
+    const price = v.price != null ? ` — $${Number(v.price).toLocaleString("es-AR")}` : "";
+    return `${i + 1}️⃣ ${v.color || "—"}${v.talle ? ` talle ${v.talle}` : ""}${price}`;
+  });
+
+  state.pendingVariant = {
+    productId: product.id,
+    productName: product.name,
+    price: product.price,
+    variants: product.variants,
+    qty: 1,
+  };
+  state.step = "flow";
+  state.pendingFields = missingFields(state, vendor);
+  const extra = state.pendingFields.length ? "\n\n" + pendingQuestions(state) : "";
+
+  replies.push(`🥟 ${product.name} — ¿qué variante querés?\n${lines}\n\nRespedí el número de la variante, ej: *"1"* o *"negra talle M"*.${extra}`);
+  return true;
+}
 /** Si algún item del carrito tiene producto con grupo requerido y el cliente
  *  no dijo opciones para ese grupo → pregunta (numeradas) y devuelve true.
  *  El state queda con pendingMods; la próxima respuesta se adjunta al item. */

@@ -417,6 +417,39 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
     replies.push(portalNavFooter());
     return await persist(state, vendor.id, waId, replies);
   }
+  // — Número sobre las SECCIONES del comercio (mostradas al elegir tienda) —
+  if (state.currentVendorId && Array.isArray(state.catalogSections) && state.catalogSections.length) {
+    const bm = t.match(/^(\d{1,2})$/);
+    if (bm && Date.now() - Number(state.catalogSectionsAt || 0) < 10 * 60 * 1000) {
+      const n = Number(bm[1]);
+      const products = await getMenu(vendor.id);
+      if (n === 0) {
+        const all = products.slice(0, 20);
+        state.catalogSeen = all.map((p) => String(p.id));
+        state.catalogSeenAt = Date.now();
+        state.catalogSections = [];
+        state.catalogFull = null;
+        replies.push(`Menú completo de *${state.currentVendorName || "el comercio"}*:`);
+        replies.push(portalCatalogText(all));
+        replies.push("Decime el número del producto que quieras, o mandame tu pedido directo.");
+        replies.push(portalNavFooter());
+        return await persist(state, vendor.id, waId, replies);
+      }
+      if (n >= 1 && n <= state.catalogSections.length) {
+        const section = state.catalogSections[n - 1];
+        const inSection = products.filter((p) => String(p.category || "Otros").trim() === section).slice(0, 20);
+        state.catalogSeen = inSection.map((p) => String(p.id));
+        state.catalogSeenAt = Date.now();
+        state.catalogSections = [];
+        state.catalogFull = null;
+        replies.push(`*${section}* — elegí:`);
+        replies.push(portalCatalogText(inSection));
+        replies.push("Decime el número del producto que quieras, o mandame tu pedido directo.");
+        replies.push(portalNavFooter());
+        return await persist(state, vendor.id, waId, replies);
+      }
+    }
+  }
   // — Número sobre el catálogo de la tienda (1..N): abrir la ficha del producto —
   if (state.currentVendorId && Array.isArray(state.catalogSeen) && state.catalogSeen.length) {
     const bm = t.match(/^(\d{1,2})$/);
@@ -2206,9 +2239,30 @@ async function replyStoreCatalog({ state, vendor, waId, replies, chosen }) {
     return persist(state, vendor.id, waId, replies);
   }
   const catalog = products.slice(0, 20);
-  state.catalogSeen = catalog.map((p) => String(p.id));
-  state.catalogSeenAt = Date.now();
-  replies.push(portalCatalogText(catalog));
+  // Fase A2 (secciones): catálogo grande → mostrar rubros internos del comercio
+  // en vez de una lista interminable; el cliente elige la sección y ve solo sus
+  // productos (estado catalogSections; 0 = "ver todo el menú").
+  const byCat = new Map();
+  for (const p of products) {
+    const c = String(p.category || "Otros").trim() || "Otros";
+    byCat.set(c, (byCat.get(c) || 0) + 1);
+  }
+  const sections = [...byCat.entries()].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), "es", { sensitivity: "base" }));
+  if (products.length > 12 && sections.length >= 2) {
+    state.catalogSections = sections.slice(0, 8).map(([c]) => c);
+    state.catalogSectionsAt = Date.now();
+    state.catalogFull = products.slice(0, 20).map((p) => String(p.id));
+    state.catalogSeen = [];
+    replies.push(`🗂️ ¿Qué se te antoja en *${name}*?`);
+    replies.push(sections.slice(0, 8).map(([c, n], i) => `${i + 1}) ${c} (${n})`).join("\n"));
+    replies.push("0️⃣ Ver todo el menú");
+    replies.push("Respondé el número de la sección, o mandame tu pedido directo.");
+  } else {
+    state.catalogSeen = catalog.map((p) => String(p.id));
+    state.catalogSeenAt = Date.now();
+    state.catalogSections = [];
+    replies.push(portalCatalogText(catalog));
+  }
   const link = slug ? `\nMirá el menú con fotos: ${storeLink}` : "";
   replies.push(`Mandame tu pedido (ej: "2 empanadas de carne y una coca").${link}`);
   replies.push(portalNavFooter());
@@ -2564,11 +2618,16 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
       state.currentVendorId = null;
       state.currentVendorName = null;
       state.currentVendorSlug = null;
+      state.currentVendorVertical = null;
       state.items = [];
       state.method = null;
       state.payment = null;
       state.customerName = null;
       state.customerAddress = null;
+      state.step = "idle";
+      state.pendingDetail = null;
+      state.catalogSeen = [];
+      state.catalogSections = [];
       state.welcomed = true;
       await persist(state, vendor.id, waId, []);
       return await sendPortalMenu(state, vendor, waId, replies);

@@ -59,6 +59,31 @@ const MOCK_PORTAL_MENU = {
         { id: "p4", store_id: "store4", store_name: "Kiosco Rota", store_slug: "kiosco-rota", name: "Alfajor triple", price: 1500, category: "Golosinas", modifiers: [], variants: [] },
       ],
     },
+    {
+      id: "store5",
+      store_name: "Oasis",
+      slug: "oasis",
+      vertical: "gastronomia",
+      store_open: true,
+      open_text: "Abierto ahora",
+      next_open_text: null,
+      hours: "lun a vie 09:00-23:00",
+      products: [
+        { id: "p10", store_id: "store5", store_name: "Oasis", store_slug: "oasis", name: "Empanada de Carne", price: 1100, category: "Empanadas", modifiers: [], variants: [] },
+        { id: "p11", store_id: "store5", store_name: "Oasis", store_slug: "oasis", name: "Empanada de Pollo", price: 1000, category: "Empanadas", modifiers: [], variants: [] },
+        { id: "p12", store_id: "store5", store_name: "Oasis", store_slug: "oasis", name: "Empanada de Jamón y queso", price: 1300, category: "Empanadas", modifiers: [], variants: [] },
+        { id: "p13", store_id: "store5", store_name: "Oasis", store_slug: "oasis", name: "Empanada Humita", price: 1200, category: "Empanadas", modifiers: [], variants: [] },
+        { id: "p14", store_id: "store5", store_name: "Oasis", store_slug: "oasis", name: "Empanada de Verdura", price: 1100, category: "Empanadas", modifiers: [], variants: [] },
+        { id: "p15", store_id: "store5", store_name: "Oasis", store_slug: "oasis", name: "Empanada Capuchino", price: 1400, category: "Empanadas", modifiers: [], variants: [] },
+        { id: "p16", store_id: "store5", store_name: "Oasis", store_slug: "oasis", name: "Empanada Bocadito", price: 1500, category: "Empanadas", modifiers: [], variants: [] },
+        { id: "p17", store_id: "store5", store_name: "Oasis", store_slug: "oasis", name: "Empanada de Cebolla", price: 1150, category: "Empanadas", modifiers: [], variants: [] },
+        { id: "p18", store_id: "store5", store_name: "Oasis", store_slug: "oasis", name: "Coca-Cola 500", price: 1000, category: "Bebidas", modifiers: [], variants: [] },
+        { id: "p19", store_id: "store5", store_name: "Oasis", store_slug: "oasis", name: "Sprite 500", price: 950, category: "Bebidas", modifiers: [], variants: [] },
+        { id: "p20", store_id: "store5", store_name: "Oasis", store_slug: "oasis", name: "Agua mineral", price: 800, category: "Bebidas", modifiers: [], variants: [] },
+        { id: "p21", store_id: "store5", store_name: "Oasis", store_slug: "oasis", name: "Promo docena", price: 11000, category: "Promos", modifiers: [], variants: [] },
+        { id: "p22", store_id: "store5", store_name: "Oasis", store_slug: "oasis", name: "Promo media docena", price: 6200, category: "Promos", modifiers: [], variants: [] },
+      ],
+    },
   ],
 };
 
@@ -67,6 +92,8 @@ const MOCK_STORE_MENUS = {
   store2: { vendor: { id: "store2", store_name: "La Esquina", vertical: "gastronomia", store_open: true, open_text: "Abierto ahora" }, products: MOCK_PORTAL_MENU.vendors[1].products },
   // Estética Sinergia: catálogo vacío (tienda de turnos, no de productos)
   store3: { vendor: { id: "store3", store_name: "Estética Serena", vertical: "estetica", store_open: true, open_text: "Abierto ahora" }, products: [] },
+  // Oasis (grande): 13 productos en 3 secciones
+  store5: { vendor: { id: "store5", store_name: "Oasis", vertical: "gastronomia", store_open: true, open_text: "Abierto ahora" }, products: MOCK_PORTAL_MENU.vendors[4].products },
   // store4 ("Kiosco Rota") NO está acá: /api/wa/menu responde 500 → error real
 };
 
@@ -381,7 +408,7 @@ async function main() {
   show("opción 6 rubros (portal)", r);
   const r6 = (r.replies || []).join(" ");
   if (!r6.includes("¿Qué te hace falta hoy?")) { console.log("!!! la opción 6 no abrió los rubros"); ok = false; }
-  else if (!r6.includes("Gastronomía (2")) { console.log("!!! los rubros no muestran conteo (esperado Gastronomía 2)"); ok = false; }
+  else if (!r6.includes("Gastronomía (3")) { console.log("!!! los rubros no muestran conteo (esperado Gastronomía 3)"); ok = false; }
   else if (!r6.includes("Peluquería y Estética (1")) { console.log("!!! falta Peluquería y Estética con conteo 1"); ok = false; }
   else { console.log(">>> OK: opción 6 → rubros con conteo"); }
   // Elegir rubro 1 (gastronomía): solo tiendas del rubro
@@ -396,6 +423,39 @@ async function main() {
   const r6c = (r.replies || []).join(" ");
   if (!r6c.includes("Perfecto, estás pidiendo de *Che Sancho*")) { console.log("!!! la elección de tienda tras el rubro no abrió el catálogo"); ok = false; }
   else { console.log(">>> OK: rubro → tienda → catálogo"); }
+
+  // 20. Secciones del comercio (Fase A2): catálogo grande → rubros internos.
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "1" }); // tiendas abiertas
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "5" }); // Oasis (grande)
+  show("Oasis - secciones", r);
+  const sec0 = (r.replies || []).join(" ");
+  if (!sec0.includes("¿Qué se te antoja en *Oasis*")) { console.log("!!! la tienda grande no mostró secciones"); ok = false; }
+  else if (!sec0.includes("Empanadas (8)")) { console.log("!!! falta la sección Empanadas con conteo 8"); ok = false; }
+  else if (!sec0.includes("Bebidas (3)")) { console.log("!!! falta la sección Bebidas con conteo 3"); ok = false; }
+  else { console.log(">>> OK: tienda grande → secciones con conteo"); }
+  // Elegir sección 1 (Empanadas): solo sus productos
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "1" });
+  show("Oasis - sección Empanadas", r);
+  const sec1 = (r.replies || []).join(" ");
+  if (!sec1.includes("Empanada de Carne")) { console.log("!!! la sección no mostró los productos"); ok = false; }
+  else if (sec1.includes("Sprite") || sec1.includes("Coca-Cola")) { console.log("!!! la sección mezcló productos de otras secciones"); ok = false; }
+  else { console.log(">>> OK: sección → solo productos de esa sección"); }
+  // Elegir producto 1 → ficha
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "1" });
+  show("Oasis - ficha desde sección", r);
+  const sec2 = (r.replies || []).join(" ");
+  if (!sec2.includes("Agregar al carrito")) { console.log("!!! la ficha no abrió tras elegir desde la sección"); ok = false; }
+  else { console.log(">>> OK: sección → ficha del producto"); }
+  // Volver a entrar y elegir "0" → todo el menú
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "inicio" });
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "1" }); // tiendas abiertas
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "5" }); // Oasis → secciones otra vez
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "0" }); // todo el menú
+  show("Oasis - todo el menú", r);
+  const sec3 = (r.replies || []).join(" ");
+  if (!sec3.includes("Coca-Cola 500") || !sec3.includes("Empanada de Carne")) { console.log("!!! '0' no mostró todo el menú (falta Coca y Empanada)"); ok = false; }
+  else { console.log(">>> OK: '0' → todo el menú"); }
 
   if (!ok) { console.error("\n=== HAY FALLOS (portal) ==="); process.exit(1); }
   console.log("\n=== TODO OK (portal bot) ===");

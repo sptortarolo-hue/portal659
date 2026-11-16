@@ -14,8 +14,16 @@ const cache = new Map();
  * @returns {Promise<Product[]>}
  */
 export async function getMenu(vendorId) {
+  return (await getMenuWithStatus(vendorId)).products;
+}
+
+/** Igual que getMenu pero informa si la llamada a la API falló (vs catálogo
+ *  legítimamente vacío). Devuelve { products, failed } — failed=true significa
+ *  que no se puede saber si la tienda tiene catálogo y el caller debe avisar
+ *  en vez de mentir "no tiene productos". */
+export async function getMenuWithStatus(vendorId) {
   const hit = cache.get(vendorId);
-  if (hit && Date.now() - hit.at < 60 * 1000) return hit.products;
+  if (hit && Date.now() - hit.at < 60 * 1000) return { products: hit.products, failed: false };
 
   try {
     const res = await fetch(`${config.appUrl}/api/wa/menu?vendorId=${encodeURIComponent(vendorId)}`, {
@@ -24,16 +32,16 @@ export async function getMenu(vendorId) {
     });
     if (!res.ok) {
       console.error(`[bot] menu error ${res.status}`);
-      return hit?.products || [];
+      return { products: hit?.products || [], failed: true };
     }
     const data = await res.json();
     /** @type {Product[]} */
     const products = data.products || [];
     cache.set(vendorId, { products, at: Date.now() });
-    return products;
+    return { products, failed: false };
   } catch (e) {
     console.error(`[bot] menu fetch fail: ${/** @type {any} */ (e)?.message}`);
-    return hit?.products || []; // fallback: caché vieja si la hubo
+    return { products: hit?.products || [], failed: true }; // fallback: caché vieja si la hubo
   }
 }
 

@@ -35,12 +35,39 @@ const MOCK_PORTAL_MENU = {
         { id: "p3", store_id: "store2", store_name: "La Esquina", store_slug: "la-esquina", name: "Milanesa napolitana", price: 2500, category: "Platos", modifiers: [], variants: [] },
       ],
     },
+    {
+      id: "store3",
+      store_name: "Estética Serena",
+      slug: "estetica-serena",
+      vertical: "estetica",
+      store_open: true,
+      open_text: "Abierto ahora",
+      next_open_text: null,
+      hours: "lun a vie 10:00-19:00",
+      products: [],
+    },
+    {
+      id: "store4",
+      store_name: "Kiosco Rota",
+      slug: "kiosco-rota",
+      vertical: "comercio",
+      store_open: true,
+      open_text: "Abierto ahora",
+      next_open_text: null,
+      hours: "lun a vie 08:00-13:00",
+      products: [
+        { id: "p4", store_id: "store4", store_name: "Kiosco Rota", store_slug: "kiosco-rota", name: "Alfajor triple", price: 1500, category: "Golosinas", modifiers: [], variants: [] },
+      ],
+    },
   ],
 };
 
 const MOCK_STORE_MENUS = {
   store1: { vendor: { id: "store1", store_name: "Che Sancho", vertical: "gastronomia", store_open: true, open_text: "Abierto ahora" }, products: MOCK_PORTAL_MENU.vendors[0].products },
   store2: { vendor: { id: "store2", store_name: "La Esquina", vertical: "gastronomia", store_open: true, open_text: "Abierto ahora" }, products: MOCK_PORTAL_MENU.vendors[1].products },
+  // Estética Sinergia: catálogo vacío (tienda de turnos, no de productos)
+  store3: { vendor: { id: "store3", store_name: "Estética Serena", vertical: "estetica", store_open: true, open_text: "Abierto ahora" }, products: [] },
+  // store4 ("Kiosco Rota") NO está acá: /api/wa/menu responde 500 → error real
 };
 
 let handoffNotified = false;
@@ -300,6 +327,28 @@ async function main() {
   const o6 = (r.replies || []).join(" ");
   if (!o6.includes("/tienda/")) { console.log("!!! 'qué hay abierto' no listó tiendas con link"); ok = false; }
   else { console.log(">>> OK: 'qué hay abierto' → tiendas abiertas con link"); }
+
+  // 16. Tienda de servicios (sin catálogo): CTA a micrositio, NO "no tiene productos".
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "1" });
+  show("tiendas (para elegir servicios)", r);
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "3" });
+  show("elegir Estética Serena (servicios)", r);
+  const svc = (r.replies || []).join(" ");
+  if (!svc.includes("/tienda/estetica-serena")) { console.log("!!! la tienda de servicios no mostró el link a su micrositio"); ok = false; }
+  else if (!svc.includes("turnos")) { console.log("!!! la tienda de servicios no indicó que atiende por turnos"); ok = false; }
+  else if (svc.includes("Mandame tu pedido")) { console.log("!!! a una tienda de turnos se le ofreció 'mandame tu pedido'"); ok = false; }
+  else { console.log(">>> OK: tienda de servicios → CTA a micrositio + turnos (sin pedido fantasma)"); }
+
+  // 17. Menú de tienda que FALLA (500): avisar, no mentir "no tiene productos".
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "1" });
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "4" });
+  show("elegir tienda con menú 500", r);
+  const err = (r.replies || []).join(" ");
+  if (!err.includes("No pude cargar el menú")) { console.log("!!! al fallar el menú no avisó del error"); ok = false; }
+  else if (err.includes("no tiene productos") || err.includes("no tiene catálogo")) { console.log("!!! al fallar el menú mintió 'sin catálogo'"); ok = false; }
+  else { console.log(">>> OK: menú caído → aviso honesto (no 'sin catálogo')"); }
 
   if (!ok) { console.error("\n=== HAY FALLOS (portal) ==="); process.exit(1); }
   console.log("\n=== TODO OK (portal bot) ===");

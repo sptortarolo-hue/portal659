@@ -2,7 +2,7 @@
 // Ver menu.mjs y metrics.mjs para el patrón de anotación.
 import { config } from "./config.mjs";
 import { getState, setState, clearState, forEachConversation } from "./state.mjs";
-import { getMenu, getMenuSync, matchProduct, matchAllProducts, normalizeForMatch, menuSummary } from "./menu.mjs";
+import { getMenu, getMenuSync, getMenuWithStatus, matchProduct, matchAllProducts, normalizeForMatch, menuSummary } from "./menu.mjs";
 import { normalizeDraftItem, isValidDraftItem } from "./draft.mjs";
 import { greetingTextTone, summaryTextTone, pendingQuestionsTone, lowConfidenceTone, reorderTone, confirmTone, noMatchTone, answerTone, portalNavFooter } from "./talk.mjs";
 import { parseWithLlm, parseByRules, normalizeEs, extractFromText, bareName, 
@@ -2076,6 +2076,61 @@ const humanDelay = (len) => Math.min(config.replyDelayMaxMs, config.replyDelayMi
 // ————————————————————————————————————————————————————————————————
 // Modo PORTAL: un solo número sirve a todos los comercios de la zona activa.
 // ————————————————————————————————————————————————————————————————
+
+/** Responde tras elegir tienda (por número o por nombre): carga el catálogo
+ *  y maneja TRES casos — (a) fallo al cargar: avisar (nunca "no tiene
+ *  productos"), (b) catálogo vacío: CTA por vertical (servicios atiende por
+ *  turnos/presupuestos), (c) catálogo listo: listado + link + collage. */
+async function replyStoreCatalog({ state, vendor, waId, replies, chosen }) {
+  const name = chosen.store_name || "la tienda";
+  const slug = state.currentVendorSlug || "";
+  const storeLink = slug ? `${config.publicUrl}/tienda/${slug}` : "";
+  const { products, failed } = await getMenuWithStatus(chosen.id);
+  replies.push(`Perfecto, estás pidiendo de *${name}*. 📋 Menú:`);
+  if (failed) {
+    replies.push("No pude cargar el menú justo ahora 😕");
+    if (storeLink) replies.push(`Mientras tanto podés verlo acá: ${storeLink}`);
+    replies.push("Probá de nuevo en un momento, o pedí de otra tienda escribiendo *comercios*.");
+    return persist(state, vendor.id, waId, replies);
+  }
+  if (products.length === 0) {
+    const vertical = String(state.currentVendorVertical || "desconocida").toLowerCase();
+    if (isServiceVertical(vertical)) {
+      replies.push(`${name} atiende por turnos y presupuestos — no toma pedidos de productos por WhatsApp.`);
+      if (storeLink) replies.push(`👉 Mirá su micrositio para sacar turno o pedir presupuesto: ${storeLink}`);
+      replies.push("Si querés, escribime qué necesitás y te conecto con el local 🙋");
+    } else {
+      replies.push("Esta tienda todavía no tiene catálogo para pedir por WhatsApp.");
+      if (storeLink) replies.push(`Mirá su micrositio: ${storeLink}`);
+      replies.push("¿Querés pedir de otra tienda? Escribí *comercios* para ver la lista.");
+    }
+    return persist(state, vendor.id, waId, replies);
+  }
+  replies.push(products.slice(0, 20).map((p, i) => `${i + 1}) ${p.name} — $${p.price}`).join("\n"));
+  const link = slug ? `\nMirá el menú con fotos: ${storeLink}` : "";
+  replies.push(`Mandame tu pedido (ej: "2 empanadas de carne y una coca").${link}`);
+  replies.push(portalNavFooter());
+  // Collage de imágenes del menú (best-effort).
+  const _client = getClientByVendor(vendor.id);
+  if (_client) {
+    try {
+      const _imgRes = await fetch(`${config.appUrl}/api/wa/menu-image?vendorId=${encodeURIComponent(chosen.id)}`, {
+        headers: { Authorization: `Bearer ${config.waBotSecret}` },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (_imgRes.ok) {
+        const _buf = Buffer.from(await _imgRes.arrayBuffer());
+        const _b64 = _buf.toString("base64");
+        sendImage(_client, waId, _b64, `📋 Menú de ${name}`);
+        console.log(`[bot][portal] menú imagen enviado: ${name}`);
+      }
+    } catch (e) {
+      console.error(`[bot][portal] error enviando menú imagen: ${e?.message}`);
+    }
+  }
+  return persist(state, vendor.id, waId, replies);
+}
+
 async function fetchPortalMenu(q = "") {
   try {
     const url = `${config.appUrl}/api/wa/portal-menu${q ? `?q=${encodeURIComponent(q)}` : ""}`;
@@ -2148,14 +2203,9 @@ async function fetchCustomer(vendorId, phone) {
 /** Envía el menú corto de 5 opciones del portal (capa 1 informativa). */
 async function sendPortalMenu(state, vendor, waId, replies) {
   const greetName = state.customerName ? ` ${state.customerName}` : "";
-  replies.push(`¡Hola${greetName}! 👋 Soy el asistente de *Portal 659*, el centro comercial de tu barrio.`);
+  replies.push(portalGreeting(greetName));
   replies.push("");
-  replies.push("¿Qué querés hacer?");
-  replies.push("1️⃣ Ver tiendas abiertas");
-  replies.push("2️⃣ Ver todas las tiendas");
-  replies.push("3️⃣ ¿Cómo comprar / pagar?");
-  replies.push("4️⃣ ¿Tenés un comercio? Sumalo gratis");
-  replies.push("5️⃣ Hablar con una persona");
+  replies.push(portalMainMenuText());
   replies.push("");
   replies.push("Respondé el número de una opción o escribime el nombre de un producto para buscar. 🛒");
   replies.push(portalNavFooter());
@@ -2248,6 +2298,11 @@ const PORTAL_VERTICAL_LABELS = {
 function portalVerticalLabel(v) {
   if (!v) return "Tienda";
   return PORTAL_VERTICAL_LABELS[v] || String(v);
+}
+
+/** Saludo corto del portal (única fuente del copy). */
+function portalGreeting(greetName = "") {
+  return `¡Hola${greetName}! 👋 Soy el asistente de *Portal 659*, el centro comercial de tu barrio.`;
 }
 
 /** Menú corto inicial: 5 opciones, un mensaje, sin listado gigante. */
@@ -2397,7 +2452,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
       const greetIfNew = () => {
         if (!state.welcomed) {
           state.welcomed = true;
-          replies.push("¡Hola! 👋 Soy el asistente de *Portal 659*, el centro comercial de tu barrio.");
+          replies.push(portalGreeting(state.customerName ? ` ${state.customerName}` : ""));
         }
       };
       let _portalStores = null;
@@ -3123,40 +3178,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
         state.portalVendorList = [];
         state.items = [];
         state.step = "idle";
-        const products = await getMenu(chosen.id);
-        replies.push(`Perfecto, estás pidiendo de *${chosen.store_name}*. 📋 Menú:`);
-        const _link1 = state.currentVendorSlug ? `\nMirá el menú con fotos: ${config.publicUrl}/tienda/${state.currentVendorSlug}` : "";
-        if (products.length === 0) {
-          // Sin catálogo (servicios, turnera): el micrositio es el que atiende,
-          // no tiene sentido pedirle "mandame tu pedido" por acá.
-          replies.push("Esta tienda no tiene productos para pedir por WhatsApp (atiende por turnos o presupuestos).");
-          replies.push(`Mirá su micrositio: ${config.publicUrl}/tienda/${state.currentVendorSlug || ""}`.trim());
-          replies.push("¿Querés pedir de otra tienda? Escribí *comercios* para ver la lista.");
-          return await persist(state, vendor.id, waId, replies);
-        }
-        replies.push(products.slice(0, 20).map((p, i) => `${i + 1}) ${p.name} — $${p.price}`).join("\n"));
-        const link = _link1;
-        replies.push(`Mandame tu pedido (ej: "2 empanadas de carne y una coca").${link}`);
-        replies.push(portalNavFooter());
-        // Enviar collage de imágenes del menú (best-effort).
-        const _client = getClientByVendor(vendor.id);
-        if (_client) {
-          try {
-            const _imgRes = await fetch(`${config.appUrl}/api/wa/menu-image?vendorId=${encodeURIComponent(chosen.id)}`, {
-              headers: { Authorization: `Bearer ${config.waBotSecret}` },
-              signal: AbortSignal.timeout(15_000),
-            });
-            if (_imgRes.ok) {
-              const _buf = Buffer.from(await _imgRes.arrayBuffer());
-              const _b64 = _buf.toString("base64");
-              sendImage(_client, waId, _b64, `📋 Menú de ${chosen.store_name}`);
-              console.log(`[bot][portal] menú imagen enviado: ${chosen.store_name}`);
-            }
-          } catch (e) {
-            console.error(`[bot][portal] error enviando menú imagen: ${e?.message}`);
-          }
-        }
-        return await persist(state, vendor.id, waId, replies);
+        return await replyStoreCatalog({ state, vendor, waId, replies, chosen });
       }
     }
 
@@ -3210,39 +3232,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
         state.portalVendorList = [];
         state.items = [];
         state.step = "idle";
-        const products = await getMenu(nameHit.id);
-        replies.push(`Perfecto, estás pidiendo de *${nameHit.store_name}*. 📋 Menú:`);
-        const _link2 = state.currentVendorSlug ? `\nMirá el menú con fotos: ${config.publicUrl}/tienda/${state.currentVendorSlug}` : "";
-        if (products.length === 0) {
-          // Sin catálogo (servicios, turnera): el micrositio es el que atiende,
-          // no tiene sentido pedirle "mandame tu pedido" por acá.
-          replies.push("Esta tienda no tiene productos para pedir por WhatsApp (atiende por turnos o presupuestos).");
-          replies.push(`Mirá su micrositio: ${config.publicUrl}/tienda/${state.currentVendorSlug || ""}`.trim());
-          replies.push("¿Querés pedir de otra tienda? Escribí *comercios* para ver la lista.");
-          return await persist(state, vendor.id, waId, replies);
-        }
-        replies.push(products.slice(0, 20).map((p, i) => `${i + 1}) ${p.name} — $${p.price}`).join("\n"));
-        const link = _link2;
-        replies.push(`Mandame tu pedido (ej: "2 empanadas de carne y una coca").${link}`);
-        // Enviar collage de imágenes del menú (best-effort).
-        const _client = getClientByVendor(vendor.id);
-        if (_client) {
-          try {
-            const _imgRes = await fetch(`${config.appUrl}/api/wa/menu-image?vendorId=${encodeURIComponent(nameHit.id)}`, {
-              headers: { Authorization: `Bearer ${config.waBotSecret}` },
-              signal: AbortSignal.timeout(15_000),
-            });
-            if (_imgRes.ok) {
-              const _buf = Buffer.from(await _imgRes.arrayBuffer());
-              const _b64 = _buf.toString("base64");
-              sendImage(_client, waId, _b64, `📋 Menú de ${nameHit.store_name}`);
-              console.log(`[bot][portal] menú imagen enviado: ${nameHit.store_name}`);
-            }
-          } catch (e) {
-            console.error(`[bot][portal] error enviando menú imagen: ${e?.message}`);
-          }
-        }
-        return await persist(state, vendor.id, waId, replies);
+        return await replyStoreCatalog({ state, vendor, waId, replies, chosen: nameHit });
       }
     }
 
@@ -3329,7 +3319,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
       const alreadyListed = Array.isArray(state.portalVendorList) && state.portalVendorList.length > 0;
       if (!state.welcomed) {
         state.welcomed = true;
-        replies.push(`¡Hola${state.customerName ? ` ${state.customerName}` : ""}! 👋 Soy el asistente de *Portal 659*, el centro comercial de tu barrio.`);
+        replies.push(portalGreeting(state.customerName ? ` ${state.customerName}` : ""));
       }
       if (alreadyListed) {
         replies.push("No encontré ese producto. Probá con otro nombre, o escribí *comercios* para ver todas las tiendas.");

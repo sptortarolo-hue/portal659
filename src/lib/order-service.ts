@@ -57,6 +57,9 @@ export type CreateOrderInput = {
   giftcardCode?: string | null;
   /** "¿Con cuánto abonás?" (efectivo + delivery): monto que dice llevar el cliente. */
   cashAmount?: number | null;
+  /** Idempotencia (bot WhatsApp): un reintento con la misma key devuelve el
+   *  pedido existente en vez de duplicarlo. Se ignora si la columna no existe. */
+  clientKey?: string | null;
 };
 
 export type CreateOrderResult = {
@@ -159,6 +162,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
     giftcardCode,
     previewToken,
     cashAmount,
+    clientKey,
   } = input;
 
   if (!vendorId || !customerName || !customerPhone || !items) {
@@ -510,6 +514,54 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
   ).catch(() => null);
   const hasCashAmountCol = cashAmountCol?.exists === true;
 
+  // Idempotencia "doble toque" del bot de WhatsApp (migrate-offline-sync.sql:
+  // orders.client_key UNIQUE (vendor_id, client_key)). Tolerante: sin la
+  // columna o sin key, no aplica dedup.
+  const clientKeyCol = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'orders' AND column_name = 'client_key'
+     ) AS exists`
+  ).catch(() => null);
+  const hasClientKeyCol = clientKeyCol?.exists === true;
+  const clientKeyFinal =
+    typeof clientKey === "string" && clientKey.trim() !== "" ? clientKey.trim().slice(0, 128) : null;
+  if (hasClientKeyCol && clientKeyFinal) {
+    const already = await queryOne<{
+      id: string;
+      total: number | string;
+      track_token: string | null;
+      items: unknown;
+      pickup_number: number | null;
+      delivery_window: string | null;
+    }>(
+      `SELECT id, total, track_token, items, pickup_number, delivery_window
+       FROM orders WHERE vendor_id = $1 AND client_key = $2 LIMIT 1`,
+      [vendorId, clientKeyFinal]
+    );
+    if (already) {
+      return {
+        orderId: already.id,
+        total: Number(already.total),
+        items: Array.isArray(already.items) ? (already.items as unknown as OrderItem[]) : [],
+        pickupNumber: already.pickup_number ?? 0,
+        cashDiscount: 0,
+        cashPct: 0,
+        volumeDiscount: 0,
+        volumeApplied: [],
+        trackToken: already.track_token ?? "",
+        deliveryFee: 0,
+        deliveryZoneName: null,
+        deliveryOutOfArea: false,
+        shippingZoneName: null,
+        deliveryWindow: already.delivery_window ?? null,
+        giftcard_discount: 0,
+        weightPending: false,
+        weightTolerancePct: undefined,
+      };
+    }
+  }
+
   // Pesables (migrate-weight-confirm.sql, tolerante sin aplicar): snapshot del
   // estimado + sello de confirmación de peso.
   const weightCol = await queryOne<{ exists: boolean }>(
@@ -665,9 +717,13 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
       const weightVals = hasWeightCols && resolvedWeightPending ? `, $${nextParam++}` : "";
       const weightParams: unknown[] =
         hasWeightCols && resolvedWeightPending ? [Math.round(resolvedTotal * 100) / 100] : [];
+      // Idempotencia del bot (migrate-offline-sync.sql).
+      const clientKeyCols = hasClientKeyCol && clientKeyFinal ? ", client_key" : "";
+      const clientKeyVals = hasClientKeyCol && clientKeyFinal ? `, $${nextParam++}` : "";
+      const clientKeyParams: unknown[] = hasClientKeyCol && clientKeyFinal ? [clientKeyFinal] : [];
       const rows = await tx.query<{ id: string }>(
-        `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number, cash_pct, cash_discount, track_token${volumeCols}${zoneCols}${shipCols}${windowCols}${previewCols}${giftcardCols}${deadlineCols}${cashAmountCols}${weightCols})
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14, $15, $16${volumeVals}${zoneVals}${shipVals}${windowVals}${previewVals}${giftcardVals}${deadlineVals}${cashAmountVals}${weightVals})
+        `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number, cash_pct, cash_discount, track_token${volumeCols}${zoneCols}${shipCols}${windowCols}${previewCols}${giftcardCols}${deadlineCols}${cashAmountCols}${weightCols}${clientKeyCols})
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14, $15, $16${volumeVals}${zoneVals}${shipVals}${windowVals}${previewVals}${giftcardVals}${deadlineVals}${cashAmountVals}${weightVals}${clientKeyVals})
          RETURNING id`,
         [
           vendorId,
@@ -695,6 +751,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
           ...deadlineParams,
           ...cashAmountParams,
           ...weightParams,
+          ...clientKeyParams,
         ]
       );
       orderId = rows[0]?.id;

@@ -35,6 +35,10 @@ export async function POST(request: Request) {
   if (!pmValid) {
     return NextResponse.json({ error: "paymentMethod inválido" }, { status: 400 });
   }
+  // Idempotencia: el bot manda una clientKey por carrito; un reintento devuelve
+  // el pedido existente en vez de duplicarlo.
+  const clientKeyFinal =
+    typeof clientKey === "string" && clientKey.trim() !== "" ? clientKey.trim().slice(0, 128) : null;
 
   // Kill switch por comercio (el toggle del admin). Tolerante a tabla sin migrar.
   if (!(await isWaBotEnabled(vendorId))) {
@@ -60,9 +64,10 @@ export async function POST(request: Request) {
       giftcardCode: giftcardCode || null,
       cashAmount: cashAmount || null,
       isPreview: isPreview || null,
+      clientKey: clientKeyFinal,
     });
 
-    return NextResponse.json({ ok: true, orderId: result.orderId, total: result.total, trackToken: result.trackToken, clientKey });
+    return NextResponse.json({ ok: true, orderId: result.orderId, total: result.total, trackToken: result.trackToken, clientKey: clientKeyFinal });
   } catch (e) {
     if (e instanceof InvalidPhoneError) {
       return NextResponse.json({ error: e.message }, { status: 400 });

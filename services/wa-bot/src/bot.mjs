@@ -907,6 +907,11 @@ async function handleStep({ vendor, text, state, replies, waId }) {
       }
       let order;
       try {
+        // Idempotencia: la key se genera UNA vez por carrito/pedido y sobrevive
+        // a reintentos (red lenta, 429). El servidor la persiste en orders.client_key.
+        if (!state.clientKey) {
+          state.clientKey = (globalThis.crypto?.randomUUID?.()) || `wa-${vendor.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        }
         order = await createOrder(vendor.id, state);
         try { trackEvent(vendor.id, "order_created", waId, { orderId: order?.orderId || order?.id, total: order?.total, items: state.items?.length }); } catch {}
       } catch (e) {

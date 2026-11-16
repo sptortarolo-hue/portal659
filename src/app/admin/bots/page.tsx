@@ -122,6 +122,67 @@ function UsageBar({ label, value, cap }: { label: string; value: number; cap: nu
   );
 }
 
+function PortalFunnel() {
+  const [days, setDays] = useState(30);
+  const [data, setData] = useState<{ funnel: { key: string; label: string; total: number; unique: number }[]; byDay: { day: string; count: number }[] } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch(`/api/admin/wa-funnel?days=${days}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled) { setData(d ?? null); setLoading(false); } })
+      .catch(() => { if (!cancelled) { setData(null); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, [days]);
+
+  const max = Math.max(1, ...(data?.funnel ?? []).map((f) => f.total));
+  const menu = data?.funnel?.find((f) => f.key === "funnel_menu_shown");
+  const order = data?.funnel?.find((f) => f.key === "order_created");
+  const conv = menu && menu.unique > 0 ? Math.round(((order?.unique || 0) / menu.unique) * 100) : 0;
+  const shown = (data?.funnel ?? []).filter((f) => f.total > 0);
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <p className="text-sm font-semibold">Embudo del bot del portal</p>
+        <select value={days} onChange={(e) => setDays(Number(e.target.value))} className="text-[11px] rounded-md border border-border bg-background px-1.5 py-1">
+          <option value={7}>7 días</option>
+          <option value={30}>30 días</option>
+          <option value={90}>90 días</option>
+        </select>
+      </div>
+      {loading ? (
+        <div className="h-24 rounded-lg bg-muted animate-pulse" />
+      ) : !data || shown.length === 0 ? (
+        <p className="text-[11px] text-muted-foreground">Sin datos de telemetría del portal todavía (wa_bot_events vacía o wabot sin desplegar este build).</p>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-center">
+            <div className="rounded-lg bg-muted/40 p-2"><p className="text-[10px] text-muted-foreground">Conversaciones</p><p className="text-base font-bold">{menu?.unique ?? 0}</p></div>
+            <div className="rounded-lg bg-muted/40 p-2"><p className="text-[10px] text-muted-foreground">Eligió tienda</p><p className="text-base font-bold">{data?.funnel?.find((f) => f.key === "funnel_store_selected")?.unique ?? 0}</p></div>
+            <div className="rounded-lg bg-muted/40 p-2"><p className="text-[10px] text-muted-foreground">Pedido creado</p><p className="text-base font-bold">{order?.unique ?? 0}</p></div>
+            <div className="rounded-lg bg-muted/40 p-2"><p className="text-[10px] text-muted-foreground">Conversión</p><p className="text-base font-bold">{conv}%</p></div>
+          </div>
+          <div className="space-y-1">
+            {shown.map((f) => (
+              <div key={f.key} className="flex items-center gap-1.5 text-[11px]">
+                <span className="w-36 shrink-0 text-muted-foreground truncate">{f.label}</span>
+                <div className="flex-1 h-2 rounded bg-muted overflow-hidden">
+                  <div className="h-full bg-primary rounded" style={{ width: `${(f.total / max) * 100}%` }} />
+                </div>
+                <span className="w-12 text-right tabular-nums">{f.total}{f.unique !== f.total ? ` (${f.unique})` : ""}</span>
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-muted-foreground">Números = eventos totales (usuarios únicos entre paréntesis cuando difiere).</p>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function AdminBotsPage() {
   const [bots, setBots] = useState<BotRow[]>([]);
   const [llm, setLlm] = useState<LlmInfo>(null);
@@ -256,6 +317,9 @@ export default function AdminBotsPage() {
           <p className={`text-lg font-semibold ${enfriando.length > 0 ? "text-amber-600" : ""}`}>🧊 {enfriando.length}</p>
         </div>
       </div>
+
+      {/* Embudo del bot del portal */}
+      <PortalFunnel />
 
       {/* Alertas */}
       {conAlerta.length > 0 && (

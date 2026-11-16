@@ -265,6 +265,19 @@ export async function POST(request: Request) {
     );
   }
 
+  // Las fotos son URLs servidas desde /uploads/ (absolutas o relativas). Se
+  // rechazan las URLs TEMPORALES del navegador ("blob:...", "data:..."): no
+  // existen en el servidor, así que quedaban guardadas en la base y la foto
+  // se veía rota en el micrositio y sin foto en la tarjeta de WhatsApp.
+  function normalizeImageUrl(raw: unknown): { value: string | null } | { error: string } {
+    const s = typeof raw === "string" ? raw.trim() : "";
+    if (!s) return { value: null };
+    if (/^(blob:|data:|javascript:|vbscript:|file:)/i.test(s)) {
+      return { error: "La foto tiene que ser una imagen subida (no se puede guardar una URL temporal)" };
+    }
+    return { value: s };
+  }
+
   const payload: Record<string, unknown> = {};
   if (store_name !== undefined) payload.store_name = store_name;
   if (neighborhood !== undefined) payload.neighborhood = neighborhood;
@@ -273,8 +286,16 @@ export async function POST(request: Request) {
   if (address !== undefined) payload.address = address || null;
   if (hours !== undefined) payload.hours = hours || null;
   if (description !== undefined) payload.description = description || null;
-  if (image_url !== undefined) payload.image_url = image_url || null;
-  if (logo_url !== undefined) payload.logo_url = logo_url || null;
+  if (image_url !== undefined) {
+    const r = normalizeImageUrl(image_url);
+    if ("error" in r) return NextResponse.json({ error: r.error }, { status: 400 });
+    payload.image_url = r.value;
+  }
+  if (logo_url !== undefined) {
+    const r = normalizeImageUrl(logo_url);
+    if ("error" in r) return NextResponse.json({ error: r.error }, { status: 400 });
+    payload.logo_url = r.value;
+  }
   if (category !== undefined) payload.category = category || "otras";
   if (vertical !== undefined) payload.vertical = resolvedVertical;
   if (store_name !== undefined) payload.slug = existingSlug || slugify(store_name);

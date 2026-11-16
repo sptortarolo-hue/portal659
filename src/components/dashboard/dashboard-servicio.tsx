@@ -57,7 +57,7 @@ type Props = {
   reload: () => void;
   saveVendor: (data: Record<string, unknown>) => Promise<void>;
   uploading: boolean;
-  onCrop: (target: "cover" | "logo" | "offer", src?: string) => void;
+  onCrop: (target: "cover" | "logo" | "offer", src?: string, onDone?: (file: File) => void) => void;
   /** Sub-vista a mostrar (el dashboard switchea por tab). Sin section = todo (legacy). */
   section?: "hoy" | "presupuestos" | "turnos" | "cobros" | "ficha" | "reviews" | "history" | "clientes" | "galeria" | "taller";
   /** Navegación a otra sub-vista (botones del Hoy). */
@@ -1484,7 +1484,12 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                   const src = URL.createObjectURL(f);
                   setStoreFile(f);
                   setStorePreview(src);
-                  onCrop("cover", src);
+                  // El recorte devuelve el archivo ya recortado: se sube ese
+                  // (no el original) al guardar.
+                  onCrop("cover", src, (cropped) => {
+                    setStoreFile(cropped);
+                    setStorePreview(URL.createObjectURL(cropped));
+                  });
                 }
               }}
             />
@@ -1503,7 +1508,10 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                   const src = URL.createObjectURL(f);
                   setLogoFile(f);
                   setLogoPreview(src);
-                  onCrop("logo", src);
+                  onCrop("logo", src, (cropped) => {
+                    setLogoFile(cropped);
+                    setLogoPreview(URL.createObjectURL(cropped));
+                  });
                 }
               }}
             />

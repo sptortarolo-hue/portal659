@@ -1,4 +1,5 @@
 import { queryOne, queryMany } from "@/lib/db";
+import { shareVersionFor } from "@/lib/share-version";
 import { queryEffectiveModifiers } from "@/lib/modifier-rules";
 import { getServiceQuota } from "@/lib/service-quota";
 import { resolveVendorPlan, vendorSellsOnline } from "@/lib/plans";
@@ -123,11 +124,15 @@ export async function generateMetadata({
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://www.portal659.com.ar";
   // Tarjeta generada (banner + logo + leyenda) para que WhatsApp la muestre al pegar el link.
   // En preview se propaga el token para que la imagen también salga.
-  const previewTokenParam =
-    preview && typeof sp?.preview === "string" && sp.preview !== "1"
-      ? `?preview=${encodeURIComponent(sp.preview)}`
-      : "";
-  const shareImage = `${siteUrl}/og/tienda/${slug}.jpg${previewTokenParam}`;
+  const previewToken =
+    preview && typeof sp?.preview === "string" && sp.preview !== "1" ? sp.preview : "";
+  // Versión de la imagen = huella de las fotos del local. Si el comercio cambia
+  // la portada, la URL cambia: WhatsApp cachea la preview POR URL y seguía
+  // mostrando la tarjeta vieja (la que se generó sin foto) para siempre.
+  const shareVersion = shareVersionFor(vendor.image_url, vendor.logo_url);
+  const shareQuery = new URLSearchParams({ v: shareVersion });
+  if (previewToken) shareQuery.set("preview", previewToken);
+  const shareImage = `${siteUrl}/og/tienda/${slug}.jpg?${shareQuery.toString()}`;
 
   const vis = vendor.visibility ?? (vendor.visible ? "public" : "hidden");
   return {

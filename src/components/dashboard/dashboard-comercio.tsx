@@ -60,7 +60,7 @@ type Props = {
   reload: () => void;
   saveVendor: (data: Record<string, unknown>) => Promise<void>;
   uploading: boolean;
-  onCrop: (target: "cover" | "logo" | "offer", src?: string) => void;
+  onCrop: (target: "cover" | "logo" | "offer", src?: string, onDone?: (file: File) => void) => void;
   /** Sección de Config controlada por la página (sidebar única). */
   configSectionId?: string;
   onConfigSectionId?: (id: string) => void;
@@ -307,8 +307,13 @@ export default function DashboardComercio({
     if (f) {
       const src = URL.createObjectURL(f);
       setStoreFile(f);
-      onCrop("cover", src);
       setStorePreview(src);
+      // El recorte devuelve el archivo ya recortado: se sube ese (no el
+      // original) al guardar.
+      onCrop("cover", src, (cropped) => {
+        setStoreFile(cropped);
+        setStorePreview(URL.createObjectURL(cropped));
+      });
     }
   }
 
@@ -317,8 +322,11 @@ export default function DashboardComercio({
     if (f) {
       const src = URL.createObjectURL(f);
       setLogoFile(f);
-      onCrop("logo", src);
       setLogoPreview(src);
+      onCrop("logo", src, (cropped) => {
+        setLogoFile(cropped);
+        setLogoPreview(URL.createObjectURL(cropped));
+      });
     }
   }
 

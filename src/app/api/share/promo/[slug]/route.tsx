@@ -1,12 +1,11 @@
 import { ImageResponse } from "next/og";
 import type { ReactElement } from "react";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import { NextResponse } from "next/server";
 import { queryMany, queryOne } from "@/lib/db";
 import { getSiteUrl } from "@/lib/site-url";
 import { isPreviewTokenValid } from "@/lib/preview";
 import { discountOf, isValidPromo, promoMoney as money } from "@/lib/promo";
+import { loadImageBuffer, toJpegDataUri } from "@/lib/share-image";
 
 export const runtime = "nodejs";
 
@@ -153,90 +152,27 @@ export async function GET(
 
   // Las fotos de /uploads viven en el disco local (UPLOAD_DIR): leerlas
   // directo evita el hairpin VPS→Cloudflare→VPS que colgaba los renders.
-  function localUploadPath(url: string | null): string | null {
-    if (!url) return null;
-    try {
-      const site = getSiteUrl().replace(/\/$/, "");
-      let path: string | null = null;
-      if (url.startsWith(`${site}/uploads/`)) path = url.slice(site.length);
-      else if (url.startsWith("/uploads/")) path = url;
-      if (!path || path.includes("..")) return null;
-      const root = process.env.UPLOAD_DIR || join(process.cwd(), "uploads");
-      return join(root, path.replace(/^\/uploads\//, ""));
-    } catch {
-      return null;
-    }
-  }
-
-  // Descarga completa con timeout TOTAL (incluye el cuerpo: antes el abort
-  // solo cubría el inicio y una descarga trabada colgaba el pedido).
-  async function fetchBuffer(
-    url: string,
-    ms: number
-  ): Promise<{ buf: Buffer | null; contentType: string | null }> {
-    const local = localUploadPath(url);
-    if (local) {
-      try {
-        const buf = await readFile(local);
-        if (buf.length === 0) return { buf: null, contentType: null };
-        const ext = local.split(".").pop()?.toLowerCase() || "";
-        const contentType =
-          ext === "png"
-            ? "image/png"
-            : ext === "webp"
-              ? "image/webp"
-              : ext === "gif"
-                ? "image/gif"
-                : ext === "avif"
-                  ? "image/avif"
-                  : "image/jpeg";
-        return { buf, contentType };
-      } catch {
-        /* cae a remoto */
-      }
-    }
-    try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(ms) });
-      if (!res.ok) return { buf: null, contentType: null };
-      const buf = Buffer.from(await res.arrayBuffer());
-      if (buf.length === 0) return { buf: null, contentType: null };
-      return { buf, contentType: res.headers.get("content-type") };
-    } catch {
-      return { buf: null, contentType: null };
-    }
-  }
-
+  // Todo pasa por @/lib/share-image (mismo camino que la tarjeta de tienda):
+  // la foto se normaliza SIEMPRE a JPEG embebido, porque resvg no dibuja
+  // WebP/AVIF (los deja en blanco sin error).
   async function probeImage(
     url: string | null
   ): Promise<{ ok: boolean; contentType: string | null; bytes: number }> {
     if (!url) return { ok: true, contentType: null, bytes: 0 };
-    const { buf, contentType } = await fetchBuffer(url, 8000);
-    if (!buf) return { ok: false, contentType: null, bytes: 0 };
-    return { ok: true, contentType, bytes: buf.length };
+    const img = await loadImageBuffer(url, 8000);
+    if (!img) return { ok: false, contentType: null, bytes: 0 };
+    return { ok: true, contentType: img.contentType, bytes: img.buf.length };
   }
 
-  // Devuelve la URL a usar en el render: la remota tal cual si ya es
-  // JPEG/PNG (resvg los decodifica bien), o JPEG embebido en data URI si
-  // es WebP/AVIF/GIF (resvg los deja en blanco sin error). Null si inusable.
+  // Devuelve la foto lista para el render: JPEG embebido (data URI) con el
+  // ancho pedido. Null si no se pudo leer o decodificar.
   async function resolvePhoto(url: string | null, width: number): Promise<string | null> {
     if (!url) return null;
-    const { buf, contentType } = await fetchBuffer(url, 8000);
-    if (!buf) return null;
-    const ct = (contentType || "").toLowerCase();
-    if (ct.includes("jpeg") || ct.includes("jpg") || ct.includes("png")) return url;
-    try {
-      const sharp = (await import("sharp")).default;
-      const out = await sharp(buf)
-        .rotate()
-        .resize({ width, withoutEnlargement: true })
-        .flatten({ background: "#ffffff" })
-        .jpeg({ quality: 82, mozjpeg: true })
-        .toBuffer();
-      return `data:image/jpeg;base64,${out.toString("base64")}`;
-    } catch (e) {
-      console.error("[share-promo] no se pudo normalizar foto", { url });
-      return null;
-    }
+    const img = await loadImageBuffer(url, 8000);
+    if (!img) return null;
+    const dataUri = await toJpegDataUri(img.buf, { width });
+    if (!dataUri) console.error("[share-promo] no se pudo normalizar foto", { url });
+    return dataUri;
   }
 
   // Tarjeta con foto manual del comercio (o banner): fondo foto + degradé,

@@ -10,13 +10,19 @@ import { useEffect, useState } from "react";
  * mención al menú, que está oculto).
  * `isService` = rubros sin carta/menú (servicios): se comparte la vidriera
  * con copy de contacto directo.
+ * `version` = huella de la foto del local: si el comercio cambia la foto,
+ * el link cambia y WhatsApp vuelve a leer la página (si no, sigue mostrando
+ * la preview vieja con la foto anterior).
  */
-export function WhatsAppShareButton({ slug, storeName, catalog = false, menuHidden = false, isService = false }: { slug: string; storeName: string; catalog?: boolean; menuHidden?: boolean; isService?: boolean }) {
+export function WhatsAppShareButton({ slug, storeName, catalog = false, menuHidden = false, isService = false, version }: { slug: string; storeName: string; catalog?: boolean; menuHidden?: boolean; isService?: boolean; version?: string }) {
   const [url, setUrl] = useState("");
 
   useEffect(() => {
-    setUrl(`${window.location.origin}/tienda/${slug}${menuHidden || isService ? "" : "?menu=1"}`);
-  }, [slug, menuHidden, isService]);
+    const base = `${window.location.origin}/tienda/${slug}`;
+    const query = menuHidden || isService ? "" : "?menu=1";
+    const v = version ? `${query ? "&" : "?"}v=${version}` : "";
+    setUrl(`${base}${query}${v}`);
+  }, [slug, menuHidden, isService, version]);
 
   const text = menuHidden
     ? `Mirá ${storeName} en Portal 659 🛍️\n${url}`

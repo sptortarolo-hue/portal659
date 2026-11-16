@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { isStoreOpen } from "@/lib/open-hours";
 import { neighborhoodLabel } from "@/lib/json-ld";
 import { rubroLabel, verticalDisplayName } from "@/lib/config";
+import { shareVersionFor } from "@/lib/share-version";
 
 type VendorData = {
   id: string;
@@ -255,7 +256,7 @@ export function StoreHeader({
             <div className="flex items-center gap-2 mt-4">
               <div className="flex items-center gap-2 ml-auto">
                 <FavoriteButton vendorId={v.id} />
-                <WhatsAppShareButton slug={v.slug} storeName={v.store_name} catalog={isCatalog} menuHidden={menuHidden} isService={isService} />
+                <WhatsAppShareButton slug={v.slug} storeName={v.store_name} catalog={isCatalog} menuHidden={menuHidden} isService={isService} version={shareVersionFor(v.image_url, v.logo_url)} />
                 <VendorShareButton slug={v.slug} storeName={v.store_name} />
               </div>
             </div>

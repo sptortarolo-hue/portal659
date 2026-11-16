@@ -49,6 +49,7 @@ const ImageCropModal = dynamic(
 );
 import { DEFAULT_ZONE } from "@/lib/config";
 import { cartelTarget } from "@/lib/cartel";
+import { shareVersionFor } from "@/lib/share-version";
 import VendorSidebar from "@/components/vendor/vendor-sidebar";
 import { configSectionStatus as getConfigSectionStatus, sectionsForVertical, CONFIG_SECTION_GROUPS, configSectionLabel, configSectionIcon } from "@/components/dashboard/config-nav";
 import { StatusDot, configEnterState } from "@/components/dashboard/config-sections";
@@ -412,6 +413,9 @@ function VendorDashboardInner() {
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [shareTarget, setShareTarget] = useState<"tienda" | "carta">("tienda");
+  // Cache-buster de la tarjeta OG: se renueva al abrir el modal para ver la
+  // tarjeta recién generada (la que verá WhatsApp), no la cacheada.
+  const [cardPreviewKey, setCardPreviewKey] = useState(0);
   const [cropOpen, setCropOpen] = useState(false);
   const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
   const [cropAspect, setCropAspect] = useState(3 / 1);
@@ -556,11 +560,17 @@ function VendorDashboardInner() {
     const fd = new FormData();
     fd.append("file", file);
     fd.append("folder", folder);
-    const res = await fetch("/api/vendor/upload", { method: "POST", body: fd });
-    const data = await res.json();
-    return data.url || null;
+    try {
+      const res = await fetch("/api/vendor/upload", { method: "POST", body: fd });
+      const data = await res.json().catch(() => ({}));
+      return data.url || null;
+    } catch {
+      return null;
+    }
   }
-
+  // Callback del recorte: quien abrió el crop recibe el archivo YA recortado
+  // (no una URL blob:, que no existe en el servidor).
+  const cropDoneRef = useRef<((file: File) => void) | null>(null);
   const [ordersLoading, setOrdersLoading] = useState(false);
 
   const loadOrdersOnly = useCallback(async () => {
@@ -1175,6 +1185,7 @@ function VendorDashboardInner() {
     if (!vendor?.slug) return;
     setCopied(false);
     setQrDataUrl(null);
+    setCardPreviewKey(Date.now());
     setShareOpen(true);
     try {
       const { default: QRCode } = await import("qrcode");
@@ -1211,22 +1222,34 @@ function VendorDashboardInner() {
     } catch { /* noop */ }
   }, [vendor?.slug, shareTarget]);
 
-  const openCrop = useCallback((target: "cover" | "logo" | "offer", src?: string) => {
+  const openCrop = useCallback((target: "cover" | "logo" | "offer", src?: string, onDone?: (file: File) => void) => {
     setCropTarget(target);
     if (target === "cover") { setCropAspect(3 / 1); setCropTitle("Ajustá la foto del comercio"); }
     else if (target === "logo") { setCropAspect(1); setCropTitle("Ajustá el logo"); }
     else { setCropAspect(16 / 9); setCropTitle(vendor?.vertical === "moda" || vendor?.vertical === "comercio" ? "Ajustá la foto del producto" : "Ajustá la foto del plato"); }
     if (src) setCropImageSrc(src);
+    // Callback de quien abrió el recorte: recibe el archivo YA recortado para
+    // que el panel lo suba al guardar (antes se guardaba la URL blob: del
+    // preview, que no existe en el servidor → foto rota en el micrositio y
+    // tarjeta de WhatsApp sin la foto del local).
+    cropDoneRef.current = onDone || null;
     setCropOpen(true);
   }, [vendor?.vertical]);
 
   const handleCropComplete = useCallback((file: File, previewUrl: string) => {
-    if (cropTarget === "cover" || cropTarget === "logo") {
-      saveVendor({ [cropTarget === "cover" ? "image_url" : "logo_url"]: previewUrl });
-    }
+    const done = cropDoneRef.current;
+    cropDoneRef.current = null;
     setCropOpen(false);
     if (cropImageSrc) URL.revokeObjectURL(cropImageSrc);
-  }, [cropTarget, cropImageSrc, saveVendor]);
+    if (done) {
+      done(file);
+      setMsg(
+        cropTarget === "logo"
+          ? "Logo recortado. Tocá Guardar para aplicar el cambio."
+          : "Foto recortada. Tocá Guardar para aplicar el cambio."
+      );
+    }
+  }, [cropImageSrc, cropTarget, setMsg]);
 
   // Estos hooks van ANTES de cualquier `return` temprano: si un hook corre en
   // algunos renders y en otros no, React tira error #310 y cae el dashboard.
@@ -1263,6 +1286,10 @@ function VendorDashboardInner() {
     setShareTarget(shareToTienda ? "tienda" : "carta");
   }, [shareToTienda]);
   const sharePath = vendor?.slug ? (shareToTienda ? `/tienda/${vendor.slug}` : `/carta/${vendor.slug}`) : "";
+  // Huella de la foto del local: si el comercio cambia la portada, el link
+  // que se comparte cambia y WhatsApp vuelve a leer la página (cachea la
+  // preview por URL: si no, seguía viendo la tarjeta vieja).
+  const shareVersion = shareVersionFor(vendor?.image_url, vendor?.logo_url);
   // Estética vende productos sin cocina: sus pedidos usan el flow retail
   // ("Empaquetando", etc.) aunque no sea vertical retail.
   const orderFlowRetail = isRetail || isHybrid;
@@ -2728,12 +2755,12 @@ function VendorDashboardInner() {
               </button>
             </div>
             {qrDataUrl ? <img src={qrDataUrl} alt="QR" className="mx-auto w-48 h-48 mb-4" /> : <div className="mx-auto w-48 h-48 mb-4 bg-skeleton rounded-lg" />}
-            <p className="text-xs text-muted-foreground break-all mb-4">{window.location.origin}{shareTarget === "tienda" ? `/tienda/${vendor.slug}` : `/carta/${vendor.slug}`}</p>
+            <p className="text-xs text-muted-foreground break-all mb-4">{window.location.origin}{shareTarget === "tienda" ? `/tienda/${vendor.slug}?v=${shareVersion}` : `/carta/${vendor.slug}`}</p>
             <div className="space-y-2">
               <a
                 href={`https://wa.me/?text=${encodeURIComponent(
                   shareTarget === "tienda"
-                    ? `Mir\u00e1 a ${vendor.store_name} en Portal 659 \ud83d\uded2\n${window.location.origin}/tienda/${vendor.slug}\n\nEscribiles directo por WhatsApp \u2014 0% comisi\u00f3n`
+                    ? `Mir\u00e1 a ${vendor.store_name} en Portal 659 \ud83d\uded2\n${window.location.origin}/tienda/${vendor.slug}?v=${shareVersion}\n\nEscribiles directo por WhatsApp \u2014 0% comisi\u00f3n`
                     : `Mir\u00e1 ${isRetail ? "el cat\u00e1logo" : "la carta"} de ${vendor.store_name} en Portal 659 ${isRetail ? "\ud83d\uded2" : "\ud83d\udccb"}\n${window.location.origin}/carta/${vendor.slug}`
                 )}`}
                 target="_blank"
@@ -2742,6 +2769,16 @@ function VendorDashboardInner() {
               >
                 {shareTarget === "tienda" ? "Compartir tienda" : "Compartir cat\u00e1logo"}
               </a>
+              {shareTarget === "tienda" && (
+                <a
+                  href={`/og/tienda/${vendor.slug}.jpg?cb=${cardPreviewKey}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block w-full rounded-xl border border-border bg-background text-sm font-medium py-2.5 hover:bg-muted transition-colors"
+                >
+                  🖼️ Ver la tarjeta de WhatsApp
+                </a>
+              )}
               <div className="grid grid-cols-2 gap-2">
                 {qrDataUrl && (
                   <a

@@ -92,7 +92,7 @@ type Props = {
   reload: () => void;
   saveVendor: (data: Record<string, unknown>) => Promise<void>;
   uploading: boolean;
-  onCrop: (target: "cover" | "logo" | "offer", src?: string) => void;
+  onCrop: (target: "cover" | "logo" | "offer", src?: string, onDone?: (file: File) => void) => void;
   /** Sección de Config controlada por la página (sidebar única). */
   configSectionId?: string;
   onConfigSectionId?: (id: string) => void;
@@ -351,7 +351,12 @@ export default function DashboardEstetica({
     if (f) {
       const src = URL.createObjectURL(f);
       setStoreFile(f);
-      onCrop("cover", src);
+      onCrop("cover", src, (cropped) => {
+        // El recorte devuelve el archivo ya recortado: se sube ese (no el
+        // original) al guardar.
+        setStoreFile(cropped);
+        setStorePreview(URL.createObjectURL(cropped));
+      });
     }
   }
 
@@ -360,7 +365,10 @@ export default function DashboardEstetica({
     if (f) {
       const src = URL.createObjectURL(f);
       setLogoFile(f);
-      onCrop("logo", src);
+      onCrop("logo", src, (cropped) => {
+        setLogoFile(cropped);
+        setLogoPreview(URL.createObjectURL(cropped));
+      });
     }
   }
 

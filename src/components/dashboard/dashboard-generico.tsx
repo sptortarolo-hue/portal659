@@ -48,7 +48,7 @@ type Props = {
   reload: () => void;
   saveVendor: (data: Record<string, unknown>) => Promise<void>;
   uploading: boolean;
-  onCrop: (target: "cover" | "logo" | "offer", src?: string) => void;
+  onCrop: (target: "cover" | "logo" | "offer", src?: string, onDone?: (file: File) => void) => void;
   isRetail?: boolean;
 };
 
@@ -221,8 +221,8 @@ export default function DashboardGenerico({
 
       <CollapsibleSection icon="📸" title="Fotos">
         <div className="space-y-3">
-          <div><Label>Foto del comercio</Label><Input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0] || null; if (f) { const src = URL.createObjectURL(f); setStoreFile(f); setStorePreview(src); onCrop("cover", src); } }} />{storePreview && <img src={storePreview} alt="Vista previa" className="mt-2 h-24 w-full object-cover rounded-lg" />}</div>
-          <div><Label>Logo</Label><Input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0] || null; if (f) { const src = URL.createObjectURL(f); setLogoFile(f); setLogoPreview(src); onCrop("logo", src); } }} />{logoPreview && <img src={logoPreview} alt="Logo" className="mt-2 h-16 w-16 object-cover rounded-full border" />}</div>
+          <div><Label>Foto del comercio</Label><Input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0] || null; if (f) { const src = URL.createObjectURL(f); setStoreFile(f); setStorePreview(src); /* el recorte devuelve el archivo ya recortado: se sube ese al guardar */ onCrop("cover", src, (cropped) => { setStoreFile(cropped); setStorePreview(URL.createObjectURL(cropped)); }); } }} />{storePreview && <img src={storePreview} alt="Vista previa" className="mt-2 h-24 w-full object-cover rounded-lg" />}</div>
+          <div><Label>Logo</Label><Input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0] || null; if (f) { const src = URL.createObjectURL(f); setLogoFile(f); setLogoPreview(src); onCrop("logo", src, (cropped) => { setLogoFile(cropped); setLogoPreview(URL.createObjectURL(cropped)); }); } }} />{logoPreview && <img src={logoPreview} alt="Logo" className="mt-2 h-16 w-16 object-cover rounded-full border" />}</div>
         </div>
       </CollapsibleSection>
 

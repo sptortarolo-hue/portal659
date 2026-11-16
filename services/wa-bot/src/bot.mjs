@@ -2585,27 +2585,28 @@ async function sendOffers(state, vendor, waId, replies, categoryNorm = null) {
     : offers.filter((o) => o.norm === categoryNorm);
   const shown = chosen.slice(0, 6);
   const catLabel = categoryNorm === "all" ? "" : ` · ${shown[0]?.cat || ""}`;
-  replies.push(`🔥 *Ofertas del día${catLabel}* — ${shown.length} oferta${shown.length > 1 ? "s" : ""}:`);
-  // Primero: imagen por WhatsApp de hasta 3 ofertas (best-effort).
+  // Cada oferta sale UNA sola vez: las primeras 3 con imagen (o con texto, si
+  // no hay imagen/relay), las siguientes como texto (nombre + local + link).
   const client = getClientByVendor(vendor.id);
-  const images = shown.slice(0, 3);
-  for (const o of images) {
-    const caption = `🥟 *${o.product.name}* — $${Number(o.product.price).toLocaleString("es-AR")}\n🏪 ${o.store.store_name}\n🔗 ${config.publicUrl}/tienda/${o.store.slug}`;
+  for (const o of shown) {
+    const caption = `🥟 *${o.product.name}* — $${Number(o.product.price).toLocaleString("es-AR")}\n🏪 ${o.store.store_name}\n🔗 ${config.publicUrl}/tienda/${o.store.slug}#product-${o.product.id}`;
     const imgUrl = o.product.image_url || o.store.logo_url || null;
-    if (client && imgUrl) {
+    if (client && imgUrl && shown.indexOf(o) < 3) {
       try {
         const imgRes = await fetch(imgUrl, { signal: AbortSignal.timeout(8_000) });
         if (imgRes.ok) {
           const buf = Buffer.from(await imgRes.arrayBuffer());
           sendImage(client, waId, buf.toString("base64"), caption);
-          continue; // ya va el texto del caption en la imagen
+          continue; // la oferta ya salió como imagen
         }
       } catch { /* sin imagen: cae al texto */ }
     }
     replies.push(caption);
   }
-  // Después: texto con todas (nombre + local + link directo).
-  replies.push(shown.map((o) => `🥟 *${o.product.name}* — $${Number(o.product.price).toLocaleString("es-AR")} · ${o.store.store_name}\n🔗 ${config.publicUrl}/tienda/${o.store.slug}`).join("\n"));
+  // Si hay más de 3 ofertas, el resto sale listado (no duplicado).
+  if (shown.length > 3) {
+    replies.push("...y " + (shown.length - 3) + " oferta(s) más — escribí el nombre de la tienda para pedir.");
+  }
   replies.push("Escribí el nombre o el número de la tienda para pedir. 🙌");
   replies.push(portalNavFooter());
   state.offers = [];

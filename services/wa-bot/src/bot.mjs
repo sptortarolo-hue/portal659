@@ -674,7 +674,9 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
   state.handoffCount = (state.handoffCount || 0) + 1;
   try { trackEvent(vendor.id, "nlu_not_understood", waId, { text: t }); } catch {}
   if (state.handoffCount >= MAX_PARSE_MISSES) {
-    return handoffHuman(vendor, waId, text, state);
+    const r = await handoffHuman(vendor, waId, text, state);
+    replies.push(...(r.replies || []));
+    return;
   }
   const alts = alternativesText(text, products);
   replies.push(`No te entendí bien. Decime qué querés hacer:\n1️⃣ Ver tiendas abiertas\n2️⃣ Ver todas las tiendas\n3️⃣ ¿Cómo comprar / pagar?\n4️⃣ ¿Tenés un comercio? Sumalo gratis\n5️⃣ Hablar con una persona\nO escribí tu pedido directo, ej: *"2 empanadas de carne y una coca"*.\n${alts ? "\n\n" + alts : ""}${portalNavFooter()}`);
@@ -835,9 +837,9 @@ async function handleStep({ vendor, text, state, replies, waId }) {
       }
       // Si no es número, intentar por nombre (ej: "negra talle M")
       if (!chosenVariant) {
-        const tNorm = normForMatch(t);
+        const tNorm = normalizeEs(t);
         chosenVariant = variants.find((v) => {
-          const vName = `${v.color || ''} ${v.talle || ''}`.toLowerCase().trim();
+          const vNorm = normalizeEs(`${v.color || ""} ${v.talle || ""}`);
           return vNorm === tNorm || vNorm.includes(tNorm) || tNorm.includes(vNorm);
         });
       }
@@ -1096,7 +1098,9 @@ async function handleStep({ vendor, text, state, replies, waId }) {
       state.handoffCount = (state.handoffCount || 0) + 1;
       if (state.handoffCount >= MAX_PARSE_MISSES) {
         state.pendingProduct = null;
-        return handoffHuman(vendor, waId, text, state);
+        const r = await handoffHuman(vendor, waId, text, state);
+        replies.push(...(r.replies || []));
+        return;
       }
       replies.push(pendingProductAsk(state));
       return;
@@ -1185,7 +1189,9 @@ async function handleStep({ vendor, text, state, replies, waId }) {
     state.handoffCount = (state.handoffCount || 0) + 1;
     if (state.handoffCount >= MAX_PARSE_MISSES) {
       state.pendingMods = null;
-      return handoffHuman(vendor, waId, text, state);
+      const r = await handoffHuman(vendor, waId, text, state);
+      replies.push(...(r.replies || []));
+      return;
     }
     const lista = pm.options.join(", ");
     replies.push(`No entendí qué ${pm.group.toLowerCase()} querés. Opciones: ${lista}. Escribí las que querés (ej: "${pm.options.slice(0, 2).join(" y ")}").`);
@@ -1430,7 +1436,9 @@ async function handleStep({ vendor, text, state, replies, waId }) {
   // No entendió la respuesta: repetir las preguntas pendientes (combinadas).
   state.handoffCount = (state.handoffCount || 0) + 1;
   if (state.handoffCount >= MAX_PARSE_MISSES) {
-    return handoffHuman(vendor, waId, text, state);
+    const r = await handoffHuman(vendor, waId, text, state);
+    replies.push(...(r.replies || []));
+    return;
   }
   const alts = alternativesText(t, products);
   replies.push(pendingQuestions(state) + "\n\nNo entendí eso — respondé lo que te pregunto arriba. 🙏" + (alts ? "\n\n" + alts : ""));

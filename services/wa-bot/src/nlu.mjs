@@ -596,11 +596,13 @@ export function parseByRules(message, products) {
   // Nombre suelto: el cliente responde solo su nombre (ej. "Juan Pérez") cuando
   // el bot le preguntó "¿A nombre de quién va el pedido?". Detectamos 2+
   // palabras, sin verbos de pedido, sin método de entrega, sin pago, y sin que
-  // matchee un producto del menú.
+  // matchee un producto del menú. Una sola palabra también vale si tiene
+  // letras (un "1" o "54911000000" NUNCA es un nombre).
   const words = m.split(/\s+/).filter(Boolean);
-  const looksLikeName = words.length >= 1 && words.length <= 5 &&
+  const singleWordName = words.length === 1 && /[a-záéíóúñ]{3,}/i.test(m);
+  const looksLikeName = (words.length >= 2 || singleWordName) &&
     !/(quiero|quería|quisiera|dame|démela|traeme|agregá|agrega|sumá|sumar|mandame|anotate|cargame|me das|me pones|me haces|me traes|me preparas|me cobras|retiro|retirar|envío|envio|delivery|domicilio|despachen|efectivo|transferencia|transferir|cbu|alias|cancelar|ayuda|menu|menú|comercios|hola|chau|ok|si|no)\b/i.test(m) &&
-    (!Array.isArray(products) || !products.some((p) => normLabel(p.name).split(" ").some((w) => w.length >= 3 && normLabel(m).includes(w))));
+    (!Array.isArray(products) || !products.some((p) => normalizeEs(p.name).split(" ").some((w) => w.length >= 3 && normalizeEs(m).includes(w))));
   if (looksLikeName) {
     return { complete: false, items: [], method: null, customerName: m, customerAddress: null, payment: null, note: null };
   }

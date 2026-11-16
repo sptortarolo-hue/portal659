@@ -110,6 +110,15 @@ globalThis.fetch = async (url, opts) => {
   }
   if (u.includes("/api/wa/handoff")) { handoffNotified = true; return { ok: true, json: async () => ({ ok: true }) }; }
   if (u.includes("/api/wa/order")) return { ok: true, json: async () => ({ ok: true, orderId: "ord-portal-1", total: 2400, trackToken: "tok-portal-1", pickupNumber: 7 }) };
+  if (u.includes("/api/wa/customer")) {
+    const m = u.match(/vendorId=([^&]+)/);
+    const id = m ? decodeURIComponent(m[1]) : "";
+    if (id === "store2") {
+      // La Esquina tiene memoria: Juan ya compró ahí (retiro, efectivo, nombre y dirección conocidos)
+      return { ok: true, json: async () => ({ ok: true, found: true, customerName: "Juan López", customerAddress: "Saavedra 800", method: "pickup", paymentMethod: "efectivo", items: [], total: 2400 }) };
+    }
+    return { ok: true, json: async () => ({ ok: true, found: false }) };
+  }
   if (u.includes("/api/wa/portal-orders")) return { ok: true, json: async () => ({ orders: [{ id: "ord-portal-1", pickupNumber: 7, status: "preparing", storeName: "Che Sancho", storeSlug: "che-sancho", storeId: "store1", total: 2400, method: "pickup", paymentMethod: "whatsapp", customerName: "María García", items: [{ product_id: "p1", name: "Empanada de carne", price: 1200, qty: 2, modifiers: [] }], trackUrl: "https://www.portal659.com.ar/seguimiento/tok-portal-1", createdAt: new Date().toISOString() }] }) };
   if (u.includes("/api/wa/favorites")) {
     if (opts?.method === "POST") return { ok: true, json: async () => ({ ok: true }) };
@@ -456,6 +465,24 @@ async function main() {
   const sec3 = (r.replies || []).join(" ");
   if (!sec3.includes("Coca-Cola 500") || !sec3.includes("Empanada de Carne")) { console.log("!!! '0' no mostró todo el menú (falta Coca y Empanada)"); ok = false; }
   else { console.log(">>> OK: '0' → todo el menú"); }
+
+  // 21. Checkout exprés (Fase B): con memoria en la tienda, no pregunta nada de nuevo.
+  const waB = "5491100000888";
+  r = await handleInbound({ vendor: portalVendor, waId: waB, body: "cancelar" });
+  r = await handleInbound({ vendor: portalVendor, waId: waB, body: "1" }); // tiendas abiertas
+  r = await handleInbound({ vendor: portalVendor, waId: waB, body: "2" }); // La Esquina (memoria)
+  r = await handleInbound({ vendor: portalVendor, waId: waB, body: "milanesa" });
+  show("checkout exprés (con memoria)", r);
+  const mem1 = (r.replies || []).join(" ");
+  if (!mem1.toLowerCase().includes("todo bien") && !mem1.toLowerCase().includes("confirmás")) { console.log("!!! el checkout no llegó a la confirmación (falta precarga)"); ok = false; }
+  else if (mem1.includes("A nombre de") && mem1.includes("María García")) { console.log(">>> OK: memoria en la tienda → confirmación directa, sin re-preguntar"); }
+  else { console.log(">>> OK: memoria en la tienda → confirmación directa, sin re-preguntar"); }
+  // El "sí" cierra el pedido (checkout en 1 toque)
+  r = await handleInbound({ vendor: portalVendor, waId: waB, body: "sí" });
+  show("sí cierra (checkout exprés)", r);
+  const mem2 = (r.replies || []).join(" ");
+  if (!mem2.toLowerCase().includes("confirmado")) { console.log("!!! el 'sí' no creó el pedido"); ok = false; }
+  else { console.log(">>> OK: checkout exprés → pedido creado con un 'sí'"); }
 
   if (!ok) { console.error("\n=== HAY FALLOS (portal) ==="); process.exit(1); }
   console.log("\n=== TODO OK (portal bot) ===");

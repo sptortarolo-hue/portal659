@@ -2287,6 +2287,25 @@ async function replyStoreCatalog({ state, vendor, waId, replies, chosen }) {
   return persist(state, vendor.id, waId, replies);
 }
 
+/** Carga la memoria del cliente en ESTA tienda: el último pedido no cancelado
+ *  en 90 días (nombre, dirección, método, pago). No pisa nada cargado, solo
+ *  completa los huecos. Es lo que permite el checkout exprés: el que ya compró
+ *  no contesta preguntas que ya contestó. */
+async function prefetchStoreMemory(state, storeId) {
+  try {
+    if (config.waMemory !== "on") return;
+    const phone = String(state.customerPhone || "");
+    if (!phone || phone.startsWith("lid:")) return;
+    const mem = await fetchCustomer(storeId, phone);
+    if (!mem?.found) return;
+    state.customerName = state.customerName || mem.customerName || null;
+    state.customerAddress = state.customerAddress || mem.customerAddress || null;
+    state.method = state.method || mem.method || null;
+    state.payment = state.payment || mem.paymentMethod || null;
+    try { trackEvent(storeId, "memory_used", undefined, {}); } catch {}
+  } catch { /* best-effort: sin memoria, se siguen pidiendo los datos */ }
+}
+
 async function fetchPortalMenu(q = "") {
   try {
     const url = `${config.appUrl}/api/wa/portal-menu${q ? `?q=${encodeURIComponent(q)}` : ""}`;
@@ -3457,6 +3476,10 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
         if (state.currentVendorDelivery === "retiro") state.method = "pickup";
         else if (state.currentVendorDelivery === "domicilio") state.method = "delivery";
         else state.method = null;
+        // Fase B (checkout exprés): precargar lo que ya sabemos del cliente en
+        // ESTA tienda (nombre, dirección, método, pago) — no pisa nada, solo completa.
+        // El que busca tienda espera milésimas menos y le llegan menos preguntas.
+        await prefetchStoreMemory(state, chosen.id);
         state.portalVendorList = [];
         state.items = [];
         state.step = "idle";
@@ -3511,6 +3534,8 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
         if (state.currentVendorDelivery === "retiro") state.method = "pickup";
         else if (state.currentVendorDelivery === "domicilio") state.method = "delivery";
         else state.method = null;
+        // Fase B (checkout exprés): precargar memoria del cliente en ESTA tienda.
+        await prefetchStoreMemory(state, nameHit.id);
         state.portalVendorList = [];
         state.items = [];
         state.step = "idle";

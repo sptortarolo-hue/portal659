@@ -18,8 +18,8 @@ const MOCK_PORTAL_MENU = {
       next_open_text: null,
       hours: "lun a vie 09:00-13:00 y 17:00-22:00",
       products: [
-        { id: "p1", store_id: "store1", store_name: "Che Sancho", store_slug: "che-sancho", name: "Empanada de carne", price: 1200, category: "Empanadas", modifiers: [], variants: [] },
-        { id: "p2", store_id: "store1", store_name: "Che Sancho", store_slug: "che-sancho", name: "Coca-Cola 500ml", price: 1000, category: "Bebidas", modifiers: [], variants: [] },
+        { id: "p1", store_id: "store1", store_name: "Che Sancho", store_slug: "che-sancho", name: "Empanada de carne", price: 1200, category: "Empanadas", modifiers: [], variants: [], image_url: "https://www.portal659.com.ar/uploads/test-empanada.jpg", featured_today: true },
+        { id: "p2", store_id: "store1", store_name: "Che Sancho", store_slug: "che-sancho", name: "Coca-Cola 500ml", price: 1000, category: "Bebidas", modifiers: [], variants: [], image_url: null, featured_today: false },
       ],
     },
     {
@@ -349,6 +349,31 @@ async function main() {
   if (!err.includes("No pude cargar el menú")) { console.log("!!! al fallar el menú no avisó del error"); ok = false; }
   else if (err.includes("no tiene productos") || err.includes("no tiene catálogo")) { console.log("!!! al fallar el menú mintió 'sin catálogo'"); ok = false; }
   else { console.log(">>> OK: menú caído → aviso honesto (no 'sin catálogo')"); }
+
+  // 18. Ficha de producto (Fase A): número → ficha → cantidad directa al carrito.
+  const { getState } = await import("./src/state.mjs");
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "1" }); // tiendas abiertas
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "1" }); // Che Sancho
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "1" }); // ficha Empanada
+  show("ficha producto 1", r);
+  const f1 = (r.replies || []).join(" ");
+  if (!f1.includes("Empanada de carne")) { console.log("!!! la ficha no abrió el producto"); ok = false; }
+  else if (!f1.includes("Agregar al carrito")) { console.log("!!! la ficha no ofreció agregar"); ok = false; }
+  else if (!f1.includes("🔥")) { console.log("!!! la ficha no marcó la oferta del día"); ok = false; }
+  else { console.log(">>> OK: ficha (Empanada, oferta del día 🔥, precio)"); }
+  // cantidad directa desde la ficha
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "2" });
+  const stFicha = await getState(portalVendor.id, wa);
+  const emp = (stFicha?.items || []).find((i) => String(i.name || "").includes("Empanada"));
+  if (!emp || Number(emp.qty) !== 2) { console.log("!!! la cantidad directa (2) no se agregó a la ficha"); ok = false; }
+  else { console.log(">>> OK: '2' en la ficha agrega 2 unidades al carrito"); }
+  // volver desde la ficha → reimprime el catálogo
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "volver" });
+  show("volver al catálogo", r);
+  const f4 = (r.replies || []).join(" ");
+  if (!f4.includes("Empanada") || !f4.includes("$1.200")) { console.log("!!! 'volver' no volvió al catálogo"); ok = false; }
+  else { console.log(">>> OK: 'volver' reimprime el catálogo"); }
 
   if (!ok) { console.error("\n=== HAY FALLOS (portal) ==="); process.exit(1); }
   console.log("\n=== TODO OK (portal bot) ===");

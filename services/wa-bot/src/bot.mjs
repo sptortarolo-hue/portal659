@@ -396,6 +396,65 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
   // "Uy, hubo un error" EN LOOP: el cliente contestaba el "¿sí o no?" y el
   // bot se trababa para siempre (la causa del "no llego a hacer un pedido").
   const t = text.trim();
+  // — Ficha de producto pendiente: una respuesta inline (cantidad o "volver") —
+  if (state.pendingDetail) {
+    const pd = state.pendingDetail;
+    if (/^(volver|seguir|menu|menú|otro|atrás)$/i.test(t)) {
+      state.pendingDetail = null;
+      const products = await getMenu(vendor.id);
+      replies.push(`Menú de *${state.currentVendorName || "el comercio"}*:`);
+      replies.push(portalCatalogText(products.slice(0, 20)));
+      replies.push("Decime el número del producto que quieras, o mandame tu pedido directo.");
+      replies.push(portalNavFooter());
+      return await persist(state, vendor.id, waId, replies);
+    }
+    if (/^(1|agrega|agregar|agregá|suma|sumar|sumo|si|sí|dale|ok|va|listo)$/i.test(t)) {
+      return await pendingDetailAdd(state, vendor, waId, replies, 1);
+    }
+    const qm = t.match(/^(\d{1,2})$/);
+    if (qm) return await pendingDetailAdd(state, vendor, waId, replies, Math.min(99, Math.max(1, Number(qm[1]))));
+    replies.push(`¿Qué cantidad de *${pd.name}* querés? Mandame un número (ej: *2*) o *volver* para seguir viendo el menú.`);
+    replies.push(portalNavFooter());
+    return await persist(state, vendor.id, waId, replies);
+  }
+  // — Número sobre el catálogo de la tienda (1..N): abrir la ficha del producto —
+  if (state.currentVendorId && Array.isArray(state.catalogSeen) && state.catalogSeen.length) {
+    const bm = t.match(/^(\d{1,2})$/);
+    if (bm && Date.now() - Number(state.catalogSeenAt || 0) < 10 * 60 * 1000) {
+      const n = Number(bm[1]);
+      if (n >= 1 && n <= state.catalogSeen.length) {
+        const products = await getMenu(vendor.id);
+        const p = products.find((x) => String(x.id) === String(state.catalogSeen[n - 1]));
+        if (p) {
+          state.pendingDetail = { offerId: p.id, name: p.name };
+          state.welcomed = true;
+          // Foto best-effort por WhatsApp (si la tiene y el relay está conectado).
+          const client = getClientByVendor(vendor.id);
+          if (client && p.image_url) {
+            try {
+              const imgRes = await fetch(p.image_url, { signal: AbortSignal.timeout(8_000) });
+              if (imgRes.ok) {
+                const buf = Buffer.from(await imgRes.arrayBuffer());
+                sendImage(client, waId, buf.toString("base64"), `🥟 *${p.name}* — $${Number(p.price).toLocaleString("es-AR")}`);
+              }
+            } catch { /* sin foto: sigue el texto */ }
+          }
+          const lines = [];
+          lines.push(`🥟 *${p.name}* — $${Number(p.price).toLocaleString("es-AR")}${p.featured_today ? "  🔥 Oferta del día" : ""}`);
+          if (p.category) lines.push(`🍽️ ${p.category}`);
+          if (p.description) lines.push(p.description);
+          if (Array.isArray(p.variants) && p.variants.length > 0) lines.push(`\n🎨 ${p.variants.length} variante${p.variants.length > 1 ? "s" : ""} (te pregunto al agregar)`);
+          if (Array.isArray(p.modifiers) && p.modifiers.length > 0) lines.push("➕ Tiene extras (los pregunto también)");
+          lines.push("");
+          lines.push("1️⃣ Agregar al carrito");
+          lines.push("Para seguir viendo el menú, escribí *volver*.");
+          lines.push("O decime la cantidad directo (ej: *2*) 🛒");
+          replies.push(lines.join("\n"));
+          return await persist(state, vendor.id, waId, replies);
+        }
+      }
+    }
+  }
   // — "¿Lo de siempre?" (re-pedido con la memoria del cliente) —
   // Se responde a "sí"/"no" aunque no sea un saludo.
   if (state._awaitingReorder) {
@@ -680,6 +739,33 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
   }
   const alts = alternativesText(text, products);
   replies.push(`No te entendí bien. Decime qué querés hacer:\n1️⃣ Ver tiendas abiertas\n2️⃣ Ver todas las tiendas\n3️⃣ ¿Cómo comprar / pagar?\n4️⃣ ¿Tenés un comercio? Sumalo gratis\n5️⃣ Hablar con una persona\nO escribí tu pedido directo, ej: *"2 empanadas de carne y una coca"*.\n${alts ? "\n\n" + alts : ""}${portalNavFooter()}`);
+}
+
+/** Agrega el producto de la ficha al carrito. Si tiene variantes, pregunta
+ *  primero (la mecánica pendingVariant ya existe). */
+async function pendingDetailAdd(state, vendor, waId, replies, qty) {
+  const pd = state.pendingDetail;
+  const products = await getMenu(vendor.id);
+  const p = products.find((x) => String(x.id) === String(pd.offerId));
+  if (!p) {
+    state.pendingDetail = null;
+    replies.push("Ese producto ya no está disponible. Escribí *comercios* o *menú* para ver el menú de nuevo.");
+    replies.push(portalNavFooter());
+    return await persist(state, vendor.id, waId, replies);
+  }
+  state.pendingDetail = null;
+  state.welcomed = true;
+  // Variantes primero: preguntar (qty conservada).
+  if (Array.isArray(p.variants) && p.variants.length > 0) {
+    if (askVariant(state, p, replies)) {
+      state.pendingVariant.qty = qty;
+      return await persist(state, vendor.id, waId, replies);
+    }
+  }
+  mergeItems(state, [{ offerId: p.id, name: p.name, qty, modifiers: [] }], vendor.id);
+  if (maybeAskRequiredMods(state, products, replies)) return;
+  advanceAndAsk(state, vendor, replies);
+  return;
 }
 
 // ———————————————————————————————————————————————————————————————————————————
@@ -1782,9 +1868,9 @@ function mergeItems(state, newItems, vendorId) {
     if (existing) existing.qty = Math.max(1, Number(existing.qty || 0) + it.qty);
     else {
       state.items.push({ name: it.name, offerId: it.offerId, variantId: it.variantId, qty: it.qty, unit: it.unit, weightKg: it.weightKg, modifiers: it.modifiers, comboMembers: it.comboMembers, note: it.note });
-      // Funnel: ítem agregado al carrito
+      // aggregate: ítem agregado al carrito (waId no está al alcance acá)
       try {
-        trackEvent(vendorId, "funnel_item_added", waId, { offerId: it.offerId, name: it.name, qty: it.qty });
+        trackEvent(vendorId, "funnel_item_added", undefined, { offerId: it.offerId, name: it.name, qty: it.qty });
       } catch {}
     }
   }
@@ -2119,7 +2205,10 @@ async function replyStoreCatalog({ state, vendor, waId, replies, chosen }) {
     }
     return persist(state, vendor.id, waId, replies);
   }
-  replies.push(products.slice(0, 20).map((p, i) => `${i + 1}) ${p.name} — $${p.price}`).join("\n"));
+  const catalog = products.slice(0, 20);
+  state.catalogSeen = catalog.map((p) => String(p.id));
+  state.catalogSeenAt = Date.now();
+  replies.push(portalCatalogText(catalog));
   const link = slug ? `\nMirá el menú con fotos: ${storeLink}` : "";
   replies.push(`Mandame tu pedido (ej: "2 empanadas de carne y una coca").${link}`);
   replies.push(portalNavFooter());
@@ -2284,7 +2373,18 @@ async function retrocederPortal(state, vendor, replies, waId) {
       return await persist(state, vendor.id, waId, replies);
 
     default:
-      // menu, open_stores, all_stores o null → ir al menú principal
+      // Sin un portalStep claro: si hay tienda elegida, "volver" reimprime SU
+      // catálogo (antes: saltaba a la portada y perdía la tienda en el camino).
+      if (state.currentVendorId) {
+        const products = await getMenu(state.currentVendorId).catch(() => []);
+        state.portalStep = null;
+        replies.push(`Menú de *${state.currentVendorName || "el comercio"}*:`);
+        replies.push(products.length ? portalCatalogText(products.slice(0, 20)) : "(el catálogo no cargó ahora — mirá el link del local, o probá de nuevo)");
+        replies.push("Decime el número de un producto, o mandame tu pedido directo.");
+        replies.push(portalNavFooter());
+        return await persist(state, vendor.id, waId, replies);
+      }
+      // Sub-camino menú/tiendas/todo: al menú principal
       state.portalStep = null;
       state.currentVendorId = null;
       state.items = [];
@@ -2342,6 +2442,14 @@ function portalStoreListLines(stores) {
     if (s.store_open === false && s.next_open_text) lines.push(`   ⏰ ${s.next_open_text}`);
   });
   return lines.join("\n");
+}
+
+/** Lista "N) Nombre 🔥 — $precio" del catálogo de la tienda (lista al elegir
+ *  tienda, al "ver más" y con "volver" desde la ficha). */
+function portalCatalogText(products) {
+  return products
+    .map((p, i) => `${i + 1}) ${p.name}${p.featured_today ? " 🔥" : ""} — $${Number(p.price).toLocaleString("es-AR")}`)
+    .join("\n");
 }
 
 /** Texto de "¿cómo comprar / pagar?" (genérico + link al micrositio). */
@@ -2430,6 +2538,46 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
       state._cleared = true;
       await clearState(vendor.id, waId);
       return { replies: ["Ok, cancelé todo. Cuando quieras retomamos. 👋"] };
+    }
+
+    // — Comandos de navegación (presentes en cualquier paso del portal).
+    // El bloque equivalente del merchant está en handleInbound; acá el portal
+    // nunca lo pasaba y el cliente quedaba sin "volver"/"inicio"/"cancelar". —
+    const navCmd = RE_BACK.test(text) ? "back"
+      : RE_HOME.test(text) ? "home"
+      : RE_CANCEL_ALL.test(text) ? "cancel_all"
+      : null;
+    if (navCmd === "home") {
+      state.portalStep = null;
+      state.currentVendorId = null;
+      state.currentVendorName = null;
+      state.currentVendorSlug = null;
+      state.items = [];
+      state.method = null;
+      state.payment = null;
+      state.customerName = null;
+      state.customerAddress = null;
+      state.welcomed = true;
+      await persist(state, vendor.id, waId, []);
+      return await sendPortalMenu(state, vendor, waId, replies);
+    }
+    if (navCmd === "cancel_all") {
+      state._cleared = true;
+      await clearState(vendor.id, waId);
+      return { replies: ["Ok, cancelé todo. Cuando quieras retomamos. 👋"] };
+    }
+    if (navCmd === "back") {
+      // "volver" con la ficha abierta = volver al catálogo de la tienda.
+      if (state.pendingDetail) {
+        state.pendingDetail = null;
+        const products = state.currentVendorId ? await getMenu(state.currentVendorId) : [];
+        replies.push(`Menú de *${state.currentVendorName || "el comercio"}*:`);
+        replies.push(products.length ? portalCatalogText(products.slice(0, 20)) : "(el catálogo no cargó ahora)");
+        replies.push("Decime el número del producto que quieras, o mandame tu pedido directo.");
+        replies.push(portalNavFooter());
+        return await persist(state, vendor.id, waId, replies);
+      }
+      return await retrocederPortal(state, vendor, replies, waId);
     }
 
     if (state.pausedUntil && state.pausedUntil > Date.now()) {

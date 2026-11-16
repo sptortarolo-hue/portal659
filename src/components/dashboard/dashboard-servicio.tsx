@@ -1435,7 +1435,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
             >
               <option value="servicio">Servicio u oficio</option>
               <option value="estetica">Peluquería y estética</option>
-              <option value="salud">Salud y bienestar (terapias holísticas)</option>
+              <option value="salud">Salud y bienestar (gimnasio, pilates, yoga, terapias holísticas)</option>
               <option value="taller">Talleres y reparaciones</option>
               <option value="gastronomia">Gastronomía</option>
               <option value="comercio">Comercio del barrio</option>

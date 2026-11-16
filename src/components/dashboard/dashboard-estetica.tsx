@@ -47,14 +47,14 @@ const VERTICAL_OPTIONS = [
   { value: "servicio", label: "Servicio u oficio" },
   { value: "moda", label: "Ropa y accesorios" },
   { value: "estetica", label: "Peluquería y estética (peluquería, barbería, uñas, pestañas, cejas, masajes)" },
-  { value: "salud", label: "Salud y bienestar (terapias holísticas, reiki, tarot, videncia, mesa cuántica, coaching)" },
+  { value: "salud", label: "Salud y bienestar (gimnasio, pilates, yoga, nutrición, psicología, kinesiología, terapias holísticas)" },
   { value: "taller", label: "Talleres y reparaciones (bicicletería, servicio técnico de celulares y electrodomésticos, gomería, reparación de calzado)" },
   { value: "otro", label: "Otro" },
 ] as const;
 
 const CATEGORY_SUGGESTIONS: Record<string, string[]> = {
   estetica: ["peluquería", "barbería", "uñas", "pestañas", "cejas", "masajes", "depilación", "maquillaje", "facial", "corporal", "otros"],
-  salud: ["reiki", "tarot", "videncia", "mesa cuántica", "coaching", "terapia holística", "meditación", "masajes", "yoga", "astrología", "otros"],
+  salud: ["gimnasio", "pilates", "yoga", "funcional", "entrenamiento personal", "nutrición", "psicología", "kinesiología", "fisioterapia", "osteopatía", "acupuntura", "masajes", "spa", "reiki", "terapia holística", "tarot", "videncia", "mesa cuántica", "coaching", "meditación", "astrología", "otros"],
   taller: ["bicicletería", "bicicletas", "servicio técnico", "servicio técnico celulares", "servicio técnico electrodomésticos", "electrodomésticos", "gomería", "reparación de calzado", "reparación", "taller mecánico", "cerrajería", "otros"],
   otro: ["otros"],
 };

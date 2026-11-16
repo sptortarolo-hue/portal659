@@ -76,7 +76,7 @@ export const VERTICALS = [
   {
     slug: "salud",
     name: "Salud y Bienestar",
-    description: "Terapias holísticas, reiki, tarot, videncia, mesa cuántica y coaching",
+    description: "Gimnasio, pilates, yoga, nutrición, psicología, kinesiología, terapias holísticas y todo lo que cuida tu salud",
     emoji: "🧘",
     color: "vert-salud",
     hex: "#ec4899",

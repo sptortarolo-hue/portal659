@@ -17,7 +17,7 @@ const TIPO_OPTIONS = [
   { value: "moda", label: "Ropa y accesorios (indumentaria, calzado, bijouterie)" },
   { value: "estetica", label: "Peluquería y estética (peluquería, barbería, uñas, pestañas, cejas, masajes)" },
   { value: "taller", label: "Talleres y reparaciones (bicicleterías, servicio técnico de celulares y electrodomésticos, gomerías, reparación de calzado)" },
-  { value: "salud", label: "Salud y bienestar (terapias holísticas, reiki, tarot, videncia, mesa cuántica, coaching)" },
+  { value: "salud", label: "Salud y bienestar (gimnasio, pilates, yoga, nutrición, psicología, kinesiología, terapias holísticas)" },
   { value: "otro", label: "Otro" },
 ] as const;
 

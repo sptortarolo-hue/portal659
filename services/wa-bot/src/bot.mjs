@@ -2331,6 +2331,7 @@ async function retrocederPortal(state, vendor, replies, waId) {
       replies.push("3️⃣ ¿Cómo comprar / pagar?");
       replies.push("4️⃣ ¿Tenés un comercio? Sumalo gratis");
       replies.push("5️⃣ Hablar con una persona");
+      replies.push("6️⃣ ¿Qué te hace falta hoy?");
       replies.push("");
       replies.push("Respondé el número de una opción o escribime el nombre de un producto. 🛒");
       return await persist(state, vendor.id, waId, replies);
@@ -2408,6 +2409,16 @@ const PORTAL_VERTICAL_LABELS = {
   taller: "Talleres y Reparaciones",
 };
 
+const RUBRO_EMOJI = {
+  gastronomia: "🍽️",
+  comercio: "🛒",
+  moda: "👕",
+  estetica: "💇",
+  salud: "🩺",
+  servicio: "🔧",
+  taller: "🛠️",
+};
+
 function portalVerticalLabel(v) {
   if (!v) return "Tienda";
   return PORTAL_VERTICAL_LABELS[v] || String(v);
@@ -2418,7 +2429,7 @@ function portalGreeting(greetName = "") {
   return `¡Hola${greetName}! 👋 Soy el asistente de *Portal 659*, el centro comercial de tu barrio.`;
 }
 
-/** Menú corto inicial: 5 opciones, un mensaje, sin listado gigante. */
+/** Menú corto inicial: 6 opciones, un mensaje, sin listado gigante. */
 function portalMainMenuText() {
   return [
     "¿Qué querés hacer?",
@@ -2427,6 +2438,7 @@ function portalMainMenuText() {
     "3️⃣ ¿Cómo comprar / pagar?",
     "4️⃣ ¿Tenés un comercio? Sumalo gratis",
     "5️⃣ Hablar con una persona",
+    "6️⃣ ¿Qué te hace falta hoy?",
   ].join("\n");
 }
 
@@ -2603,11 +2615,11 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
       const _t = text.trim();
       const _low = _t.toLowerCase();
       const GREETING_RE = /^(hola|holaa|buenas|buenos dias|buenos días|buenas tardes|buenas noches|buen dia|buen día|hey|hola!|qué tal|que tal|menu|menú|inicio|empezar|start)$/i;
-      const ALL_STORES_RE = /^(comercios|tiendas|negocios|locales|todas las tiendas|ver tiendas|ver todas las tiendas|lista de tiendas|listado|listado de tiendas)$/i;
+      const ALL_STORES_RE = /^(comercios|tiendas|negocios|locales|todas las tiendas|ver tiendas|ver todas las tiendas|lista de tiendas|listado|listado de tiendas|categor[ií]as|rubros|que tenés|qué tenés)$/i;
       const OPEN_STORES_RE = /(abiert|qué hay|que hay|qué onda|que onda)/i;
       const B2B_RE = /(ten(?:go|és|es)\s+(?:un|mi)\s+(?:comercio|negocio|local|emprendimiento|pyme)|quiero sumar|sumar\s+(?:mi|un)\s+(?:comercio|negocio|local|tienda)|(?:doy|dar(?:me|se|lo)?)\s+de\s+alta|soy comerciante|soy emprendedor|emprendimiento propio|quiero publicar|publicar\s+mi\s+(?:comercio|negocio|producto)|vender en portal)/i;
       const hasStoreList = Array.isArray(state.portalVendorList) && state.portalVendorList.length > 0;
-      const numOpt = _t.match(/^([1-5])$/);
+      const numOpt = _t.match(/^([1-6])$/);
       const menuNum = numOpt && !hasStoreList ? numOpt[1] : null;
 
       const greetIfNew = () => {
@@ -2624,6 +2636,27 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
         }
         return _portalStores;
       };
+      // 0.5) Número sobre la lista de RUBROS (mostrada por la opción 6️⃣): elige rubro.
+      const rubSel = _t.match(/^(\d+)$/);
+      if (rubSel && Array.isArray(state.rubroList) && state.rubroList.length > 0 && Date.now() - Number(state.rubroShownAt || 0) < 10 * 60 * 1000) {
+        const idx = Number(rubSel[1]) - 1;
+        if (idx >= 0 && idx < state.rubroList.length) {
+          const vertical = state.rubroList[idx];
+          const stores = (await portalStores()).filter((s) => String(s.vertical || "").toLowerCase() === vertical);
+          greetIfNew();
+          replies.push(`${RUBRO_EMOJI[vertical] || "🏪"} *${portalVerticalLabel(vertical)}* — elegí una tienda:`);
+          if (stores.length > 0) {
+            replies.push(portalStoreListLines(stores.slice(0, 8)));
+            state.portalVendorList = stores.slice(0, 8).map((s) => ({ id: s.id, store_name: s.store_name, slug: s.slug || null }));
+          } else {
+            replies.push("(no hay tiendas en este rubro ahora mismo)");
+          }
+          replies.push(portalNavFooter());
+          state.rubroList = [];
+          try { trackEvent(vendor.id, "funnel_rubro_selected", waId, { vertical }); } catch {}
+          return await persist(state, vendor.id, waId, replies);
+        }
+      }
 
       // 4) B2B: "tengo un comercio", "quiero sumar mi negocio", "cómo me doy de alta".
       if (B2B_RE.test(_low) && !menuNum) {
@@ -2651,6 +2684,35 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
         try { trackEvent(vendor.id, "b2b_query", waId, { via: "menu" }); } catch {}
         greetIfNew();
         replies.push(portalB2BText());
+        return await persist(state, vendor.id, waId, replies);
+      }
+
+      // 6) "¿Qué te hace falta hoy?" — explorar por rubro.
+      if (menuNum === "6") {
+        const stores = (await portalStores()).filter((s) => s && s.slug !== "portal659-bot" && s.vertical);
+        const byVertical = new Map();
+        for (const s of stores) {
+          const v = String(s.vertical).toLowerCase();
+          if (!byVertical.has(v)) byVertical.set(v, []);
+          byVertical.get(v).push(s);
+        }
+        if (byVertical.size === 0) {
+          greetIfNew();
+          replies.push("Todavía no veo tiendas en la zona. Escribí *comercios* para el listado completo. 🙌");
+          return await persist(state, vendor.id, waId, replies);
+        }
+        greetIfNew();
+        replies.push("📍 *¿Qué te hace falta hoy?*");
+        const ordered = [...byVertical.entries()]
+          .sort((a, b) => b[1].length - a[1].length || String(a[0]).localeCompare(String(b[0])))
+          .slice(0, 8);
+        replies.push(ordered.map(([v, list], i) => `${i + 1}) ${RUBRO_EMOJI[v] || "🏪"} ${portalVerticalLabel(v)} (${list.length} tienda${list.length > 1 ? "s" : ""})`).join("\n"));
+        replies.push("");
+        replies.push("Respondé el número del rubro que te interesa.");
+        replies.push(portalNavFooter());
+        state.rubroList = ordered.map(([v]) => v);
+        state.rubroShownAt = Date.now();
+        try { trackEvent(vendor.id, "funnel_rubro_menu", waId, {}); } catch {}
         return await persist(state, vendor.id, waId, replies);
       }
 

@@ -375,6 +375,28 @@ async function main() {
   if (!f4.includes("Empanada") || !f4.includes("$1.200")) { console.log("!!! 'volver' no volvió al catálogo"); ok = false; }
   else { console.log(">>> OK: 'volver' reimprime el catálogo"); }
 
+  // 19. "¿Qué te hace falta hoy?" (opción 6 → rubros → tiendas del rubro)
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "6" });
+  show("opción 6 rubros (portal)", r);
+  const r6 = (r.replies || []).join(" ");
+  if (!r6.includes("¿Qué te hace falta hoy?")) { console.log("!!! la opción 6 no abrió los rubros"); ok = false; }
+  else if (!r6.includes("Gastronomía (2")) { console.log("!!! los rubros no muestran conteo (esperado Gastronomía 2)"); ok = false; }
+  else if (!r6.includes("Peluquería y Estética (1")) { console.log("!!! falta Peluquería y Estética con conteo 1"); ok = false; }
+  else { console.log(">>> OK: opción 6 → rubros con conteo"); }
+  // Elegir rubro 1 (gastronomía): solo tiendas del rubro
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "1" });
+  show("rubro gastronomía (portal)", r);
+  const r6b = (r.replies || []).join(" ");
+  if (!r6b.includes("Che Sancho") || !r6b.includes("La Esquina")) { console.log("!!! el rubro no listó las gastronómicas"); ok = false; }
+  else if (r6b.includes("Estética Serena")) { console.log("!!! el rubro mezcló otras verticales"); ok = false; }
+  else { console.log(">>> OK: rubro → solo tiendas del rubro"); }
+  // Elegir la tienda 1 del rubro → catálogo (número = ficha ya cubierto)
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "1" });
+  const r6c = (r.replies || []).join(" ");
+  if (!r6c.includes("Perfecto, estás pidiendo de *Che Sancho*")) { console.log("!!! la elección de tienda tras el rubro no abrió el catálogo"); ok = false; }
+  else { console.log(">>> OK: rubro → tienda → catálogo"); }
+
   if (!ok) { console.error("\n=== HAY FALLOS (portal) ==="); process.exit(1); }
   console.log("\n=== TODO OK (portal bot) ===");
 }

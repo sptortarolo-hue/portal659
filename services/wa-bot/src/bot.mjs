@@ -5,7 +5,7 @@ import { getState, setState, clearState, forEachConversation } from "./state.mjs
 import { getMenu, getMenuSync, getMenuWithStatus, matchProduct, matchAllProducts, normalizeForMatch, menuSummary } from "./menu.mjs";
 import { normalizeDraftItem, isValidDraftItem } from "./draft.mjs";
 import { greetingTextTone, summaryTextTone, pendingQuestionsTone, lowConfidenceTone, reorderTone, confirmTone, noMatchTone, answerTone, portalNavFooter } from "./talk.mjs";
-import { parseWithLlm, parseByRules, normalizeEs, extractFromText, bareName, 
+import { parseWithLlm, parseByRules, normalizeEs, extractFromText, bareName, stripAddVerb,
 classifyIntent, llmStats } from "./nlu.mjs";
 import { saveCorrection } from "./learning.mjs";
 import { trackEvent, trackMessage } from "./telemetry.mjs";
@@ -145,11 +145,7 @@ function matchVariant(product, item) {
   return found?.id ? found : null;
 }
 
-function enrichParsed(products, parsed) {
-  if (!parsed) return parsed;
-  parsed.items = resolveOfferIds(products, parsed.items);
-  return parsed;
-}
+// (enrichParsed eliminado: parseItems hace la resolución de offerIds internamente)
 
 // Teléfono real: el relay manda SenderAlt (el teléfono del emisor cuando el
 // chat es LID — los no-contactos llegan como xxxxx@lid sin teléfono). Gana
@@ -328,6 +324,56 @@ if (state.pausedUntil && state.pausedUntil > Date.now()) {
 // Contexto para la llamada IA: carrito actual + qué se le preguntó + historial.
 function llmCtx(state, vendor) {
   return { cart: state.items, pending: missingFields(state, vendor), history: state.history, vendorId: vendor?.id || vendor?.vendorId || null, vertical: vendor?.vertical || null };
+}
+
+/** Parseo de ítems con tres capas de robustez:
+ *  1) `stripAddVerb`: "falta la pastafrola" → "pastafrola" (intención explícita de agregar, nunca re-preguntar pago).
+ *  2) LLM primero (si está), reglas como cobertura universal.
+ *  3) RECONCILIACIÓN: las reglas siempre corren después — lo que el LLM dropea entra por reglas. */
+async function parseItems(state, vendor, text, products) {
+  const t = String(text || "").trim();
+  const stripped = stripAddVerb(t);
+  const textForParse = stripped && stripped !== t ? stripped : t;
+  const llmOrRules = async (s) =>
+    (await parseWithLlm(s, products, llmCtx(state, vendor)).catch(() => null)) || parseByRules(s, products);
+  let parsed = await llmOrRules(textForParse);
+  // Si el strip no aportó items, reintentar con el texto original íntegro.
+  if (!parsed?.items?.length && textForParse !== t) parsed = await llmOrRules(t);
+  // Reconciliación LLM ↔ reglas: lo que el LLM no vio, lo suman las reglas.
+  try {
+    const rulesParsed = parseByRules(textForParse, products);
+    if (rulesParsed?.items?.length) {
+      const have = new Set();
+      for (const p of (parsed?.items || [])) {
+        if (p?.offerId || p?.id) have.add(`id:${p.offerId || p.id}`);
+        if (p?.name) have.add(`name:${normalizeEs(p.name)}`);
+        if (p?.said) have.add(`name:${normalizeEs(p.said)}`);
+      }
+      const merged = [...(parsed?.items || [])];
+      for (const ri of rulesParsed.items) {
+        const rid = String(ri?.offerId || ri?.id || "");
+        const nameKey = ri?.said ? `name:${normalizeEs(ri.said)}` : (ri?.name ? `name:${normalizeEs(ri.name)}` : null);
+        const dup = (rid && have.has(`id:${rid}`))
+          || (nameKey && have.has(nameKey))
+          || (ri?.name && have.has(`name:${normalizeEs(ri.name)}`));
+        if (dup) continue;
+        merged.push(ri);
+        if (rid) have.add(`id:${rid}`);
+        if (nameKey) have.add(nameKey);
+      }
+      if (merged.length !== (parsed?.items || []).length) {
+        const added = merged.length - (parsed?.items || []).length;
+        console.log(`[bot] reconcile: LLM=${parsed?.items?.length ?? 0} → +${added} por reglas`);
+        try { trackEvent(vendor.id, "llm_miss_fixed", undefined, { added }); } catch {}
+        parsed = { ...(parsed || {}), items: merged, op: parsed?.op || "add" };
+      }
+    }
+  } catch (e) {
+    console.error(`[bot] reconcile fail: ${e?.message}`);
+  }
+  if (!parsed) return null;
+  parsed.items = resolveOfferIds(products, parsed.items);
+  return parsed;
 }
 
 // ———————————————————————————————————————————————————————————————————————————
@@ -644,7 +690,7 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
     return;
   }
 
-  let _parsed = (await parseWithLlm(text, products, llmCtx(state, vendor)).catch(() => null)) || parseByRules(text, products);
+  let _parsed = await parseItems(state, vendor, text, products);
   // Telemetría (Fase 3): de dónde salió el parseo.
   if (_parsed?.__llm) llmStats.parses.llm++; else if (_parsed) llmStats.parses.rules++;
   // Baja confianza del LLM -> pedir confirmación antes de armar el pedido.
@@ -656,7 +702,7 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
     replies.push(config.waTone === "humano" ? lowConfidenceTone(_parsed.items) : `No estoy seguro de haber entendido bien: ¿es ${resumen}? (respondé *sí* o *no*)`);
     return await persist(state, vendor.id, waId, replies);
   }
-  let parsed = enrichParsed(products, _parsed);
+  let parsed = _parsed;
 
   if (parsed?.items?.length) {
     state.welcomed = true;
@@ -1134,10 +1180,7 @@ async function handleStep({ vendor, text, state, replies, waId }) {
     // re-parseaba items: "mejor lo retiro" o "ahora efectivo" en el confirm
     // se ignoraban con el mensaje genérico).
     const products = await getMenu(vendor.id);
-    const parsed = enrichParsed(
-      products,
-      (await parseWithLlm(t, products, llmCtx(state, vendor)).catch(() => null)) || parseByRules(t, products)
-    );
+    const parsed = await parseItems(state, vendor, t, products);
     let changed = false;
     if (parsed?.method && parsed.method !== state.method) { state.method = parsed.method; changed = true; }
     try { trackEvent(vendor.id, "funnel_method_selected", waId, { method: parsed.method }); } catch {}
@@ -1326,10 +1369,7 @@ async function handleStep({ vendor, text, state, replies, waId }) {
     return;
   }
 
-  const parsed = enrichParsed(
-    products,
-    (await parseWithLlm(t, products, llmCtx(state, vendor)).catch(() => null)) || parseByRules(t, products)
-  );
+  const parsed = await parseItems(state, vendor, t, products);
 
   // Ítems desconocidos (el LLM no los encontró en el menú): preguntar al cliente
   // en vez de ignorarlos en silencio o crear un pedido inventado.

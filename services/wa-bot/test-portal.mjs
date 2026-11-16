@@ -84,6 +84,21 @@ const MOCK_PORTAL_MENU = {
         { id: "p22", store_id: "store5", store_name: "Oasis", store_slug: "oasis", name: "Promo media docena", price: 6200, category: "Promos", modifiers: [], variants: [] },
       ],
     },
+    {
+      id: "storeT",
+      store_name: "Test Dulces",
+      slug: "test-dulces",
+      vertical: "comercio",
+      store_open: true,
+      open_text: "Abierto ahora",
+      next_open_text: null,
+      hours: "lun a vie 09:00-19:00",
+      products: [
+        { id: "p-lemonie", store_id: "storeT", store_name: "Test Dulces", store_slug: "test-dulces", name: "Lemonie", price: 2800, category: "Tartas", modifiers: [], variants: [] },
+        { id: "p-pfr", store_id: "storeT", store_name: "Test Dulces", store_slug: "test-dulces", name: "Pastafrola de ricota", price: 3200, category: "Tartas", modifiers: [], variants: [] },
+        { id: "p-pfm", store_id: "storeT", store_name: "Test Dulces", store_slug: "test-dulces", name: "Pastafrola de membrillo", price: 3400, category: "Tartas", modifiers: [], variants: [] },
+      ],
+    },
   ],
 };
 
@@ -94,6 +109,8 @@ const MOCK_STORE_MENUS = {
   store3: { vendor: { id: "store3", store_name: "Estética Serena", vertical: "estetica", store_open: true, open_text: "Abierto ahora" }, products: [] },
   // Oasis (grande): 13 productos en 3 secciones
   store5: { vendor: { id: "store5", store_name: "Oasis", vertical: "gastronomia", store_open: true, open_text: "Abierto ahora" }, products: MOCK_PORTAL_MENU.vendors[4].products },
+  // Test Dulces: Lemonie + Pastafrolas (caso "pedido mixto")
+  storeT: { vendor: { id: "storeT", store_name: "Test Dulces", vertical: "comercio", store_open: true, open_text: "Abierto ahora" }, products: MOCK_PORTAL_MENU.vendors[5].products },
   // store4 ("Kiosco Rota") NO está acá: /api/wa/menu responde 500 → error real
 };
 
@@ -508,6 +525,28 @@ async function main() {
   const off3 = (r.replies || []).join(" ");
   if (!off3.toLowerCase().includes("empanada de carne") || !off3.includes("Promo docena")) { console.log("!!! '0' no mostró todas las ofertas del día"); ok = false; }
   else { console.log(">>> OK: '0' → todas las ofertas del día"); }
+
+  // 23. Pedido mixto: "1 lemonie y 2 pastafrolas" → ambos ítems, desambiguación
+  //     de pastafrola (sin perder el lemonie ni re-preguntar pago al final).
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "comercios" });
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "6" }); // Test Dulces
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "1 lemonie y 2 pastafrolas" });
+  show("pedido mixto", r);
+  const mix = (r.replies || []).join(" ");
+  const stMix = await getState(portalVendor.id, wa);
+  const hasLemonie = (stMix?.items || []).some((i) => String(i.name || "").toLowerCase().includes("lemonie"));
+  if (!hasLemonie) { console.log("!!! el pedido mixto no agregó el Lemonie"); ok = false; }
+  else if (!mix.includes("ricota") || !mix.includes("membrillo")) { console.log("!!! no preguntó qué pastafrola querés"); ok = false; }
+  else { console.log(">>> OK: pedido mixto agregó Lemonie + preguntó cuál pastafrola"); }
+  // Elegir ricota → las 2 pasan al carrito
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "ricota" });
+  const stMix2 = await getState(portalVendor.id, wa);
+  const pastas = (stMix2?.items || []).filter((i) => String(i.name || "").toLowerCase().includes("pastafrola"));
+  const totalQty = pastas.reduce((acc, i) => acc + Number(i.qty || 0), 0);
+  if (pastas.length === 0 || totalQty !== 2) { console.log("!!! la pastafrola no se agregó completa (esperado x2 ricota)"); ok = false; }
+  else if (!(stMix2?.items || []).some((i) => String(i.name || "").includes("Lemonie"))) { console.log("!!! el Lemonie se perdió por el camino"); ok = false; }
+  else { console.log(">>> OK: 'ricota' → carrito completo (Lemonie ×1 + Pastafrola ricota ×2)"); }
 
   if (!ok) { console.error("\n=== HAY FALLOS (portal) ==="); process.exit(1); }
   console.log("\n=== TODO OK (portal bot) ===");

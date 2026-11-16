@@ -651,6 +651,8 @@ function parseChunk(chunk, products) {
   if (!c) return null;
   // Quitar verbos/intenciones al inicio (quiero/dame/traeme/agregame/etc.)
   c = c.replace(/^(agrgame|agregame|agregá|agrega|quiero|querria|quisiera|dame|démela|traeme|traigame|sumame|sumá|suma|sumar|mandame|anotate|cargame|me das|me pones|me haces|me traes|me preparas|me cobras)\s+/i, "");
+  // Quitar artículo/determinante liderando el chunk ("la coca" → "coca").
+  c = c.replace(/^(?:la|el|los|las|una|un|unos|unas|de|del|al)\s+/i, "");
   // Quitar relleno al final ("ah", "eh", "bueno", etc.)
   c = c.replace(/\s+(ah|eh|bueno|liste|ok|vale)\s*$/i, "");
   // Quitar negaciones/relleno de corrección al inicio ("no, mejor solo X" → "X").
@@ -726,6 +728,18 @@ function buildItem(p, qty, norm, said) {
     variant: Object.keys(variant).length ? variant : undefined,
     said: said || name, // lo que el cliente escribió para el producto (sin qty/verbos — si no, TODO quedaba ambiguo)
   };
+}
+
+/** Quita el verbo de intención de agregar al inicio y los determinativos
+ *  (la/el/un/una/de…) que lo acompañan: "falta la pastafrola" → "pastafrola",
+ *  "me falta la de ricota" → "ricota", "sumá coca" → "coca".
+ *  Devuelve el texto sin cambios si no matchea (el caller decide qué hacer). */
+export function stripAddVerb(text) {
+  const s = String(text || "").trim();
+  const m = s.match(/^(?:me\s+|le\s+)?(?:falta|faltar[ií]a|sum[aá]|agreg[aá](?:me|lo|la|los|las)?|agregame|tra[eé](?:me|lo|la|los|las)?|carg[aá]|dame)\s*[:,]?\s*(?:(?:la|el|los|las|una|un|unos|unas|de|del|al)\s+)*/i);
+  if (!m) return s;
+  const stripped = s.slice(m[0].length).trim();
+  return stripped.length >= 2 ? stripped : s;
 }
 
 export function normalizeEs(s) {

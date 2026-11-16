@@ -19,7 +19,7 @@ const MOCK_PORTAL_MENU = {
       hours: "lun a vie 09:00-13:00 y 17:00-22:00",
       products: [
         { id: "p1", store_id: "store1", store_name: "Che Sancho", store_slug: "che-sancho", name: "Empanada de carne", price: 1200, category: "Empanadas", modifiers: [], variants: [], image_url: "https://www.portal659.com.ar/uploads/test-empanada.jpg", featured_today: true },
-        { id: "p2", store_id: "store1", store_name: "Che Sancho", store_slug: "che-sancho", name: "Coca-Cola 500ml", price: 1000, category: "Bebidas", modifiers: [], variants: [], image_url: null, featured_today: false },
+        { id: "p2", store_id: "store1", store_name: "Che Sancho", store_slug: "che-sancho", name: "Coca-Cola 500ml", price: 1000, category: "Bebidas", modifiers: [], variants: [], image_url: null, featured_today: true },
       ],
     },
     {
@@ -80,7 +80,7 @@ const MOCK_PORTAL_MENU = {
         { id: "p18", store_id: "store5", store_name: "Oasis", store_slug: "oasis", name: "Coca-Cola 500", price: 1000, category: "Bebidas", modifiers: [], variants: [] },
         { id: "p19", store_id: "store5", store_name: "Oasis", store_slug: "oasis", name: "Sprite 500", price: 950, category: "Bebidas", modifiers: [], variants: [] },
         { id: "p20", store_id: "store5", store_name: "Oasis", store_slug: "oasis", name: "Agua mineral", price: 800, category: "Bebidas", modifiers: [], variants: [] },
-        { id: "p21", store_id: "store5", store_name: "Oasis", store_slug: "oasis", name: "Promo docena", price: 11000, category: "Promos", modifiers: [], variants: [] },
+        { id: "p21", store_id: "store5", store_name: "Oasis", store_slug: "oasis", name: "Promo docena", price: 11000, category: "Promos", modifiers: [], variants: [], featured_today: true },
         { id: "p22", store_id: "store5", store_name: "Oasis", store_slug: "oasis", name: "Promo media docena", price: 6200, category: "Promos", modifiers: [], variants: [] },
       ],
     },
@@ -308,28 +308,28 @@ async function main() {
   else if (menu.includes("Che Sancho (2 productos)")) { console.log("!!! el saludo tiró el listado largo en vez del menú"); ok = false; }
   else { console.log(">>> OK: saludo → menú corto informativo (sin listado largo)"); }
 
-  // 15b. Opción 1: tiendas abiertas, con link al micrositio.
-  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "1" });
-  show("opción 1 tiendas abiertas (portal)", r);
+  // 15b. Opción 2: tiendas abiertas, con link al micrositio.
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "2" });
+  show("opción 2 tiendas abiertas (portal)", r);
   const o1 = (r.replies || []).join(" ");
-  if (!o1.includes("/tienda/che-sancho") || !o1.includes("Che Sancho")) { console.log("!!! la opción 1 no mostró las tiendas abiertas con link"); ok = false; }
-  else { console.log(">>> OK: opción 1 → tiendas abiertas con link al micrositio"); }
+  if (!o1.includes("/tienda/che-sancho") || !o1.includes("Che Sancho")) { console.log("!!! la opción 2 no mostró las tiendas abiertas con link"); ok = false; }
+  else { console.log(">>> OK: opción 2 → tiendas abiertas con link al micrositio"); }
 
   // 15c. Opción 3: cómo comprar / pagar.
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
-  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "3" });
-  show("opción 3 cómo comprar (portal)", r);
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "4" });
+  show("opción 4 cómo comprar (portal)", r);
   const o3 = (r.replies || []).join(" ");
-  if (!o3.includes("Mercado Pago") || !o3.includes("Efectivo")) { console.log("!!! la opción 3 no explicó cómo comprar/pagar"); ok = false; }
-  else { console.log(">>> OK: opción 3 → cómo comprar / pagar"); }
+  if (!o3.includes("Mercado Pago") || !o3.includes("Efectivo")) { console.log("!!! la opción 4 no explicó cómo comprar/pagar"); ok = false; }
+  else { console.log(">>> OK: opción 4 → cómo comprar / pagar"); }
 
   // 15d. Opción 4: B2B (sumar comercio).
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
-  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "4" });
-  show("opción 4 B2B (portal)", r);
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "5" });
+  show("opción 5 B2B (portal)", r);
   const o4 = (r.replies || []).join(" ");
-  if (!o4.includes("0% comisión") || !o4.includes("Básico")) { console.log("!!! la opción 4 no mostró el contenido B2B"); ok = false; }
-  else { console.log(">>> OK: opción 4 → B2B con planes y 0% comisión"); }
+  if (!o4.includes("0% comisión") || !o4.includes("Básico")) { console.log("!!! la opción 5 no mostró el contenido B2B"); ok = false; }
+  else { console.log(">>> OK: opción 5 → B2B con planes y 0% comisión"); }
 
   // 15e. B2B por texto ("tengo un comercio").
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
@@ -342,10 +342,10 @@ async function main() {
   // 15f. Opción 5: persona.
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
   handoffNotified = false;
-  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "5" });
-  show("opción 5 persona (portal)", r);
-  if (!handoffNotified) { console.log("!!! la opción 5 no derivó a una persona"); ok = false; }
-  else { console.log(">>> OK: opción 5 → handoff a una persona"); }
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "6" });
+  show("opción 6 persona (portal)", r);
+  if (!handoffNotified) { console.log("!!! la opción 6 no derivó a una persona"); ok = false; }
+  else { console.log(">>> OK: opción 6 → handoff a una persona"); }
 
   // 15g. REGLA DE ORO: pedido SIN tienda elegida → muestra tiendas, no crea pedido.
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
@@ -366,7 +366,7 @@ async function main() {
 
   // 16. Tienda de servicios (sin catálogo): CTA a micrositio, NO "no tiene productos".
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
-  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "1" });
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "2" });
   show("tiendas (para elegir servicios)", r);
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "3" });
   show("elegir Estética Serena (servicios)", r);
@@ -378,7 +378,7 @@ async function main() {
 
   // 17. Menú de tienda que FALLA (500): avisar, no mentir "no tiene productos".
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
-  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "1" });
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "2" });
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "4" });
   show("elegir tienda con menú 500", r);
   const err = (r.replies || []).join(" ");
@@ -389,7 +389,7 @@ async function main() {
   // 18. Ficha de producto (Fase A): número → ficha → cantidad directa al carrito.
   const { getState } = await import("./src/state.mjs");
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
-  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "1" }); // tiendas abiertas
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "2" }); // tiendas abiertas
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "1" }); // Che Sancho
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "1" }); // ficha Empanada
   show("ficha producto 1", r);
@@ -411,15 +411,15 @@ async function main() {
   if (!f4.includes("Empanada") || !f4.includes("$1.200")) { console.log("!!! 'volver' no volvió al catálogo"); ok = false; }
   else { console.log(">>> OK: 'volver' reimprime el catálogo"); }
 
-  // 19. "¿Qué te hace falta hoy?" (opción 6 → rubros → tiendas del rubro)
+  // 19. "¿Qué te hace falta hoy?" (opción 1 → rubros → tiendas del rubro)
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
-  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "6" });
-  show("opción 6 rubros (portal)", r);
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "1" });
+  show("opción 1 rubros (portal)", r);
   const r6 = (r.replies || []).join(" ");
-  if (!r6.includes("¿Qué te hace falta hoy?")) { console.log("!!! la opción 6 no abrió los rubros"); ok = false; }
+  if (!r6.includes("¿Qué te hace falta hoy?")) { console.log("!!! la opción 1 no abrió los rubros"); ok = false; }
   else if (!r6.includes("Gastronomía (3")) { console.log("!!! los rubros no muestran conteo (esperado Gastronomía 3)"); ok = false; }
   else if (!r6.includes("Peluquería y Estética (1")) { console.log("!!! falta Peluquería y Estética con conteo 1"); ok = false; }
-  else { console.log(">>> OK: opción 6 → rubros con conteo"); }
+  else { console.log(">>> OK: opción 1 → rubros con conteo"); }
   // Elegir rubro 1 (gastronomía): solo tiendas del rubro
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "1" });
   show("rubro gastronomía (portal)", r);
@@ -435,7 +435,7 @@ async function main() {
 
   // 20. Secciones del comercio (Fase A2): catálogo grande → rubros internos.
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
-  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "1" }); // tiendas abiertas
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "2" }); // tiendas abiertas
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "5" }); // Oasis (grande)
   show("Oasis - secciones", r);
   const sec0 = (r.replies || []).join(" ");
@@ -458,7 +458,7 @@ async function main() {
   else { console.log(">>> OK: sección → ficha del producto"); }
   // Volver a entrar y elegir "0" → todo el menú
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "inicio" });
-  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "1" }); // tiendas abiertas
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "2" }); // tiendas abiertas
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "5" }); // Oasis → secciones otra vez
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "0" }); // todo el menú
   show("Oasis - todo el menú", r);
@@ -469,7 +469,7 @@ async function main() {
   // 21. Checkout exprés (Fase B): con memoria en la tienda, no pregunta nada de nuevo.
   const waB = "5491100000888";
   r = await handleInbound({ vendor: portalVendor, waId: waB, body: "cancelar" });
-  r = await handleInbound({ vendor: portalVendor, waId: waB, body: "1" }); // tiendas abiertas
+  r = await handleInbound({ vendor: portalVendor, waId: waB, body: "2" }); // tiendas abiertas
   r = await handleInbound({ vendor: portalVendor, waId: waB, body: "2" }); // La Esquina (memoria)
   r = await handleInbound({ vendor: portalVendor, waId: waB, body: "milanesa" });
   show("checkout exprés (con memoria)", r);
@@ -483,6 +483,31 @@ async function main() {
   const mem2 = (r.replies || []).join(" ");
   if (!mem2.toLowerCase().includes("confirmado")) { console.log("!!! el 'sí' no creó el pedido"); ok = false; }
   else { console.log(">>> OK: checkout exprés → pedido creado con un 'sí'"); }
+
+  // 22. 🔥 Ofertas del día (opción 3): picker de categoría → tarjetas con imagen + link.
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "3" });
+  show("opción 3 ofertas (portal)", r);
+  const off1 = (r.replies || []).join(" ");
+  if (!off1.includes("Ofertas del día")) { console.log("!!! la opción 3 no abrió las ofertas"); ok = false; }
+  else if (!off1.includes("Empanadas (1")) { console.log("!!! las ofertas no muestran la categoría Empanadas (1)"); ok = false; }
+  else if (!off1.includes("Promos (1")) { console.log("!!! las ofertas no muestran la categoría Promos (1)"); ok = false; }
+  else { console.log(">>> OK: opción 3 → ofertas del día agrupadas por categoría"); }
+  // Elegir categoría 2 (Empanadas; Bebidas quedó primera por orden A-Z en el empate)
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "2" });
+  show("ofertas - empanadas", r);
+  const off2 = (r.replies || []).join(" ");
+  if (!off2.toLowerCase().includes("empanada de carne")) { console.log("!!! la oferta no muestra el producto"); ok = false; }
+  else if (!off2.includes("Che Sancho")) { console.log("!!! la oferta no muestra el nombre del local"); ok = false; }
+  else if (!off2.includes("/tienda/che-sancho")) { console.log("!!! la oferta no trae el link al micrositio"); ok = false; }
+  else { console.log(">>> OK: oferta → imagen + nombre del local + link"); }
+  // Volver a entrar y elegir "0" → todas las ofertas del día
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "3" });
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "0" });
+  show("ofertas - todas", r);
+  const off3 = (r.replies || []).join(" ");
+  if (!off3.toLowerCase().includes("empanada de carne") || !off3.includes("Promo docena")) { console.log("!!! '0' no mostró todas las ofertas del día"); ok = false; }
+  else { console.log(">>> OK: '0' → todas las ofertas del día"); }
 
   if (!ok) { console.error("\n=== HAY FALLOS (portal) ==="); process.exit(1); }
   console.log("\n=== TODO OK (portal bot) ===");

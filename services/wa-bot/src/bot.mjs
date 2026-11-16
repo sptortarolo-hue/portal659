@@ -2506,12 +2506,12 @@ function portalGreeting(greetName = "") {
 function portalMainMenuText() {
   return [
     "¿Qué querés hacer?",
-    "1️⃣ Ver tiendas abiertas",
-    "2️⃣ Ver todas las tiendas",
-    "3️⃣ ¿Cómo comprar / pagar?",
-    "4️⃣ ¿Tenés un comercio? Sumalo gratis",
-    "5️⃣ Hablar con una persona",
-    "6️⃣ ¿Qué te hace falta hoy?",
+    "1️⃣ ¿Qué te hace falta hoy?",
+    "2️⃣ Ver tiendas abiertas",
+    "3️⃣ 🔥 Ofertas del día",
+    "4️⃣ ¿Cómo comprar / pagar?",
+    "5️⃣ ¿Tenés un comercio? Sumalo gratis",
+    "6️⃣ Hablar con una persona",
   ].join("\n");
 }
 
@@ -2535,6 +2535,83 @@ function portalCatalogText(products) {
   return products
     .map((p, i) => `${i + 1}) ${p.name}${p.featured_today ? " 🔥" : ""} — $${Number(p.price).toLocaleString("es-AR")}`)
     .join("\n");
+}
+
+/** 🔥 Ofertas del día: agrupa los productos destacados (featured_today) de las
+ *  tiendas visibles por categoría; sin categoría muestra un picker numerado. */
+async function sendOffers(state, vendor, waId, replies, categoryNorm = null) {
+  const pdOffers = await fetchPortalMenu("");
+  const stores = pdOffers.vendors || pdOffers.stores || [];
+  const offers = [];
+  for (const s of stores) {
+    for (const p of (s.products || [])) {
+      if (!p.featured_today) continue;
+      const cat = String(p.category || "Otras").trim() || "Otras";
+      const norm = cat.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+      offers.push({ store: s, product: p, cat, norm });
+    }
+  }
+  if (offers.length === 0) {
+    replies.push("🔥 Hoy no hay ofertas del día en la zona. 😔");
+    replies.push("Escribí *2* para ver las tiendas abiertas. 🙌");
+    state.offers = [];
+    state.offerCats = [];
+    return await persist(state, vendor.id, waId, replies);
+  }
+  if (!categoryNorm) {
+    // Picker: categorías con cantidad, más "todas".
+    const catMap = new Map();
+    for (const o of offers) {
+      if (!catMap.has(o.norm)) catMap.set(o.norm, { label: o.cat, count: 0, norm: o.norm });
+      catMap.get(o.norm).count += 1;
+    }
+    const sorted = [...catMap.values()]
+      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, "es", { sensitivity: "base" }))
+      .slice(0, 8);
+    replies.push("🔥 *Ofertas del día* — ¿de qué categoría?");
+    replies.push(sorted.map((c, i) => `${i + 1}) ${c.label} (${c.count})`).join("\n"));
+    replies.push("0️⃣ Ver todas las del día");
+    replies.push("Respondé el número de la categoría.");
+    replies.push(portalNavFooter());
+    state.offers = offers;
+    state.offerCats = sorted;
+    state.rubroList = [];
+    state.offerCatsAt = Date.now();
+    try { trackEvent(vendor.id, "funnel_offers_menu", waId, {}); } catch {}
+    return await persist(state, vendor.id, waId, replies);
+  }
+  const chosen = categoryNorm === "all"
+    ? offers.slice(0, 6)
+    : offers.filter((o) => o.norm === categoryNorm);
+  const shown = chosen.slice(0, 6);
+  const catLabel = categoryNorm === "all" ? "" : ` · ${shown[0]?.cat || ""}`;
+  replies.push(`🔥 *Ofertas del día${catLabel}* — ${shown.length} oferta${shown.length > 1 ? "s" : ""}:`);
+  // Primero: imagen por WhatsApp de hasta 3 ofertas (best-effort).
+  const client = getClientByVendor(vendor.id);
+  const images = shown.slice(0, 3);
+  for (const o of images) {
+    const caption = `🥟 *${o.product.name}* — $${Number(o.product.price).toLocaleString("es-AR")}\n🏪 ${o.store.store_name}\n🔗 ${config.publicUrl}/tienda/${o.store.slug}`;
+    const imgUrl = o.product.image_url || o.store.logo_url || null;
+    if (client && imgUrl) {
+      try {
+        const imgRes = await fetch(imgUrl, { signal: AbortSignal.timeout(8_000) });
+        if (imgRes.ok) {
+          const buf = Buffer.from(await imgRes.arrayBuffer());
+          sendImage(client, waId, buf.toString("base64"), caption);
+          continue; // ya va el texto del caption en la imagen
+        }
+      } catch { /* sin imagen: cae al texto */ }
+    }
+    replies.push(caption);
+  }
+  // Después: texto con todas (nombre + local + link directo).
+  replies.push(shown.map((o) => `🥟 *${o.product.name}* — $${Number(o.product.price).toLocaleString("es-AR")} · ${o.store.store_name}\n🔗 ${config.publicUrl}/tienda/${o.store.slug}`).join("\n"));
+  replies.push("Escribí el nombre o el número de la tienda para pedir. 🙌");
+  replies.push(portalNavFooter());
+  state.offers = [];
+  state.offerCats = [];
+  try { trackEvent(vendor.id, "funnel_offers_shown", waId, { category: categoryNorm || "all", count: shown.length }); } catch {}
+  return await persist(state, vendor.id, waId, replies);
 }
 
 /** Texto de "¿cómo comprar / pagar?" (genérico + link al micrositio). */
@@ -2736,6 +2813,16 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
         }
       }
 
+      // 0.6) Número sobre Ofertas del día: elegir categoría (0 = todas).
+      const offSel = _t.match(/^(\d{1,2})$/);
+      if (offSel && Array.isArray(state.offerCats) && state.offerCats.length > 0 && Date.now() - Number(state.offerCatsAt || 0) < 10 * 60 * 1000) {
+        const n = Number(offSel[1]);
+        const cat = n === 0 ? "all" : state.offerCats[n - 1]?.norm;
+        if (n === 0 || cat) {
+          return await sendOffers(state, vendor, waId, replies, cat);
+        }
+      }
+
       // 4) B2B: "tengo un comercio", "quiero sumar mi negocio", "cómo me doy de alta".
       if (B2B_RE.test(_low) && !menuNum) {
         try { trackEvent(vendor.id, "b2b_query", waId, {}); } catch {}
@@ -2744,29 +2831,36 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
         return await persist(state, vendor.id, waId, replies);
       }
 
-      // 5) Hablar con una persona.
-      if (menuNum === "5") {
-        try { trackEvent(vendor.id, "handoff", waId, { reason: "menu_5" }); } catch {}
+      // 6) Hablar con una persona.
+      if (menuNum === "6") {
+        try { trackEvent(vendor.id, "handoff", waId, { reason: "menu_6" }); } catch {}
         return await handoffHuman(vendor, waId, text, state);
       }
 
-      // 3) Cómo comprar / pagar.
+      // 3) 🔥 Ofertas del día (picker de categoría → tarjetas imagen + link).
       if (menuNum === "3") {
+        state.offers = [];
+        state.offerCats = [];
+        return await sendOffers(state, vendor, waId, replies);
+      }
+
+      // 4) Cómo comprar / pagar.
+      if (menuNum === "4") {
         greetIfNew();
         replies.push(portalHowToBuyText());
         return await persist(state, vendor.id, waId, replies);
       }
 
-      // 4) Opción 4 del menú (B2B) por número.
-      if (menuNum === "4") {
+      // 5) Opción 5 del menú (B2B) por número.
+      if (menuNum === "5") {
         try { trackEvent(vendor.id, "b2b_query", waId, { via: "menu" }); } catch {}
         greetIfNew();
         replies.push(portalB2BText());
         return await persist(state, vendor.id, waId, replies);
       }
 
-      // 6) "¿Qué te hace falta hoy?" — explorar por rubro.
-      if (menuNum === "6") {
+      // 1) "¿Qué te hace falta hoy?" — explorar por rubro.
+      if (menuNum === "1") {
         const stores = (await portalStores()).filter((s) => s && s.slug !== "portal659-bot" && s.vertical);
         const byVertical = new Map();
         for (const s of stores) {
@@ -2790,12 +2884,13 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
         replies.push(portalNavFooter());
         state.rubroList = ordered.map(([v]) => v);
         state.rubroShownAt = Date.now();
+        state.offerCats = [];
         try { trackEvent(vendor.id, "funnel_rubro_menu", waId, {}); } catch {}
         return await persist(state, vendor.id, waId, replies);
       }
 
-      // 1) Tiendas abiertas (máx 5, con link al micrositio).
-      if (menuNum === "1" || (OPEN_STORES_RE.test(_low) && !hasStoreList && !ALL_STORES_RE.test(_low))) {
+      // 2) Ver tiendas abiertas (máx 5, con link al micrositio).
+      if (menuNum === "2" || (OPEN_STORES_RE.test(_low) && !hasStoreList && !ALL_STORES_RE.test(_low))) {
         try { trackEvent(vendor.id, "open_stores", waId, {}); } catch {}
         const stores = (await portalStores()).filter((s) => s.store_open === true);
         if (stores.length === 0) {
@@ -2809,31 +2904,23 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
         replies.push(portalStoreListLines(stores.slice(0, 5)));
         state.portalVendorList = stores.slice(0, 5).map((s) => ({ id: s.id, store_name: s.store_name, slug: s.slug || null }));
         if (stores.length > 5) replies.push(`(y ${stores.length - 5} más — escribí el nombre de la tienda para verla)`);
-        // Enviar imagen de producto destacado de cada tienda (o logo como fallback)
+        // Logo de cada tienda (no foto de producto al pedir; si no tiene logo,
+        // queda la lista de texto con links — sin imagen de relleno).
         const _client = getClientByVendor(vendor.id);
         if (_client) {
           for (const s of stores.slice(0, 5)) {
+            const imgUrl = s.logo_url || null;
+            if (!imgUrl) continue;
             try {
-              // Buscar el primer producto con imagen para mostrar en la carta de WhatsApp
-              const productWithImage = (s.products || []).find((p) => p.image_url) || (s.products || [])[0];
-              const imgUrl = productWithImage?.image_url || s.logo_url || null;
-
-              if (imgUrl) {
-                const imgRes = await fetch(imgUrl, { signal: AbortSignal.timeout(8_000) });
-                if (imgRes.ok) {
-                  const buf = Buffer.from(await imgRes.arrayBuffer());
-                  const b64 = buf.toString("base64");
-                  const priceText = productWithImage?.price != null ? ` — $${Number(productWithImage.price).toLocaleString("es-AR")}` : '';
-                  const caption = `🏪 *${s.store_name}*${s.vertical ? ` — ${portalVerticalLabel(s.vertical)}` : ""}\n🍽️ ${productWithImage?.name || "Sin productos"}${priceText}\n🔗 ${config.publicUrl}/tienda/${s.slug}`;
-                  sendImage(_client, waId, b64, caption);
-                  console.log(`[bot][portal] imagen producto enviada: ${s.store_name} — ${productWithImage?.name || "sin productos"}`);
-                  continue;
-                }
-              }
-              // Fallback: solo texto si no hay imagen ni producto
-              replies.push(`🏪 *${s.store_name}*${s.vertical ? ` — ${portalVerticalLabel(s.vertical)}` : ""}\n🔗 ${config.publicUrl}/tienda/${s.slug}`);
+              const imgRes = await fetch(imgUrl, { signal: AbortSignal.timeout(8_000) });
+              if (!imgRes.ok) continue;
+              const buf = Buffer.from(await imgRes.arrayBuffer());
+              const b64 = buf.toString("base64");
+              const caption = `🏪 *${s.store_name}*${s.vertical ? ` — ${portalVerticalLabel(s.vertical)}` : ""}\n🔗 ${config.publicUrl}/tienda/${s.slug}`;
+              sendImage(_client, waId, b64, caption);
+              console.log(`[bot][portal] logo enviado: ${s.store_name}`);
             } catch (e) {
-              console.error(`[bot][portal] error enviando imagen producto ${s.store_name}: ${e?.message}`);
+              console.error(`[bot][portal] error enviando logo ${s.store_name}: ${e?.message}`);
             }
           }
         }
@@ -2842,8 +2929,8 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
         return await persist(state, vendor.id, waId, replies);
       }
 
-      // 2) Todas las tiendas, agrupadas por rubro.
-      if (menuNum === "2" || ALL_STORES_RE.test(_low) || GREETING_RE.test(_low)) {
+      // Todas las tiendas por texto (no es una opción del menú).
+      if (ALL_STORES_RE.test(_low) || GREETING_RE.test(_low)) {
         try { trackEvent(vendor.id, "all_stores", waId, {}); } catch {}
         const stores = await portalStores();
         if (stores.length === 0) {
@@ -2852,7 +2939,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
           return await persist(state, vendor.id, waId, replies);
         }
         greetIfNew();
-        if (menuNum === "2" || ALL_STORES_RE.test(_low)) {
+        if (ALL_STORES_RE.test(_low)) {
           const grouped = new Map();
           for (const s of stores) {
             const k = portalVerticalLabel(s.vertical);
@@ -3119,49 +3206,10 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
       return await persist(state, vendor.id, waId, replies);
     }
 
-    // — Promociones ("¿qué promos hay?", "ofertas", "descuentos") —
+    // — Promociones/ofertas (opción 3): mismo circuito que el menú —
     const RE_PROMO = /(?:promo|promoci[oó]n|promociones|oferta|ofertas|descuento|descuentos|novedad|novedades)/i;
     if (RE_PROMO.test(text) && !/^(hola|buenas|buenos|chau|adios|gracias|ok|si|no|cancelar|ayuda|menu|menú|comercios)$/i.test(text.trim())) {
-      const portalData = await fetchPortalMenu("");
-      const stores = portalData.vendors || portalData.stores || [];
-      const promoStores = stores.map((s) => {
-        const promos = (s.products || []).filter((p) => p.promo_price != null || p.featured_today === true);
-        return { store: s, promos };
-      }).filter((x) => x.promos.length > 0);
-      if (promoStores.length === 0) {
-        replies.push("No hay promos activas en la zona por ahora. Escribí *comercios* para ver todas las tiendas. 🙌");
-        return await persist(state, vendor.id, waId, replies);
-      }
-      if (!state.welcomed) { replies.unshift("¡Hola! 👋 Soy el asistente de *Portal 659*."); state.welcomed = true; }
-      replies.push("🔥 Promos y destacados de la zona:");
-      for (const { store, promos } of promoStores.slice(0, 6)) {
-        const lines = promos.slice(0, 4).map((p) => {
-          const orig = p.original_price ? ` (antes $${Number(p.original_price).toLocaleString("es-AR")})` : "";
-          return `  • ${p.name} — $${Number(p.price).toLocaleString("es-AR")}${orig}${p.featured_today ? " ⭐" : ""}`;
-        });
-        replies.push(`*${store.store_name}*:\n${lines.join("\\n")}`);
-      }
-      replies.push("¿Querés pedir de alguna? Escribí el nombre o el número.");
-      // Enviar foto de la primera promo con imagen (best-effort).
-      const client = getClientByVendor(vendor.id);
-      if (client) {
-        const promoWithImage = promoStores.flatMap((ps) => ps.promos).find((p) => p.image_url);
-        if (promoWithImage) {
-          try {
-            const imgRes = await fetch(promoWithImage.image_url, { signal: AbortSignal.timeout(10_000) });
-            if (imgRes.ok) {
-              const buf = Buffer.from(await imgRes.arrayBuffer());
-              const b64 = buf.toString("base64");
-              const caption = `🔥 ${promoWithImage.name} — $${Number(promoWithImage.price).toLocaleString("es-AR")}${promoWithImage.original_price ? ` (antes $${Number(promoWithImage.original_price).toLocaleString("es-AR")})` : ""}`;
-              sendImage(client, waId, b64, caption);
-              console.log(`[bot][portal] imagen promo enviada: ${promoWithImage.name}`);
-            }
-          } catch (e) {
-            console.error(`[bot][portal] error enviando imagen promo: ${e?.message}`);
-          }
-        }
-      }
-      return await persist(state, vendor.id, waId, replies);
+      return await sendOffers(state, vendor, waId, replies);
     }
 
     // — Ubicación de tienda ("¿dónde queda X?", "dirección", "ubicación") —

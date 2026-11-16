@@ -15,7 +15,8 @@ export async function GET(request: Request) {
   const stores = await queryMany<any>(
     `SELECT id, store_name, slug, vertical, hours, open_override, address, neighborhood,
             transfer_alias, transfer_cbu, transfer_holder, delivery_options, cash_discount_pct,
-            payment_methods, delivery_fee, free_delivery_min, delivery_mode, delivery_area_text
+            payment_methods, delivery_fee, free_delivery_min, delivery_mode, delivery_area_text,
+            logo_url, image_url
      FROM vendors
      WHERE COALESCE(visible, true) = true
        AND slug NOT IN ('admin-portal659','portal659-bot','portal-central')
@@ -138,6 +139,8 @@ export async function GET(request: Request) {
       free_delivery_min: s.free_delivery_min != null ? Number(s.free_delivery_min) : null,
       delivery_mode: s.delivery_mode || "flat",
       delivery_area_text: s.delivery_area_text || null,
+      logo_url: s.logo_url || null,
+      image_url: s.image_url || null,
       products: storeProducts,
     };
   });

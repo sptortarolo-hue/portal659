@@ -479,7 +479,7 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
       return await persist(state, vendor.id, waId, replies);
     }
     if (/^(1|agrega|agregar|agregá|suma|sumar|sumo|si|sí|dale|ok|va|listo)$/i.test(t)) {
-      return await pendingDetailAdd(state, vendor, waId, replies, 1);
+      return await pendingDetailAdd(state, vendor, waId, replies, pd.qty ?? 1);
     }
     const qm = t.match(/^(\d{1,2})$/);
     if (qm) return await pendingDetailAdd(state, vendor, waId, replies, Math.min(99, Math.max(1, Number(qm[1]))));
@@ -558,55 +558,51 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
       }
     }
   }
-  // — Multi-pick en catálogo: "quiero el 1 y el 17" (más de un número válido) —
+  // — Multi-pick en catálogo con cantidades: "4 del 1 y del 17 3" —
   if (state.currentVendorId && Array.isArray(state.catalogSeen) && state.catalogSeen.length > 1) {
-    const allNums = [...String(text || "").matchAll(/\d{1,2}/g)].map((m) => Number(m[0])).filter((n) => n >= 1 && n <= state.catalogSeen.length);
-    if (allNums.length > 1) {
-      const numbers = [...new Set(allNums)];
-      // Interpretamos esto como picks solo si el mensaje casi no tiene otra
-      // información que no sean conectores (quiero/y/más/números…).
-      const leftovers = String(text || "")
-        .replace(/\b(quiero|dame|me das|llev[aá]|me tra[eé]s|me llev[aá]s|por favor|numero|número|num|el|la|los|las|y|e|,|\+|más|mas|tam|tamb[ií]en|mas)\b/gi, " ")
-        .replace(/\d{1,2}/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
-      if (leftovers.length <= 1) {
-        const products = await getMenu(vendor.id);
-        const added = [];
-        const needs = [];
-        for (const n of numbers) {
-          const p = products.find((x) => String(x.id) === String(state.catalogSeen[n - 1]));
-          if (!p) continue;
-          if (Array.isArray(p.variants) && p.variants.length > 0) { needs.push({ producto: p, esVariant: true }); continue; }
-          mergeItems(state, [{ offerId: p.id, name: p.name, qty: 1, modifiers: [] }], vendor.id);
-          added.push(p.name);
-        }
-        if (added.length === 0 && needs.length === 0) {
-          // fallback: sale de este bloque y cae a noMatch de siempre
-        } else {
-          state.welcomed = true;
-          state.catalogSeen = [];
-          const lines = added.length
-            ? [`Agregué a tu carrito:\n${added.map((n) => `• ${n}`).join("\n")}`]
-            : [];
-          if (needs.length > 0) {
-            // Pedir modificación por el primer producto que la necesita (qty=1).
-            const first = needs[0].producto;
-            const restantes = needs.slice(1).map((n) => n.producto.name);
-            if (restantes.length) lines.push(`(Agregando también: ${restantes.join(", ")})`);
-            state.pendingDetail = { offerId: first.id, name: first.name };
-            lines.push(`🥟 *${first.name}* — ¿qué variante querés?`);
-            const variantLines = first.variants.map((v, i) => `${i + 1}️⃣ ${v.color || "—"}${v.talle ? ` talle ${v.talle}` : ""}${v.price != null ? ` — $${Number(v.price).toLocaleString("es-AR")}` : ""}`);
-            lines.push(variantLines.join("\n"));
-            lines.push(`Respondé con el número de la variante.`);
-            replies.push(lines.join("\n"));
-            return await persist(state, vendor.id, waId, replies);
-          }
+    const parsed = parseCatalogQtyPicks(String(text || ""), state.catalogSeen.length);
+    if (parsed.picks.length > 0 && parsed.leftoversOk && (parsed.hasQty || parsed.picks.length > 1)) {
+      const products = await getMenu(vendor.id);
+      // Fusionar picks duplicados sumando cantidades (orden de aparición).
+      const byPick = new Map();
+      for (const p of parsed.picks) {
+        const cur = byPick.get(p.pick);
+        byPick.set(p.pick, cur ? Math.min(99, cur + p.qty) : p.qty);
+      }
+      const added = [];
+      const needs = [];
+      for (const [pick, qty] of byPick) {
+        const p = products.find((x) => String(x.id) === String(state.catalogSeen[pick - 1]));
+        if (!p) continue;
+        if (Array.isArray(p.variants) && p.variants.length > 0) { needs.push({ producto: p, qty }); continue; }
+        mergeItems(state, [{ offerId: p.id, name: p.name, qty, modifiers: [] }], vendor.id);
+        added.push({ name: p.name, qty });
+      }
+      if (added.length === 0 && needs.length === 0) {
+        // fallback: sale de este bloque y cae a noMatch de siempre
+      } else {
+        state.welcomed = true;
+        state.catalogSeen = [];
+        const lines = added.length
+          ? [`Agregué a tu carrito:\n${added.map((i) => `• ${i.qty}× ${i.name}`).join("\n")}`]
+          : [];
+        if (needs.length > 0) {
+          // Pedir variante por el primer producto que la necesita (conservando su qty).
+          const first = needs[0].producto;
+          const restantes = needs.slice(1).map((n) => `${n.qty}× ${n.producto.name}`);
+          if (restantes.length) lines.push(`(También falta elegir variante de: ${restantes.join(", ")})`);
+          state.pendingDetail = { offerId: first.id, name: first.name, qty: needs[0].qty };
+          lines.push(`🥟 *${first.name}* — ¿qué variante querés?`);
+          const variantLines = first.variants.map((v, i) => `${i + 1}️⃣ ${v.color || "—"}${v.talle ? ` talle ${v.talle}` : ""}${v.price != null ? ` — $${Number(v.price).toLocaleString("es-AR")}` : ""}`);
+          lines.push(variantLines.join("\n"));
+          lines.push(`Respondé con el número de la variante${needs[0].qty > 1 ? ` (son ${needs[0].qty} unidades)` : ""}.`);
           replies.push(lines.join("\n"));
-          if (maybeAskRequiredMods(state, products, replies)) return;
-          advanceAndAsk(state, vendor, replies);
-          return;
+          return await persist(state, vendor.id, waId, replies);
         }
+        replies.push(lines.join("\n"));
+        if (maybeAskRequiredMods(state, products, replies)) return;
+        advanceAndAsk(state, vendor, replies);
+        return;
       }
     }
   }
@@ -1682,6 +1678,73 @@ async function handleStep({ vendor, text, state, replies, waId }) {
 // ———————————————————————————————————————————————————————————————————————————
 // Preguntas combinadas: UN solo mensaje con TODO lo que falta
 // ———————————————————————————————————————————————————————————————————————————
+
+/**
+ * Parsea picks de catálogo con cantidad opcional.
+ *   "4 del 1"                  → [{ pick: 1, qty: 4 }]
+ *   "del 17 3"                 → [{ pick: 17, qty: 3 }]
+ *   "4 del 1 y del 17 3"       → [{ pick: 1, qty: 4 }, { pick: 17, qty: 3 }]
+ *   "quiero el número 1 y el 17" → [{ pick: 1, qty: 1 }, { pick: 17, qty: 1 }]
+ * Devuelve { picks, hasQty, leftoversOk }. leftoversOk = true si no quedaron
+ * palabras desconocidas (solo conectores/números/conjunciones/artículos).
+ */
+function parseCatalogQtyPicks(text, catalogLen) {
+  const normTxt = String(text || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  const CONN = "(?:del|de|el|la|los|las|numero|num|nro|n[.ºo°]?|#)";
+  const picks = [];
+  const consumed = [];
+  let m;
+  // Patrón 1 — producto primero + cantidad detrás: "del 17 3".
+  const pRe = new RegExp(`${CONN}\\s*(\\d{1,3})\\s+(\\d{1,3})(?![.\\d])`, "gi");
+  while ((m = pRe.exec(normTxt))) {
+    const pick = Number(m[1]);
+    const qty = Number(m[2]);
+    if (pick >= 1 && pick <= catalogLen && qty >= 1) {
+      picks.push({ pick, qty: Math.min(99, qty), at: m.index, until: m.index + m[0].length, hasQty: true });
+      consumed.push([m.index, m.index + m[0].length]);
+    }
+  }
+  // Texto restante con las coincidencias anteriores en blanco (mismas coordenadas).
+  let rest = normTxt;
+  for (const [a, b] of [...consumed].sort((x, y) => y[0] - x[0])) {
+    rest = rest.slice(0, a) + " ".repeat(b - a) + rest.slice(b);
+  }
+  // Patrón 2 — cantidad primero: "4 del 1" / "4 unidades del 17" (número antes del conector).
+  const qRe = new RegExp(`(\\d{1,3})\\s*(?:unidad(?:es)?|u|x|veces)?\\s*${CONN}\\s*#?\\s*(\\d{1,3})`, "gi");
+  while ((m = qRe.exec(rest))) {
+    const qty = Number(m[1]);
+    const pick = Number(m[2]);
+    if (pick >= 1 && pick <= catalogLen && qty >= 1) {
+      picks.push({ pick, qty: Math.min(99, qty), at: m.index, until: m.index + m[0].length, hasQty: true });
+      consumed.push([m.index, m.index + m[0].length]);
+    }
+  }
+  // Números sueltos restantes: picks sin cantidad (qty 1).
+  for (const mm of rest.matchAll(/\d{1,3}/g)) {
+    const idx = mm.index;
+    if (consumed.some(([a, b]) => idx >= a && idx < b)) continue;
+    const n = Number(mm[0]);
+    if (n >= 1 && n <= catalogLen) {
+      picks.push({ pick: n, qty: 1, at: idx, until: idx + mm[0].length, hasQty: false });
+    }
+  }
+  picks.sort((a, b) => a.at - b.at);
+  const hasQty = picks.some((p) => p.hasQty);
+  // Verificación de "no queda texto desconocido" (descarta frases como "quiero kilo de helado").
+  // OJO: CONN va con \b para no comerse "el" dentro de palabras como "helado"/"modelo".
+  const leftovers = normTxt
+    .replace(new RegExp(`\\b${CONN}\\b`, "gi"), " ")
+    .replace(/\d{1,3}/g, " ")
+    .replace(/\b(quiero|queria|dame|me das|llevo|lleva|me llevas|traeme|me traes|trae|por favor|favor|y|e|,|\+|mas|más|tampoco|tambien|también|ademas|además|con|para|veces|unidad|unidades|x)\b/gi, " ")
+    .replace(/[^a-z\s]/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  picks.forEach((p) => { delete p.at; delete p.until; delete p.hasQty; });
+  return { picks, hasQty, leftoversOk: leftovers.length <= 1 };
+}
 
 function advanceAndAsk(state, vendor, replies) {
   const missing = missingFields(state, vendor);

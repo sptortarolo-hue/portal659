@@ -878,6 +878,14 @@ function parseChunk(chunk, products) {
   }
   const p = matchProduct(products, name);
   if (!p) {
+    // Fallback: artículos/preposiciones casuales del habla argentina ("kilo de
+    // helado", "un alfajor con...") — probamos el nombre sin palabras-función.
+    const STOP = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'un', 'una', 'unos', 'unas', 'a', 'en', 'con', 'por', 'para']);
+    const clean = (name || '').split(/\s+/).filter((w) => { const lw = String(w || '').toLowerCase(); return !STOP.has(lw) && lw.length > 1; }).join(' ').trim();
+    if (clean && clean !== name) {
+      const p3 = matchProduct(products, clean);
+      if (p3) return buildItem(p3, qty, norm, name);
+    }
     // Sin match: reintentar SIN colores/talles ("remera negra talle m" →
     // "remera") — esas palabras rompen la intersección del match.
     const bare = bareName(name) || name;

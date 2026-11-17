@@ -97,9 +97,14 @@ export function pendingQuestionsTone(state) {
   if (state.pendingFields.includes("address")) lines.push(`${n + 1}️⃣ ¿A qué dirección te lo llevo?`), n++;
   if (state.pendingFields.includes("name")) lines.push(`${n + 1}️⃣ ¿A nombre de quién va el pedido?`), n++;
   if (state.pendingFields.includes("payment")) lines.push(`${n + 1}️⃣ ¿Pagás en efectivo o por transferencia?`), n++;
+  const DOT = ["method", "address", "name", "payment"];
+  const stepNum = DOT.findIndex((f) => state.pendingFields.includes(f)) + 1 || 1;
+  const stepLabel = { method: "Entrega", address: "Dirección", name: "Nombre", payment: "Pago" }[state.pendingFields[0] || "method"];
+  const itemCount = (state.items || []).reduce((s, i) => s + Number(i.qty || 1), 0);
+  const sticky = `🧭 *Paso ${stepNum} de 4 · ${stepLabel}* · 🛒 *${itemCount} ${itemCount === 1 ? "item" : "items"}*\n`;
   const cart = state.items.length
-    ? `Tu pedido:\n${state.items.map((i) => `• ${itemDisplayTone(i)}`).join("\n")}\n\n`
-    : "";
+    ? `${sticky}Tu pedido:\n${state.items.map((i) => `• ${itemDisplayTone(i)}`).join("\n")}\n\n`
+    : sticky ? `${sticky}\n` : "";
   const questions = lines.length ? `${lines.join("\n")}\n\n` : "";
   return `${cart}${questions}Decime lo que falte, todo junto o de a una cosa. 👇${portalNavFooter()}`;
 }

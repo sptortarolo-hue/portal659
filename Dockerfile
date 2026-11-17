@@ -18,7 +18,7 @@ FROM node:22-alpine AS runner
 WORKDIR /app
 # Fuentes para renderizar SVG text con sharp (librsvg) — sin ellas, el SVG <text>
 # sale en blanco (las imágenes de menú salían rotas: solo foto, sin nombre ni precio).
-RUN apk add --no-cache ttf-dejavu ttf-liberation font-freefont-ttf
+RUN apk add --no-cache ttf-dejavu font-liberation fontconfig
 ENV NODE_ENV production
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public

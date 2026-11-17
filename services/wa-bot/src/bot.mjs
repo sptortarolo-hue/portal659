@@ -329,6 +329,7 @@ function llmCtx(state, vendor) {
     history: state.history,
     vendorId: vendor?.id || vendor?.vendorId || null,
     vertical: vendor?.vertical || null,
+    storeName: vendor?.store_name || vendor?.storeName || vendor?.slug || vendor?.vendorId || 'el comercio',
     stage: state.step || 'idle',
   };
 }
@@ -380,6 +381,22 @@ async function parseItems(state, vendor, text, products) {
   }
   if (!parsed) return null;
   parsed.items = resolveOfferIds(products, parsed.items);
+  // Sanitized audit event: NO datos de contacto (dirección, nombre, teléfono),
+  // solo la intención y los ítems con qty. Adeceo para meter en analytics:
+  try {
+    const tool = parsed.reasoning === 'tool:create_order' ? 'create_order'
+      : parsed.reasoning === 'tool:not_an_order' ? 'not_an_order'
+      : (parsed.__llm ? 'llm' : 'rules');
+    trackEvent(vendor.id, "llm_tool_call", waId, {
+      tool,
+      intent: parsed.intent || null,
+      items: (parsed.items || []).map((i) => ({ name: i?.name, qty: i?.qty })).slice(0, 20),
+      stage: state.step || 'idle',
+      provider: parsed.__llm ? 'llm' : 'rules',
+      // Cheap count of LLM calls that needed rules reconciliation (signal for tuning).
+      reconciled: parsed.items && parsed.reasoning?.startsWith('tool:') ? 0 : 1,
+    });
+  } catch {}
   return parsed;
 }
 

@@ -275,6 +275,126 @@ async function readForMs(
   }
 }
 
+export type WatchHandle = {
+  stop: () => void;
+  /** Baudios con los que quedó la balanza leyendo. */
+  baud: number | null;
+};
+
+/**
+ * Lectura CONTINUA de la balanza (para mostrar el peso en vivo y para
+ * auto-imprimir al estabilizar): abre el puerto una vez y queda escuchando.
+ * `onKg` recibe el último peso interpretable (kg, 3 decimales) o `null` si
+ * el plato quedó vacío. `stop()` libera el puerto.
+ *
+ * El bucle es intencionalmente tolerante: si un frame viene corrupto o la
+ * balanza manda "peso inestable", simplemente no actualiza.
+ */
+export async function watchScale(
+  port: any,
+  opts: {
+    vendorId?: string | null;
+    onKg: (kg: number | null) => void;
+    onError?: (message: string) => void;
+    /** Milisegundos entre re-pedidos ENQ (default 800). */
+    pollMs?: number;
+  }
+): Promise<WatchHandle> {
+  const pollMs = Math.max(300, opts.pollMs ?? 800);
+  const remembered = loadRememberedBaud(opts.vendorId);
+  const baud = remembered ?? 9600;
+  let stopped = false;
+
+  try {
+    await port.open({ baudRate: baud });
+  } catch {
+    try {
+      await port.close();
+      await port.open({ baudRate: baud });
+    } catch {
+      throw new ScalePortError();
+    }
+  }
+  try {
+    await port.setSignals?.({ dataTerminalReady: true, requestToSend: true });
+  } catch {
+    /* noop */
+  }
+
+  let writer: any = null;
+  try {
+    writer = port.writable?.getWriter?.() ?? null;
+  } catch {
+    writer = null;
+  }
+  const sendEnq = async () => {
+    if (!writer) return;
+    try {
+      await writer.write(new Uint8Array([0x05]));
+    } catch {
+      /* noop */
+    }
+  };
+  await sendEnq();
+
+  const decoder = new TextDecoder();
+  const reader = port.readable.getReader();
+  const handle: WatchHandle = { stop: () => { stopped = true; }, baud };
+
+  void (async () => {
+    let buf = "";
+    let lastEnq = Date.now();
+    const MIN_PENDING = 150;
+    try {
+      for (;;) {
+        if (stopped) break;
+        if (Date.now() - lastEnq > pollMs) {
+          await sendEnq();
+          lastEnq = Date.now();
+        }
+        const res = (await Promise.race([
+          reader.read(),
+          new Promise<typeof SLEEP>((res) => setTimeout(() => res(SLEEP), MIN_PENDING)),
+        ])) as any;
+        if (res === SLEEP) continue;
+        const { value, done } = res as { value?: Uint8Array; done?: boolean };
+        if (done) break;
+        if (!value) continue;
+        buf += decoder.decode(value, { stream: true });
+        // Conservar solo los últimos ~400 bytes para no crecer sin límite.
+        if (buf.length > 400) buf = buf.slice(-400);
+        const kg = parseScaleKg(buf);
+        opts.onKg(kg);
+      }
+    } catch (e: any) {
+      opts.onError?.(e?.message || "No se pudo leer la balanza");
+    } finally {
+      try {
+        await reader.cancel();
+      } catch {
+        /* noop */
+      }
+      try {
+        reader.releaseLock();
+      } catch {
+        /* noop */
+      }
+      try {
+        writer?.releaseLock?.();
+      } catch {
+        /* noop */
+      }
+      try {
+        await port.close();
+      } catch {
+        /* noop */
+      }
+    }
+  })();
+
+  return handle;
+}
+
 export async function readScaleFromPort(
   port: any,
   opts: { vendorId?: string | null; onBaud?: (baud: number) => void } = {}

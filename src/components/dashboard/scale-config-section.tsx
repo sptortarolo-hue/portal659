@@ -23,6 +23,7 @@ import {
   readScaleFromPort,
   ScaleUnparsedError,
 } from "@/lib/scale-reader";
+import { LabelPrinterCard } from "@/components/dashboard/label-printer-card";
 
 type ScaleProduct = {
   id: string;
@@ -465,6 +466,9 @@ export function ScaleConfigSection({ vendor, saveVendor, offers }: Props) {
           .
         </p>
       </div>
+
+      {/* Impresora de etiquetas adhesivas + emisor */}
+      <LabelPrinterCard vendor={vendor} saveVendor={saveVendor} offers={offers} />
 
       {/* Probador */}
       <div className="rounded-lg border border-border bg-card p-4 space-y-3">

@@ -3,6 +3,7 @@ import { query, queryMany, queryOne } from "@/lib/db";
 import { getVendorByRequest, seedDefaultCategories } from "@/lib/vendor-utils";
 import { listVendorBankAccounts } from "@/lib/bank-accounts-server";
 import { readScaleLabelConfig } from "@/lib/scale-barcode";
+import { readLabelPrinterConfig } from "@/lib/label-spec";
 import { NextResponse } from "next/server";
 
 function slugify(text: string): string {
@@ -585,6 +586,14 @@ export async function POST(request: Request) {
         ? null
         : JSON.stringify(readScaleLabelConfig(body.scale_label_config));
   }
+  // Impresora de etiquetas adhesivas (config jsonb). Se sanea como la de
+  // etiquetas de balanza; borrarla (null) vuelve todo al default.
+  if (body.label_printer_config !== undefined) {
+    payload.label_printer_config =
+      body.label_printer_config === null
+        ? null
+        : JSON.stringify(readLabelPrinterConfig(body.label_printer_config));
+  }
 
   if (existing) {
     let vendor: Record<string, unknown> | undefined;
@@ -649,6 +658,7 @@ export async function POST(request: Request) {
         "weight_step_kg",
         "weight_min_kg",
         "scale_label_config",
+        "label_printer_config",
         "accept_orders_when_closed",
       ].filter((k) => k in payload && msg.includes(k));
       if (droppable.length > 0) {

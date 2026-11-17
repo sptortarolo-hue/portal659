@@ -226,7 +226,76 @@ export default function PesablesPage() {
         </div>
 
         <div>
-          <h2 className="font-display text-lg font-semibold mb-3">8. Preguntas frecuentes</h2>
+          <h2 className="font-display text-lg font-semibold mb-3">
+            8. Etiquetas adhesivas para tus productos (impresora de etiquetas)
+          </h2>
+          <p className="mb-3">
+            Para pegar en los productos por unidad y en los pesables usás una{" "}
+            <span className="font-medium">impresora de etiquetas</span> (distinta de la de
+            tickets): las etiquetas salen como las del supermercado, con el PLU y el código de
+            barras que lee tu lector. Se configura en{" "}
+            <span className="font-medium">Configuración → Balanza → 🏷️ Impresora de etiquetas</span>.
+          </p>
+          <p className="mb-3">
+            <strong>1 · Instalá el agente.</strong> El agente de impresión "Portal Print" tiene que
+            estar abierto en la PC a la que va conectada la impresora de etiquetas (USB), y la
+            cola de Windows de la impresora tiene que aparecer en{" "}
+            <span className="font-medium">Buscar colas</span>. Elegila en{" "}
+            <span className="font-medium">Cola USB</span>.
+          </p>
+          <p className="mb-3">
+            <strong>2 · Calibrá el lenguaje.</strong> Las impresoras de etiquetas entienden
+            distintos lenguajes: <span className="font-medium">TSPL</span> (la mayoría),{" "}
+            <span className="font-medium">ZPL</span> (Zebra) y <span className="font-medium">ESC/POS</span>.
+            Elegí la <span className="font-medium">medida del rollo</span> (50×30 es la más común;
+            58×40 si querés que entre todo), la <span className="font-medium">plantilla</span>{" "}
+            (Envasado para pesables, Góndola para precio de repisa) y tocá{" "}
+            <span className="font-medium">Probar TSPL</span>, <span className="font-medium">Probar ZPL</span> o{" "}
+            <span className="font-medium">Probar ESC/POS</span>: cuando la etiqueta de calibración
+            sale bien, el lenguaje queda fijado solo.
+          </p>
+          <p className="mb-3">
+            <strong>3 · Emití las etiquetas.</strong> Tocá{" "}
+            <span className="font-medium">🏷️ Emitir etiqueta…</span>: elegís el producto (o lo
+            buscás), y si es <span className="font-medium">Por peso</span> la balanza pesa en
+            vivo. La etiqueta muestra los valores al instante y con el botón{" "}
+            <span className="font-medium">🖨️ Imprimir</span> sale. El flujo queda abierto para el
+            siguiente producto: pesás, imprimís, y así hasta terminar.
+          </p>
+          <p className="mb-3">
+            Si tu balanza no está por USB, cargás los kilos a mano con el campo o los atajos
+            (250 g / 500 g / 1 kg / 1,5 kg). También podés elegir{" "}
+            <span className="font-medium">auto-imprimir</span>: cuando el peso queda quieto 1,5
+            segundos, la etiqueta se imprime sola.
+          </p>
+          <p className="mb-3">
+            <span className="font-medium">¿Qué lleva la etiqueta?</span> ·
+          </p>
+          <ul className="list-disc list-inside space-y-1 mb-3">
+            <li>
+              <span className="font-medium">Envasado</span>: nombre, PLU, peso, precio por kilo,{" "}
+              <span className="font-medium">TOTAL</span>, fecha de envasado (la de hoy; la
+              podés cambiar), vencimiento si el producto lo tiene en su ficha o elegís uno de
+              los atajos (+7 / +15 / +30 días), y el código de barras con el peso embebido
+              (el mismo formato que lee el Mostrador).
+            </li>
+            <li>
+              <span className="font-medium">Góndola</span>: nombre, marca,{" "}
+              <span className="font-medium">precio grande</span>, precio por unidad de medida
+              (por kilo o litro, como exige la exhibición de precios) y el código de barras
+              interno. No lleva fechas.
+            </li>
+          </ul>
+          <p className="text-muted-foreground">
+            La impresión manual es por defecto; la automática es un interruptor por sesión. El
+            Mostrador vuelve a calcular el precio con el vigente el día de la venta, igual que una
+            balanza Etiquetadora: la etiqueta impresa es un comprobante del momento del envasado,
+            no una cotización fija.
+          </p>
+        </div>
+
+        <div>
+          <h2 className="font-display text-lg font-semibold mb-3">9. Preguntas frecuentes</h2>
           <p className="mb-3">
             <span className="font-medium">¿Me equivoqué de peso?</span> · Podés corregirlo todas las
             veces que quieras <em>antes</em> de confirmar. Después de confirmar, el total quedó

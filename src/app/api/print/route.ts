@@ -1,7 +1,9 @@
 import { query, queryOne, queryMany } from "@/lib/db";
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { NextResponse } from "next/server";
-import { dispatchPrint, type CashClosingPrintData, type CashSnapshotData, type FiscalPrintInfo, type PrinterVendor } from "@/lib/thermal-printer";
+import { dispatchPrint, dispatchSticker, type CashClosingPrintData, type CashSnapshotData, type FiscalPrintInfo, type PrinterVendor } from "@/lib/thermal-printer";
+import { buildStickerForProduct, calibrateSticker } from "@/lib/sticker-server";
+import { readLabelPrinterConfig } from "@/lib/label-spec";
 import { getSiteUrl } from "@/lib/site-url";
 import { computeCashClosing, computeShiftSummary, getOpenShift, lastClosingSince } from "@/lib/cash-closing";
 import { resolveVendorPlan } from "@/lib/plans";
@@ -63,6 +65,89 @@ export async function POST(request: Request) {
     ...result,
     ipFixed: await applyIpFix(vendor.id, vendor.printer_ip, result),
   });
+  }
+
+  // Etiqueta adhesiva (productos por unidad y pesables): impresora de
+  // etiquetas USB, distinta de la de tickets. Body:
+  //   { type: "sticker", productId, kg?, copies?, template?, packedAt?, shelfLifeDays? }  → imprime
+  //   { type: "sticker", calibrate: "tspl" | "zpl" | "escpos" }                            → calibración
+  //   { type: "sticker", preview: true, productId, ... }                                    → no llega acá (ruta propia)
+  if (type === "sticker") {
+    if (!Object.prototype.hasOwnProperty.call(vendor, "label_printer_config")) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Falta aplicar supabase/self-host/migrate-label-printer.sql (columna vendors.label_printer_config).",
+        },
+        { status: 503 }
+      );
+    }
+    const cfg = readLabelPrinterConfig((vendor as any).label_printer_config);
+    const cal = body.calibrate;
+    if (cal) {
+      const calRes = await calibrateSticker(vendor, cal);
+      if (!calRes.ok) {
+        return NextResponse.json({ ok: false, error: calRes.error }, { status: calRes.status });
+      }
+      const result = await dispatchSticker({
+        vendor,
+        png: calRes.png,
+        widthMm: calRes.spec.widthMm,
+        heightMm: calRes.spec.heightMm,
+        copies: 1,
+        language: calRes.language,
+        usbName: cfg.usbName,
+      });
+      await recordLastPrint(vendor.id, result);
+      return NextResponse.json({
+        ok: result.ok,
+        mode: result.mode,
+        offline: result.offline,
+        error: result.error,
+        usbUsed: result.usbUsed ?? null,
+        calibrated: calRes.language,
+      });
+    }
+    const built = await buildStickerForProduct(vendor, {
+      productId: typeof body.productId === "string" ? body.productId : null,
+      kg: body.kg != null ? Number(body.kg) : null,
+      copies: Math.min(50, Math.max(1, Math.floor(Number(body.copies) || 1))),
+      template: body.template === "gondola" ? "gondola" : body.template === "envasado" ? "envasado" : null,
+      packedAt: body.packedAt ?? null,
+      shelfLifeDays: body.shelfLifeDays != null ? Number(body.shelfLifeDays) : null,
+    });
+    if (!built.ok) {
+      return NextResponse.json({ ok: false, error: built.error }, { status: built.status });
+    }
+    const language =
+      cfg.language === "auto" ? "tspl" : cfg.language === "zpl" || cfg.language === "escpos" ? cfg.language : "tspl";
+    const result = await dispatchSticker({
+      vendor,
+      png: built.png,
+      widthMm: built.spec.widthMm,
+      heightMm: built.spec.heightMm,
+      copies: Math.min(50, Math.max(1, Math.floor(Number(body.copies) || 1))),
+      language,
+      usbName: cfg.usbName,
+    });
+    await recordLastPrint(vendor.id, result);
+    return NextResponse.json({
+      ok: result.ok,
+      mode: result.mode,
+      offline: result.offline,
+      error: result.error,
+      usbUsed: result.usbUsed ?? null,
+      language,
+      template: built.content.template,
+      unit: built.product.unit,
+      total: built.content.total,
+      kg: built.content.kg,
+      packedAt: built.packedAt,
+      expiresAt: built.expiresAt,
+      code: built.content.code,
+      barcode: built.spec.barcode,
+      warnings: built.spec.warnings,
+    });
   }
 
   // Cierre de caja (Z): imprime el cierre guardado tal cual quedó en la DB.

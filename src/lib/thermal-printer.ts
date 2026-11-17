@@ -3,6 +3,7 @@ import { orderLineTotal } from "@/lib/order-line";
 import { CASH_METHOD_LABELS } from "@/lib/cash-methods";
 import { formatDeliveryWindow } from "@/lib/delivery-schedule";
 import { code128BarWidths } from "@/lib/code128";
+import { buildStickerBuffer } from "@/lib/label-printer";
 import {
   FONT_NAME,
   LOGO_D,
@@ -2515,7 +2516,7 @@ export async function buildCashSnapshotBuffer(
   }
 }
 
-type BridgeJob = {
+export type BridgeJob = {
   type: string;
   payload: string;
   printerIp: string | null;
@@ -2523,10 +2524,19 @@ type BridgeJob = {
   width: number;
   /** Tercer modo: 'usb' = el agente imprime en la cola USB local (spooler RAW). */
   backend?: "tcp" | "usb";
+  /** Cola USB por trabajo (impresora de etiquetas ≠ impresora de tickets). */
+  printerUsbName?: string | null;
 };
 
-function bridgeJob(type: string, buffer: Buffer, vendor: PrinterVendor): BridgeJob {
-  const usb = (vendor as { print_mode?: string | null }).print_mode === "usb";
+function bridgeJob(
+  type: string,
+  buffer: Buffer,
+  vendor: PrinterVendor,
+  overrides?: { backend?: "tcp" | "usb"; printerUsbName?: string | null }
+): BridgeJob {
+  const usb = overrides?.backend
+    ? overrides.backend === "usb"
+    : (vendor as { print_mode?: string | null }).print_mode === "usb";
   return {
     type,
     payload: buffer.toString("base64"),
@@ -2534,6 +2544,62 @@ function bridgeJob(type: string, buffer: Buffer, vendor: PrinterVendor): BridgeJ
     printerPort: vendor.printer_port || 9100,
     width: vendor.paper_size === "58mm" ? 32 : 48,
     ...(usb ? { backend: "usb" as const } : {}),
+    ...(overrides?.printerUsbName ? { printerUsbName: overrides.printerUsbName } : {}),
+  };
+}
+
+/**
+ * Etiqueta adhesiva para la impresora de etiquetas (USB, por el agente).
+ * NO depende del modo de la impresora de tickets: siempre sale por el
+ * backend USB con la cola que configuró el comercio para etiquetas.
+ */
+export async function dispatchSticker(params: {
+  vendor: PrinterVendor & { print_token?: string | null };
+  png: Buffer;
+  widthMm: number;
+  heightMm: number;
+  copies: number;
+  language: "tspl" | "zpl" | "escpos";
+  usbName?: string | null;
+}): Promise<DispatchResult> {
+  const mode = "usb" as const;
+  if (!params.vendor.print_token) {
+    return {
+      ok: false,
+      mode,
+      error:
+        "Falta el token del puente de impresión. El agente es el mismo para la impresora de tickets y la de etiquetas: " +
+        "configurá la sección Impresora (Configuración → Impresora) y volvé a probar.",
+    };
+  }
+  const usbName = String(params.usbName ?? "").trim();
+  if (!usbName) {
+    return {
+      ok: false,
+      mode,
+      error:
+        "Falta la cola USB de la impresora de etiquetas. Elegila en Configuración → Balanza → Impresora de etiquetas " +
+        "(el agente de este equipo expone la lista de colas con el botón “Buscar colas”).",
+    };
+  }
+  const built = await buildStickerBuffer({
+    png: params.png,
+    widthMm: params.widthMm,
+    heightMm: params.heightMm,
+    copies: params.copies,
+    language: params.language,
+  });
+  if (!built.ok) return { ok: false, mode, error: built.error };
+  const pushed = await pushToBridge(
+    params.vendor.print_token,
+    bridgeJob("sticker", built.buffer, params.vendor, { backend: "usb", printerUsbName: usbName })
+  );
+  return {
+    ok: pushed.ok,
+    mode,
+    offline: pushed.offline,
+    error: pushed.error,
+    usbUsed: pushed.usbUsed ?? usbName,
   };
 }
 

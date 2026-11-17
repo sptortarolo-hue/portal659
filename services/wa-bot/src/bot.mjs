@@ -192,6 +192,7 @@ export async function handleInbound({ vendor, waId, body, waPhone, timestamp }) 
     // compartido y las conversaciones nuevas arrancaban con el carrito de otra.
     if (!state.items || !Array.isArray(state.items) || state.items === DEFAULT_STATE.items) state.items = [];
     if (!Array.isArray(state.history) || state.history === DEFAULT_STATE.history) state.history = [];
+    if (!Array.isArray(state.navStack) || state.navStack === DEFAULT_STATE.navStack) state.navStack = [];
 
     // Hora de la última actividad del cliente: la usa el sweep de inactividad
     // (pregunta pendiente sin contestar → "va a ser atendido por una persona").
@@ -3163,6 +3164,8 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
   }
   if (!state.items || !Array.isArray(state.items) || state.items === DEFAULT_STATE.items) state.items = [];
   if (!Array.isArray(state.history) || state.history === DEFAULT_STATE.history) state.history = [];
+  // back-stack: mismo problema de referencia compartida que items/history
+  if (!Array.isArray(state.navStack) || state.navStack === DEFAULT_STATE.navStack) state.navStack = [];
   // timestamp del mensaje entrante (para debug / anti-mensajes-viejos)
   if (timestamp) state.lastMsgTs = timestamp;
   if (!state.zone) state.zone = "sicardi-garibaldi";

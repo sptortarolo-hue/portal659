@@ -2,6 +2,7 @@
 import { config } from "./config.mjs";
 import { matchProduct } from "./menu.mjs";
 import { loadCorrections, formatFewShot } from "./learning.mjs";
+import { toolSchemasForLlm, dispatchTool } from "./tools.mjs";
 
 // NVIDIA rota el catálogo /models (410 Gone) sin aviso. El auto-descubrimiento
 // no confía en la lista — la prueba real (POST chat/completions) decide: el
@@ -327,6 +328,8 @@ Razoná paso a paso antes de responder. En "reasoning" poné 1 frase por qué ma
 // en 1 comando si el bot está usando IA y con qué modelo respondió por última vez.
 export const llmStats = {
   ok: 0, fail: 0, cooldown: 0, lastModel: null, lastAt: null,
+  // Telemetría de tokens (fase 1 agente): cuanto cuesta cada conversación.
+  usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, calls: 0 },
   // Telemetría de parseos (Fase 3): de dónde salió el pedido entendido.
   parses: { llm: 0, rules: 0, lowConfidence: 0 },
 };
@@ -335,71 +338,9 @@ export const llmStats = {
 // Function calling (OpenAI tools schema): el API valida la salida y la IA
 // no puede devolver texto libre mal-formado. Fallback a prompt-with-JSON para
 // proveedores que no soporten tools (openrouter free, algunos modelos).
+// Las tools viven en ./tools.mjs (registry schema+handler): un solo lugar.
 // ———————————————————————————————————————————————————————————————————————————
-const TOOLS = [
-  {
-    type: 'function',
-    function: {
-      name: 'create_order',
-      description: 'Crear un pedido de productos de la tienda. Usar cuando el cliente QUIERA comprar/pedir/confirmar cantidades.',
-      parameters: {
-        type: 'object',
-        properties: {
-          intent: { type: 'string', enum: ['pedido'] },
-          complete: { type: 'boolean' },
-          op: { type: 'string', enum: ['add', 'remove', 'setQty', 'setField'] },
-          items: {
-            type: 'array',
-            description: 'Ítems que el cliente pidió',
-            items: {
-              type: 'object',
-              properties: {
-                name: { type: 'string' },
-                qty: { type: 'number' },
-                unit: { type: 'string', enum: ['unidad', 'kg', 'pack'] },
-                weightKg: { type: 'number' },
-                modifiers: { type: 'array', items: { type: 'string' } },
-                variant: {
-                  type: 'object',
-                  properties: {
-                    color: { type: 'string' },
-                    talle: { type: 'string' },
-                  },
-                },
-                said: { type: 'string' },
-              },
-              required: ['name', 'qty'],
-            },
-          },
-          method: { type: 'string', enum: ['pickup', 'delivery'] },
-          payment: { type: 'string', enum: ['efectivo', 'transferencia', 'mercadopago', 'whatsapp'] },
-          customerName: { type: 'string' },
-          customerAddress: { type: 'string' },
-          note: { type: 'string' },
-        },
-        required: ['intent', 'items'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'not_an_order',
-      description: 'Usar cuando el mensaje NO es un pedido de productos (preguntas portal, saludo, información, una tienda en particular no es un pedido).',
-      parameters: {
-        type: 'object',
-        properties: {
-          intent: {
-            type: 'string',
-            enum: ['info_portal', 'ver_tiendas_abiertas', 'ver_todas_tiendas', 'elegir_tienda', 'sumar_comercio', 'chat'],
-          },
-          note: { type: 'string' },
-        },
-        required: ['intent'],
-      },
-    },
-  },
-];
+const TOOLS = toolSchemasForLlm();
 
 // Cooldown por proveedor (anti-429/410). Clave: `${name}:${model}`.
 const providerCooldowns = new Map();
@@ -494,6 +435,14 @@ export async function llmChat(messages, opts = {}) {
     }
 
     const data = await res.json().catch(() => null);
+    // Tokens consumidos (para llmStats.usage)
+    const _u = data?.usage;
+    if (_u && typeof _u === "object") {
+      llmStats.usage.prompt_tokens += Number(_u.prompt_tokens) || 0;
+      llmStats.usage.completion_tokens += Number(_u.completion_tokens) || 0;
+      llmStats.usage.total_tokens += Number(_u.total_tokens) || 0;
+      llmStats.usage.calls += 1;
+    }
     // ¿El modelo respondió con tool_calls? (los queremos sobre content en este caso)
     const toolCalls = data?.choices?.[0]?.message?.tool_calls;
     if (opts.tools && Array.isArray(toolCalls) && toolCalls[0]?.function?.name) {
@@ -652,31 +601,8 @@ async function callOnce(message, products, ctx = null) {
 
   if (llmResult.__toolCall) {
     const { name, args } = llmResult.__toolCall;
-    if (name === 'create_order' && Array.isArray(args?.items)) {
-      return {
-        intent: 'pedido',
-        complete: !!args.complete,
-        op: args.op || 'add',
-        items: args.items.map((i) => ({ ...i, unit: i.unit || 'unidad' })),
-        method: args.method ?? null,
-        payment: args.payment ?? null,
-        customerName: args.customerName ?? null,
-        customerAddress: args.customerAddress ?? null,
-        note: args.note ?? null,
-        confidence: 1,
-        reasoning: 'tool:create_order',
-      };
-    }
-    if (name === 'not_an_order') {
-      return {
-        intent: args?.intent || 'chat',
-        complete: false,
-        items: [],
-        unknownItems: [],
-        confidence: 1,
-        reasoning: `tool:not_an_order(${args?.intent})`,
-      };
-    }
+    const out = dispatchTool(name, args);
+    if (out) return out;
   }
   const content = llmResult.content;
   const json = content.replace(/```json/gi, "").replace(/```/g, "").trim();

@@ -227,5 +227,23 @@ r = await send("como están?"); // NL no hace nada → no toca el carrito
   condition("mensaje mareado no borra el carrito", (st.items || []).length === 1 && Number(st.items[0].qty) === 4);
 }
 
+// =====================================================================
+// 13) Tool registry: schemas expuestos al LLM + handlers coherentes
+// =====================================================================
+{
+  const { toolSchemasForLlm, dispatchTool, toolNames } = await import("./src/tools.mjs");
+  const names = toolNames();
+  const schemas = toolSchemasForLlm();
+  condition("registry: tools esperadas registradas", names.includes("create_order") && names.includes("not_an_order"));
+  condition("registry: schemas al LLM válidos (function/json schema)",
+    schemas.every((s) => s.type === "function" && s.function?.name && s.function?.parameters?.type === "object"));
+  const order = dispatchTool("create_order", { intent: "pedido", complete: false, op: "add", items: [{ name: "Plancha 1", qty: 5 }] });
+  condition("dispatchTool create_order → parse válido con qty cap 99/floor 1",
+    order && order.intent === "pedido" && order.items[0].qty === 5 && order.op === "add");
+  const chat = dispatchTool("not_an_order", { intent: "sumar_comercio" });
+  condition("dispatchTool not_an_order → chat/sin ítems", chat && chat.intent === "sumar_comercio" && chat.items.length === 0);
+  condition("dispatchTool tool inexistente → null", dispatchTool("no_existe", {}) === null);
+}
+
 console.log(`\n=== GOLDEN: ${checks} checks, ${failures} fallas ===`);
 process.exit(failures ? 1 : 0);

@@ -763,7 +763,7 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
       replies.push(pendingProductAsk(state) + extra);
       return;
     }
-    const isAddition = /\b(agrega|agregar|tambi\u00e9n|tambien|suma|sumar|m\u00e1s|mas)(?=[\s.,!]|$)/i.test(text);
+    const isAddition = /\b(agrega|agreg[áa]|agregame|agregalo|agregala|agregar|tambi[ée]n|tambien|sum[áa]|suma|sumar|m[áa]s|mas)(?=[\s.,!]|$)/i.test(text);
     if (isAddition && state.items.length > 0) {
       // Para cada ítem, si tiene variantes y no las eligió aún, preguntar cuál
       const itemsToAdd = [];
@@ -1188,7 +1188,7 @@ async function handleStep({ vendor, text, state, replies, waId }) {
     if (parsed?.customerName && parsed.customerName !== state.customerName) { state.customerName = parsed.customerName; changed = true; }
     if (parsed?.payment && parsed.payment !== state.payment) { state.payment = parsed.payment; changed = true; }
     if (parsed?.items?.length) {
-      const isAddition = /\b(agrega|agregar|tambi\u00e9n|tambien|suma|sumar|m\u00e1s|mas)(?=[\s.,!]|$)/i.test(t);
+      const isAddition = /\b(agrega|agreg[áa]|agregame|agregalo|agregala|agregar|tambi[ée]n|tambien|sum[áa]|suma|sumar|m[áa]s|mas)(?=[\s.,!]|$)/i.test(t);
       if (isAddition && state.items.length > 0) {
         mergeItems(state, vendor.id, (parsed.items || []).map((p) => ({
           offerId: p.offerId || p.id,

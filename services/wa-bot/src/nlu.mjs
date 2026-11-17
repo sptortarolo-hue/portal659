@@ -208,7 +208,11 @@ export async function classifyIntent(message) {
   }
 }
 
+// SYSTEM prompt: si hay tools (function calling), usá create_order / not_an_order.
+// Si no hay (provider que no las soporta), respondé JSON puro.
 const SYSTEM = `Sos el asistente de Portal 659, el centro comercial de tu barrio. El portal es un multicommerce: cada comercio tiene su propia tienda online independiente. Un pedido = una tienda, para siempre (no hay carrito multi-tienda).
+
+REGLA DE ORO: Si tu entorno de ejecución provee tools (create_order / not_an_order), INVOCALAS — NO escribas texto libre ni JSON suelto fuera del tool. Si NO hay tools disponibles, respondé solo un JSON válido según el schema al final de este prompt.
 
 TENÉS DOS CAPAS DE RESPUESTA:
 
@@ -321,11 +325,91 @@ export const llmStats = {
   parses: { llm: 0, rules: 0, lowConfidence: 0 },
 };
 
+// ———————————————————————————————————————————————————————————————————————————
+// Function calling (OpenAI tools schema): el API valida la salida y la IA
+// no puede devolver texto libre mal-formado. Fallback a prompt-with-JSON para
+// proveedores que no soporten tools (openrouter free, algunos modelos).
+// ———————————————————————————————————————————————————————————————————————————
+const TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'create_order',
+      description: 'Crear un pedido de productos de la tienda. Usar cuando el cliente QUIERA comprar/pedir/confirmar cantidades.',
+      parameters: {
+        type: 'object',
+        properties: {
+          intent: { type: 'string', enum: ['pedido'] },
+          complete: { type: 'boolean' },
+          op: { type: 'string', enum: ['add', 'remove', 'setQty', 'setField'] },
+          items: {
+            type: 'array',
+            description: 'Ítems que el cliente pidió',
+            items: {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+                qty: { type: 'number' },
+                unit: { type: 'string', enum: ['unidad', 'kg', 'pack'] },
+                weightKg: { type: 'number' },
+                modifiers: { type: 'array', items: { type: 'string' } },
+                variant: {
+                  type: 'object',
+                  properties: {
+                    color: { type: 'string' },
+                    talle: { type: 'string' },
+                  },
+                },
+                said: { type: 'string' },
+              },
+              required: ['name', 'qty'],
+            },
+          },
+          method: { type: 'string', enum: ['pickup', 'delivery'] },
+          payment: { type: 'string', enum: ['efectivo', 'transferencia', 'mercadopago', 'whatsapp'] },
+          customerName: { type: 'string' },
+          customerAddress: { type: 'string' },
+          note: { type: 'string' },
+        },
+        required: ['intent', 'items'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'not_an_order',
+      description: 'Usar cuando el mensaje NO es un pedido de productos (preguntas portal, saludo, información, una tienda en particular no es un pedido).',
+      parameters: {
+        type: 'object',
+        properties: {
+          intent: {
+            type: 'string',
+            enum: ['info_portal', 'ver_tiendas_abiertas', 'ver_todas_tiendas', 'elegir_tienda', 'sumar_comercio', 'chat'],
+          },
+          note: { type: 'string' },
+        },
+        required: ['intent'],
+      },
+    },
+  },
+];
+
 // Cooldown por proveedor (anti-429/410). Clave: `${name}:${model}`.
 const providerCooldowns = new Map();
 function providerCooled(provider) {
   const until = providerCooldowns.get(`${provider.name}:${provider.model}`);
   return !!until && until > Date.now();
+}
+
+// Cache de soporte de tools por proveedor/modelo. Si falla con tools, los desactivamos.
+const providerToolSupport = new Map();
+function providerSupportsTools(key) {
+  const cached = providerToolSupport.get(key);
+  return cached !== false;
+}
+function markProviderToolUnsupported(key) {
+  providerToolSupport.set(key, false);
 }
 function markProviderCooldown(provider) {
   providerCooldowns.set(`${provider.name}:${provider.model}`, Date.now() + 5 * 60 * 1000);
@@ -360,9 +444,14 @@ export async function llmChat(messages, opts = {}) {
       max_tokens: maxTokens,
       messages,
     };
+    // Function calling: en vez de pedir JSON libre, proveemos tools y forzamos tool_choice
+    if (opts.tools && providerSupportsTools(`${provider.name}:${provider.model}`)) {
+      body.tools = opts.tools;
+      body.tool_choice = opts.tool_choice || 'required';
+    }
     // JSON mode: fuerza respuesta en JSON válido (soportado por Gemini, OpenAI, DeepSeek).
     // Evita que el modelo devuelva texto libre que no se pueda parsear.
-    if (opts.response_format === "json") {
+    else if (opts.response_format === "json") {
       body.response_format = { type: "json_object" };
     }
 
@@ -388,11 +477,31 @@ export async function llmChat(messages, opts = {}) {
     }
     if (!res.ok) {
       const snippet = (await res.text().catch(() => "")).slice(0, 200);
+      // ¿Provider no soporta tools? Desactivar para este model y seguir con el next
+      if (opts.tools && /tool|function_call|tool_choice/i.test(snippet)) {
+        markProviderToolUnsupported(`${provider.name}:${provider.model}`);
+        console.warn(`[bot] LLM ${provider.name}/${provider.model} no soporta tools - desactivando para este modelo`);
+        continue;
+      }
       console.warn(`[bot] LLM ${provider.name} error ${res.status}: ${snippet}`);
       continue;
     }
 
     const data = await res.json().catch(() => null);
+    // ¿El modelo respondió con tool_calls? (los queremos sobre content en este caso)
+    const toolCalls = data?.choices?.[0]?.message?.tool_calls;
+    if (opts.tools && Array.isArray(toolCalls) && toolCalls[0]?.function?.name) {
+      const tc = toolCalls[0];
+      const functionName = tc.function.name;
+      let args = {};
+      try { args = JSON.parse(tc.function.arguments || '{}'); } catch (e) { console.error(`[bot] LLM tool args parse err: ${e?.message}`); }
+      if (functionName === 'create_order' || functionName === 'not_an_order') {
+        llmStats.ok++;
+        llmStats.lastModel = `${provider.name}:${provider.model}`;
+        llmStats.lastAt = new Date().toISOString();
+        return { content: tc.function.arguments || '{}', provider: `${provider.name}:${provider.model}`, __toolCall: { name: functionName, args } };
+      }
+    }
     const content = data?.choices?.[0]?.message?.content || "";
     if (!content) {
       console.warn(`[bot] LLM ${provider.name} sin contenido`);
@@ -408,7 +517,28 @@ export async function llmChat(messages, opts = {}) {
   return null;
 }
 
+/** Quick gate: evita que el LLM se alborote con mensajes de navegación /
+ *  saludos / números de menú — en esos mensajes las reglas bastan. */
+export function shouldAttemptNLParsing(message) {
+  const t = String(message || "").trim();
+  if (t.length < 3) return false;
+  // Navegación de menú / comandos
+  if (/^(hola|buenas|chau|gracias|ok|si|no|cancelar|menu|menú|inicio|volver|comercios|ayuda)$/i.test(t)) return false;
+  if (/^[0-9*#]+[\s.,!]*$/.test(t)) return false;
+  // Cantidad suelta o solo números (sólo tiene sentido en menú)
+  if (/^\d+(?:[.,]\d+)?\s*(kg|kilos?|g|gramos?|unidades?|uds?)?$/i.test(t)) return false;
+  // Intent de compra explícita o cantidad+palabra: ahí sí intentamos
+  const orderKeywords = /(agrega|agregá|agregame|sumame|sumá|suma|añade|añadá|dame|traeme|traé|pedime|pedime|mandame|mandá|quiero|quisiera|quería|querés|quisiera|tene(s|és)|tiene(n|s)|hay|stock|disponible|sale|cuesta|vale|comprar|seleccion|selecciona|enca(r|rga)r|pedir|pedido|cargar|cargá|enviar|entrega|delivery|para llevar|para retiro|para entrega|modific(a|o|áme))/i;
+  const hasQtyWord = /\b(uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|media docena|docena|unidad|unidades|kilo|kg|gramo)\b/i;
+  const hasPriceMix = /(\$|pesos|total)\s*\d/.test(t);
+  const hasUnitPlusWord = /\b\d+(?:[.,]\d+)?\s*(kg|kilos?|g|gramos?|unidades?)\s+[a-záéíóúñ]/i.test(t);
+  return orderKeywords.test(t) || hasQtyWord.test(t) || hasPriceMix || hasUnitPlusWord;
+}
+
 export async function parseWithLlm(message, products, ctx = null) {
+  if (!shouldAttemptNLParsing(message)) {
+    return null; // rules take the wheel
+  }
   const hasProvider = Array.isArray(config.llmProviders) && config.llmProviders.some((p) => p.apiKey);
   if (!hasProvider && !config.llmApiKey) {
     if (!parseWithLlm._reported) {
@@ -493,10 +623,38 @@ async function callOnce(message, products, ctx = null) {
       { role: "system", content: systemWithVertical + fewShot },
       { role: "user", content: `Productos disponibles:\n${menu}\n\nMensaje del cliente: "${message}"${contextBlock}` },
     ],
-    { max_tokens: 500, temperature: 0, timeout: 25000, response_format: "json" }
+    { max_tokens: 600, temperature: 0, timeout: 25000, response_format: "json", tools: TOOLS, tool_choice: 'required' }
   );
   if (!llmResult) return null;
 
+  if (llmResult.__toolCall) {
+    const { name, args } = llmResult.__toolCall;
+    if (name === 'create_order' && Array.isArray(args?.items)) {
+      return {
+        intent: 'pedido',
+        complete: !!args.complete,
+        op: args.op || 'add',
+        items: args.items.map((i) => ({ ...i, unit: i.unit || 'unidad' })),
+        method: args.method ?? null,
+        payment: args.payment ?? null,
+        customerName: args.customerName ?? null,
+        customerAddress: args.customerAddress ?? null,
+        note: args.note ?? null,
+        confidence: 1,
+        reasoning: 'tool:create_order',
+      };
+    }
+    if (name === 'not_an_order') {
+      return {
+        intent: args?.intent || 'chat',
+        complete: false,
+        items: [],
+        unknownItems: [],
+        confidence: 1,
+        reasoning: `tool:not_an_order(${args?.intent})`,
+      };
+    }
+  }
   const content = llmResult.content;
   const json = content.replace(/```json/gi, "").replace(/```/g, "").trim();
   const start = json.indexOf("{");

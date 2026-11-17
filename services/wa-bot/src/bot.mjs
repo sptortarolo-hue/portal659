@@ -32,6 +32,8 @@ const DEFAULT_STATE = {
   pendingConfirm: null, // { items } - confirmacion de baja confianza
   portalStep: null,     // menu | open_stores | all_stores | select_store | cart | method | details | confirm | awaiting_receipt | completed
   deliveryWindow: null, // turno de entrega elegido (ej: "2026-11-15|18:00-20:00")
+  navStack: [],         // back-stack del portal: [{ kind: "menu"|"rubros"|"stores"|"allstores"|"offers_cats"|"offers_list"|"catalog", ...payload }]
+  portalListContext: null, // descriptor de la pantalla actual del portal (para apilar en cada transición)
 };
 
 const AWAITING_RECEIPT_TTL = 15 * 60; // 15 min para acreditar el comprobante
@@ -2500,30 +2502,22 @@ const humanDelay = (len) => Math.min(config.replyDelayMaxMs, config.replyDelayMi
  *  y maneja TRES casos — (a) fallo al cargar: avisar (nunca "no tiene
  *  productos"), (b) catálogo vacío: CTA por vertical (servicios atiende por
  *  turnos/presupuestos), (c) catálogo listo: listado + link + collage. */
-async function replyStoreCatalog({ state, vendor, waId, replies, chosen }) {
-  const name = chosen.store_name || "la tienda";
+/** Empuja al historial/estado la vista del catálogo (secciones o lista completa).
+ *  NO persiste: el llamador lo hace. Reutilizable por "volver". */
+async function renderCatalogScreen(state, vendor, waId, replies) {
+  const name = state.currentVendorName || "la tienda";
   const slug = state.currentVendorSlug || "";
   const storeLink = slug ? `${config.publicUrl}/tienda/${slug}` : "";
-  const { products, failed } = await getMenuWithStatus(chosen.id);
-  replies.push(`Perfecto, estás pidiendo de *${name}*. 📋 Menú:`);
+  const { products, failed } = await getMenuWithStatus(state.currentVendorId);
   if (failed) {
     replies.push("No pude cargar el menú justo ahora 😕");
     if (storeLink) replies.push(`Mientras tanto podés verlo acá: ${storeLink}`);
-    replies.push("Probá de nuevo en un momento, o pedí de otra tienda escribiendo *comercios*.");
-    return persist(state, vendor.id, waId, replies);
+    return replies;
   }
   if (products.length === 0) {
-    const vertical = String(state.currentVendorVertical || "desconocida").toLowerCase();
-    if (isServiceVertical(vertical)) {
-      replies.push(`${name} atiende por turnos y presupuestos — no toma pedidos de productos por WhatsApp.`);
-      if (storeLink) replies.push(`👉 Mirá su micrositio para sacar turno o pedir presupuesto: ${storeLink}`);
-      replies.push("Si querés, escribime qué necesitás y te conecto con el local 🙋");
-    } else {
-      replies.push("Esta tienda todavía no tiene catálogo para pedir por WhatsApp.");
-      if (storeLink) replies.push(`Mirá su micrositio: ${storeLink}`);
-      replies.push("¿Querés pedir de otra tienda? Escribí *comercios* para ver la lista.");
-    }
-    return persist(state, vendor.id, waId, replies);
+    replies.push("Esta tienda todavía no tiene catálogo para pedir por WhatsApp.");
+    if (storeLink) replies.push(`Mirá su micrositio: ${storeLink}`);
+    return replies;
   }
   const catalog = products.slice(0, 20);
   // Fase A2 (secciones): catálogo grande → mostrar rubros internos del comercio
@@ -2553,6 +2547,38 @@ async function replyStoreCatalog({ state, vendor, waId, replies, chosen }) {
   const link = slug ? `\nMirá el menú con fotos: ${storeLink}` : "";
   replies.push(`¿Qué querés pedir? Mandame tu pedido como siempre lo hacés: ej: "2 empanadas de carne y una coca".${link}`);
   replies.push(portalNavFooter());
+  state.portalListContext = { kind: "catalog" };
+  return replies;
+}
+
+async function replyStoreCatalog({ state, vendor, waId, replies, chosen }) {
+  const name = chosen.store_name || "la tienda";
+  const slug = state.currentVendorSlug || "";
+  const storeLink = slug ? `${config.publicUrl}/tienda/${slug}` : "";
+  const { products, failed } = await getMenuWithStatus(chosen.id);
+  replies.push(`Perfecto, estás pidiendo de *${name}*. 📋 Menú:`);
+  if (failed) {
+    replies.push("No pude cargar el menú justo ahora 😕");
+    if (storeLink) replies.push(`Mientras tanto podés verlo acá: ${storeLink}`);
+    replies.push("Probá de nuevo en un momento, o pedí de otra tienda escribiendo *comercios*.");
+    return persist(state, vendor.id, waId, replies);
+  }
+  if (products.length === 0) {
+    const vertical = String(state.currentVendorVertical || "desconocida").toLowerCase();
+    if (isServiceVertical(vertical)) {
+      replies.push(`${name} atiende por turnos y presupuestos — no toma pedidos de productos por WhatsApp.`);
+      if (storeLink) replies.push(`👉 Mirá su micrositio para sacar turno o pedir presupuesto: ${storeLink}`);
+      replies.push("Si querés, escribime qué necesitás y te conecto con el local 🙋");
+    } else {
+      replies.push("Esta tienda todavía no tiene catálogo para pedir por WhatsApp.");
+      if (storeLink) replies.push(`Mirá su micrositio: ${storeLink}`);
+      replies.push("¿Querés pedir de otra tienda? Escribí *comercios* para ver la lista.");
+    }
+    return persist(state, vendor.id, waId, replies);
+  }
+  // Cuerpo del catálogo: primero se apila la pantalla de origen (volver → ahí).
+  navPush(state, state.portalListContext);
+  await renderCatalogScreen(state, vendor, waId, replies);
   // Banner de bienvenida + collage del catálogo (best-effort, 1 envío).
   const _client = getClientByVendor(vendor.id);
   if (_client) {
@@ -2684,6 +2710,8 @@ async function sendPortalMenu(state, vendor, waId, replies) {
   state.offerCats = [];
   state.rubroShownAt = 0;
   state.offerCatsAt = 0;
+  state.navStack = [];
+  state.portalListContext = { kind: "menu" };
   replies.push(portalGreeting(greetName));
   replies.push("");
   replies.push(portalMainMenuText());
@@ -2695,9 +2723,178 @@ async function sendPortalMenu(state, vendor, waId, replies) {
   return await persist(state, vendor.id, waId, replies);
 }
 
+// ———————————————————————————————————————————————————————————————————————————
+// Navegación "volver" del portal: pila de pantallas informativas.
+// ———————————————————————————————————————————————————————————————————————————
+/** Empuja una pantalla al back-stack del portal (de-dup consecutivo). */
+function navPush(state, entry) {
+  if (!entry) return;
+  if (!Array.isArray(state.navStack)) state.navStack = [];
+  const last = state.navStack[state.navStack.length - 1];
+  if (last && last.kind === entry.kind && JSON.stringify(last) === JSON.stringify(entry)) return;
+  state.navStack.push(entry);
+  if (state.navStack.length > 8) state.navStack = state.navStack.slice(-8);
+}
+
+/** Muestra la grilla de rubros (opción 1). Reutilizable por "volver". */
+async function renderRubrosScreen(state, vendor, waId, replies) {
+  const pd = await fetchPortalMenu("");
+  const stores = (pd.vendors || pd.stores || []).filter((s) => s && s.slug !== "portal659-bot" && s.vertical);
+  const byVertical = new Map();
+  for (const s of stores) {
+    const v = String(s.vertical).toLowerCase();
+    if (!byVertical.has(v)) byVertical.set(v, []);
+    byVertical.get(v).push(s);
+  }
+  if (byVertical.size === 0) {
+    replies.push("Todavía no veo tiendas en la zona. Escribí *comercios* para el listado completo. 🙌");
+    return await persist(state, vendor.id, waId, replies);
+  }
+  replies.push("📍 *¿Qué te hace falta hoy?*");
+  const ordered = [...byVertical.entries()]
+    .sort((a, b) => b[1].length - a[1].length || String(a[0]).localeCompare(String(b[0])))
+    .slice(0, 8);
+  replies.push(ordered.map(([v, list], i) => `${i + 1}) ${RUBRO_EMOJI[v] || "🏪"} ${portalVerticalLabel(v)} (${list.length} tienda${list.length > 1 ? "s" : ""})`).join("\n"));
+  replies.push("");
+  replies.push("Respondé el número del rubro que te interesa.");
+  replies.push(portalNavFooter());
+  state.rubroList = ordered.map(([v]) => v);
+  state.rubroShownAt = Date.now();
+  state.offerCats = [];
+  state.portalListContext = { kind: "rubros" };
+  return await persist(state, vendor.id, waId, replies);
+}
+
+/** "Ver tiendas abiertas" (opción 2) — reutilizable por "volver".
+ *  conImagenes=false evita repetir el fan-out de logos al navegar atrás. */
+async function renderOpenStores(state, vendor, waId, replies, withImages = true) {
+  const pd = await fetchPortalMenu("");
+  const stores = (pd.vendors || pd.stores || []).filter((s) => s.store_open === true);
+  if (stores.length === 0) {
+    replies.push("Ahora no hay tiendas abiertas en la zona. ⏰");
+    replies.push("Escribí *2* para ver todas las tiendas y sus horarios.");
+    return await persist(state, vendor.id, waId, replies);
+  }
+  replies.push("Estas son las tiendas abiertas ahora:");
+  const slice = stores.slice(0, 5);
+  replies.push(portalStoreListLines(slice));
+  state.portalVendorList = slice.map((s) => ({ id: s.id, store_name: s.store_name, slug: s.slug || null }));
+  if (stores.length > 5) replies.push(`(y ${stores.length - 5} más — escribí el nombre de la tienda para verla)`);
+  if (withImages) {
+    const _client = getClientByVendor(vendor.id);
+    if (_client) {
+      for (const s of slice) {
+        const imgUrl = s.logo_url || null;
+        if (!imgUrl) continue;
+        try {
+          const imgRes = await fetch(imgUrl, { signal: AbortSignal.timeout(8_000) });
+          if (!imgRes.ok) continue;
+          const buf = Buffer.from(await imgRes.arrayBuffer());
+          const b64 = buf.toString("base64");
+          const caption = `🏪 *${s.store_name}*${s.vertical ? ` — ${portalVerticalLabel(s.vertical)}` : ""}\n🔗 ${config.publicUrl}/tienda/${s.slug}`;
+          sendImage(_client, waId, b64, caption);
+          console.log(`[bot][portal] logo enviado: ${s.store_name}`);
+        } catch (e) {
+          console.error(`[bot][portal] error enviando logo ${s.store_name}: ${e?.message}`);
+        }
+      }
+    }
+  }
+  replies.push("¿Querés pedir de alguna? Respondé el número o el nombre. 🙌");
+  replies.push(portalNavFooter());
+  state.portalListContext = { kind: "stores", header: "Estas son las tiendas abiertas ahora:", list: slice };
+  return await persist(state, vendor.id, waId, replies);
+}
+
+/** Re-renderiza una lista de tiendas guardada en el back-stack. */
+async function renderStoredStores(state, vendor, waId, replies, entry) {
+  const list = Array.isArray(entry.list) ? entry.list : [];
+  if (list.length === 0) return false;
+  replies.push(entry.header || "Elegí una tienda:");
+  replies.push(portalStoreListLines(list));
+  replies.push("¿Querés pedir de alguna? Respondé el número o el nombre. 🙌");
+  replies.push(portalNavFooter());
+  state.portalVendorList = list.map((s) => ({ id: s.id, store_name: s.store_name, slug: s.slug || null }));
+  state.rubroList = [];
+  state.offerCats = [];
+  state.portalListContext = entry;
+  return await persist(state, vendor.id, waId, replies);
+}
+
+/** Agrupado "Todas las tiendas por texto" (*comercios*) — reutilizable por "volver". */
+async function renderAllStores(state, vendor, waId, replies) {
+  const stores = await fetchPortalMenu("").then((d) => d.vendors || d.stores || []);
+  if (stores.length === 0) {
+    replies.push("Todavía no hay tiendas cargadas en la zona. Escribí *ayuda* si necesitás ayuda. 🙌");
+    return await persist(state, vendor.id, waId, replies);
+  }
+  const grouped = new Map();
+  for (const s of stores) {
+    const k = portalVerticalLabel(s.vertical);
+    if (!grouped.has(k)) grouped.set(k, []);
+    grouped.get(k).push(s);
+  }
+  const lines = [];
+  for (const [label, list] of grouped) {
+    lines.push(`*${label}*:`);
+    for (const s of list.slice(0, 6)) {
+      const dot = s.store_open === true ? "🟢" : s.store_open === false ? "🔴" : "⚪";
+      lines.push(`  ${dot} ${s.store_name}${s.neighborhood ? ` — ${s.neighborhood}` : ""}${s.store_open === false && s.next_open_text ? ` (abre ${s.next_open_text})` : ""}`);
+    }
+    if (list.length > 6) lines.push(`  (y ${list.length - 6} más)`);
+  }
+  replies.push("Tiendas de tu zona:");
+  replies.push(lines.join("\n"));
+  state.portalVendorList = stores.slice(0, 8).map((s) => ({ id: s.id, store_name: s.store_name, slug: s.slug || null }));
+  replies.push("Respondé el número o el nombre de la tienda para ver su menú.");
+  replies.push(portalNavFooter());
+  state.rubroList = [];
+  state.offerCats = [];
+  state.portalListContext = { kind: "allstores" };
+  return await persist(state, vendor.id, waId, replies);
+}
+
+/** Renderiza una entrada del back-stack. Devuelve el objeto de respuestas o false. */
+async function navRenderEntry(state, vendor, waId, replies, entry) {
+  if (!entry) return false;
+  switch (entry.kind) {
+    case "rubros":
+      return await renderRubrosScreen(state, vendor, waId, replies);
+    case "stores":
+      return await renderStoredStores(state, vendor, waId, replies, entry);
+    case "allstores":
+      return await renderAllStores(state, vendor, waId, replies);
+    case "menu":
+      return await sendPortalMenu(state, vendor, waId, replies);
+    case "offers_cats":
+      return await sendOffers(state, vendor, waId, replies, null);
+    case "offers_list":
+      return await sendOffers(state, vendor, waId, replies, entry.cat || "all");
+    case "catalog":
+      if (!state.currentVendorId) return false;
+      await renderCatalogScreen(state, vendor, waId, replies);
+      return await persist(state, vendor.id, waId, replies);
+    default:
+      return false;
+  }
+}
+
 /** Retrocede un paso en el flujo del portal, conservando lo ya cargado. */
 async function retrocederPortal(state, vendor, replies, waId) {
   const step = state.portalStep;
+  // Pantallas del portal (back-stack). Solo aplica fuera del flujo de pedido
+  // (si hay items cargados o un paso del pedido vigente, "volver" se maneja
+  // por el portalStep de siempre).
+  const IN_CART = new Set(["cart", "method", "details", "confirm", "awaiting_receipt"]);
+  if (!IN_CART.has(step) && !(state.items && state.items.length > 0)
+      && Array.isArray(state.navStack) && state.navStack.length > 0) {
+    const entry = state.navStack.pop();
+    const done = await navRenderEntry(state, vendor, waId, replies, entry);
+    if (done) {
+      state.portalStep = null;
+      return done;
+    }
+  }
   switch (step) {
     case "select_store":
       state.portalStep = null;
@@ -2753,9 +2950,8 @@ async function retrocederPortal(state, vendor, replies, waId) {
       return await persist(state, vendor.id, waId, replies);
 
     default:
-      // Sin un portalStep claro: si hay tienda elegida, "volver" reimprime SU
-      // catálogo (antes: saltaba a la portada y perdía la tienda en el camino).
-      if (state.currentVendorId) {
+      // Con el carrito cargado, "volver" reimprime el catálogo de la tienda.
+      if (state.currentVendorId && state.items && state.items.length > 0) {
         const products = await getMenu(state.currentVendorId).catch(() => []);
         state.portalStep = null;
         replies.push(`Menú de *${state.currentVendorName || "el comercio"}*:`);
@@ -2764,7 +2960,7 @@ async function retrocederPortal(state, vendor, replies, waId) {
         replies.push(portalNavFooter());
         return await persist(state, vendor.id, waId, replies);
       }
-      // Sub-camino menú/tiendas/todo: al menú principal
+      // Sin pedido armado, "volver" vuelve al menú principal (sin la tienda elegida).
       state.portalStep = null;
       state.currentVendorId = null;
       state.items = [];
@@ -2883,6 +3079,7 @@ async function sendOffers(state, vendor, waId, replies, categoryNorm = null) {
     state.offerCats = sorted;
     state.rubroList = [];
     state.offerCatsAt = Date.now();
+    state.portalListContext = { kind: "offers_cats" };
     try { trackEvent(vendor.id, "funnel_offers_menu", waId, {}); } catch {}
     return await persist(state, vendor.id, waId, replies);
   }
@@ -2917,6 +3114,7 @@ async function sendOffers(state, vendor, waId, replies, categoryNorm = null) {
   replies.push(portalNavFooter());
   state.offers = [];
   state.offerCats = [];
+  state.portalListContext = { kind: "offers_list", cat: categoryNorm || "all" };
   try { trackEvent(vendor.id, "funnel_offers_shown", waId, { category: categoryNorm || "all", count: shown.length }); } catch {}
   return await persist(state, vendor.id, waId, replies);
 }
@@ -3103,13 +3301,17 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
       if (rubSel && Array.isArray(state.rubroList) && state.rubroList.length > 0 && Date.now() - Number(state.rubroShownAt || 0) < 10 * 60 * 1000) {
         const idx = Number(rubSel[1]) - 1;
         if (idx >= 0 && idx < state.rubroList.length) {
+          navPush(state, state.portalListContext);
           const vertical = state.rubroList[idx];
           const stores = (await portalStores()).filter((s) => String(s.vertical || "").toLowerCase() === vertical);
           greetIfNew();
-          replies.push(`${RUBRO_EMOJI[vertical] || "🏪"} *${portalVerticalLabel(vertical)}* — elegí una tienda:`);
+          const rubroHeader = `${RUBRO_EMOJI[vertical] || "🏪"} *${portalVerticalLabel(vertical)}* — elegí una tienda:`;
+          replies.push(rubroHeader);
           if (stores.length > 0) {
-            replies.push(portalStoreListLines(stores.slice(0, 8)));
-            state.portalVendorList = stores.slice(0, 8).map((s) => ({ id: s.id, store_name: s.store_name, slug: s.slug || null }));
+            const slice = stores.slice(0, 8);
+            replies.push(portalStoreListLines(slice));
+            state.portalVendorList = slice.map((s) => ({ id: s.id, store_name: s.store_name, slug: s.slug || null }));
+            state.portalListContext = { kind: "stores", header: rubroHeader, list: slice };
           } else {
             replies.push("(no hay tiendas en este rubro ahora mismo)");
           }
@@ -3126,6 +3328,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
         const n = Number(offSel[1]);
         const cat = n === 0 ? "all" : state.offerCats[n - 1]?.norm;
         if (n === 0 || cat) {
+          navPush(state, state.portalListContext);
           return await sendOffers(state, vendor, waId, replies, cat);
         }
       }
@@ -3146,6 +3349,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
 
       // 3) 🔥 Ofertas del día (picker de categoría → tarjetas imagen + link).
       if (menuNum === "3") {
+        navPush(state, state.portalListContext);
         state.offers = [];
         state.offerCats = [];
         return await sendOffers(state, vendor, waId, replies);
@@ -3153,6 +3357,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
 
       // 4) Cómo comprar / pagar.
       if (menuNum === "4") {
+        navPush(state, state.portalListContext);
         greetIfNew();
         replies.push(portalHowToBuyText());
         return await persist(state, vendor.id, waId, replies);
@@ -3160,6 +3365,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
 
       // 5) Opción 5 del menú (B2B) por número.
       if (menuNum === "5") {
+        navPush(state, state.portalListContext);
         try { trackEvent(vendor.id, "b2b_query", waId, { via: "menu" }); } catch {}
         greetIfNew();
         replies.push(portalB2BText());
@@ -3168,110 +3374,30 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
 
       // 1) "¿Qué te hace falta hoy?" — explorar por rubro.
       if (menuNum === "1") {
-        const stores = (await portalStores()).filter((s) => s && s.slug !== "portal659-bot" && s.vertical);
-        const byVertical = new Map();
-        for (const s of stores) {
-          const v = String(s.vertical).toLowerCase();
-          if (!byVertical.has(v)) byVertical.set(v, []);
-          byVertical.get(v).push(s);
-        }
-        if (byVertical.size === 0) {
-          greetIfNew();
-          replies.push("Todavía no veo tiendas en la zona. Escribí *comercios* para el listado completo. 🙌");
-          return await persist(state, vendor.id, waId, replies);
-        }
+        navPush(state, state.portalListContext);
         greetIfNew();
-        replies.push("📍 *¿Qué te hace falta hoy?*");
-        const ordered = [...byVertical.entries()]
-          .sort((a, b) => b[1].length - a[1].length || String(a[0]).localeCompare(String(b[0])))
-          .slice(0, 8);
-        replies.push(ordered.map(([v, list], i) => `${i + 1}) ${RUBRO_EMOJI[v] || "🏪"} ${portalVerticalLabel(v)} (${list.length} tienda${list.length > 1 ? "s" : ""})`).join("\n"));
-        replies.push("");
-        replies.push("Respondé el número del rubro que te interesa.");
-        replies.push(portalNavFooter());
-        state.rubroList = ordered.map(([v]) => v);
-        state.rubroShownAt = Date.now();
-        state.offerCats = [];
         try { trackEvent(vendor.id, "funnel_rubro_menu", waId, {}); } catch {}
-        return await persist(state, vendor.id, waId, replies);
+        return await renderRubrosScreen(state, vendor, waId, replies);
       }
 
       // 2) Ver tiendas abiertas (máx 5, con link al micrositio).
       if (menuNum === "2" || (OPEN_STORES_RE.test(_low) && !hasStoreList && !ALL_STORES_RE.test(_low))) {
-        try { trackEvent(vendor.id, "open_stores", waId, {}); } catch {}
-        const stores = (await portalStores()).filter((s) => s.store_open === true);
-        if (stores.length === 0) {
-          greetIfNew();
-          replies.push("Ahora no hay tiendas abiertas en la zona. ⏰");
-          replies.push("Escribí *2* para ver todas las tiendas y sus horarios.");
-          return await persist(state, vendor.id, waId, replies);
-        }
-        greetIfNew();
-        replies.push("Estas son las tiendas abiertas ahora:");
-        replies.push(portalStoreListLines(stores.slice(0, 5)));
-        state.portalVendorList = stores.slice(0, 5).map((s) => ({ id: s.id, store_name: s.store_name, slug: s.slug || null }));
-        if (stores.length > 5) replies.push(`(y ${stores.length - 5} más — escribí el nombre de la tienda para verla)`);
-        // Logo de cada tienda (no foto de producto al pedir; si no tiene logo,
-        // queda la lista de texto con links — sin imagen de relleno).
-        const _client = getClientByVendor(vendor.id);
-        if (_client) {
-          for (const s of stores.slice(0, 5)) {
-            const imgUrl = s.logo_url || null;
-            if (!imgUrl) continue;
-            try {
-              const imgRes = await fetch(imgUrl, { signal: AbortSignal.timeout(8_000) });
-              if (!imgRes.ok) continue;
-              const buf = Buffer.from(await imgRes.arrayBuffer());
-              const b64 = buf.toString("base64");
-              const caption = `🏪 *${s.store_name}*${s.vertical ? ` — ${portalVerticalLabel(s.vertical)}` : ""}\n🔗 ${config.publicUrl}/tienda/${s.slug}`;
-              sendImage(_client, waId, b64, caption);
-              console.log(`[bot][portal] logo enviado: ${s.store_name}`);
-            } catch (e) {
-              console.error(`[bot][portal] error enviando logo ${s.store_name}: ${e?.message}`);
-            }
-          }
-        }
-        replies.push("¿Querés pedir de alguna? Respondé el número o el nombre. 🙌");
-        replies.push(portalNavFooter());
-        return await persist(state, vendor.id, waId, replies);
+        navPush(state, state.portalListContext);
+        return await renderOpenStores(state, vendor, waId, replies, true);
       }
 
       // Todas las tiendas por texto (no es una opción del menú).
       if (ALL_STORES_RE.test(_low) || GREETING_RE.test(_low)) {
         try { trackEvent(vendor.id, "all_stores", waId, {}); } catch {}
-        const stores = await portalStores();
-        if (stores.length === 0) {
-          greetIfNew();
-          replies.push("Todavía no hay tiendas cargadas en la zona. Escribí *ayuda* si necesitás ayuda. 🙌");
-          return await persist(state, vendor.id, waId, replies);
-        }
-        greetIfNew();
         if (ALL_STORES_RE.test(_low)) {
-          const grouped = new Map();
-          for (const s of stores) {
-            const k = portalVerticalLabel(s.vertical);
-            if (!grouped.has(k)) grouped.set(k, []);
-            grouped.get(k).push(s);
-          }
-          const lines = [];
-          for (const [label, list] of grouped) {
-            lines.push(`*${label}*:`);
-            for (const s of list.slice(0, 6)) {
-              const dot = s.store_open === true ? "🟢" : s.store_open === false ? "🔴" : "⚪";
-              lines.push(`  ${dot} ${s.store_name}${s.neighborhood ? ` — ${s.neighborhood}` : ""}${s.store_open === false && s.next_open_text ? ` (abre ${s.next_open_text})` : ""}`);
-            }
-            if (list.length > 6) lines.push(`  (y ${list.length - 6} más)`);
-          }
-          replies.push("Tiendas de tu zona:");
-          replies.push(lines.join("\n"));
-          state.portalVendorList = stores.slice(0, 8).map((s) => ({ id: s.id, store_name: s.store_name, slug: s.slug || null }));
-          replies.push("Respondé el número o el nombre de la tienda para ver su menú.");
-          replies.push(portalNavFooter());
+          navPush(state, state.portalListContext);
+          return await renderAllStores(state, vendor, waId, replies);
         } else {
+          greetIfNew();
           replies.push(portalMainMenuText());
           replies.push("Respondé el número de una opción, o escribime el nombre de un producto para buscar. 🛒");
+          return await persist(state, vendor.id, waId, replies);
         }
-        return await persist(state, vendor.id, waId, replies);
       }
     }
 
@@ -3924,6 +4050,8 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
       }
       const list = Array.from(byVendor.values());
       state.portalVendorList = list.map((x) => ({ id: x.vendor.id, store_name: x.vendor.store_name, slug: x.vendor.slug || null }));
+      navPush(state, state.portalListContext);
+      state.portalListContext = { kind: "menu" };
       const lines = [];
       list.forEach((x, i) => {
         const prods = x.products.slice(0, 8).map((p) => `${p.name} $${p.price}`).join(", ");

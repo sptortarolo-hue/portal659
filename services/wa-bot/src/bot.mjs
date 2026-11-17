@@ -923,56 +923,124 @@ async function pendingDetailAdd(state, vendor, waId, replies, qty) {
 // Edición del carrito en confirmación: "sacá la coca", "poné 3 empanadas",
 // "cambiá 2 por 3 empanadas". Devuelve true si manejó el texto.
 // ———————————————————————————————————————————————————————————————————————————
-function applyCartEdit(state, text) {
-  const t = String(text || "").trim().toLowerCase();
-  if (!state.items || state.items.length === 0) return false;
+/** Saca artículos/relleno iniciales ("el de stich" → "stich"). */
+function stripLeadFillers(s) {
+  let out = String(s || "").trim();
+  for (let i = 0; i < 5; i++) {
+    const m = out.match(/^(el|la|los|las|lo|de|del|un|una|unos|unas|me|a|al)\s+/i);
+    if (!m) break;
+    out = out.slice(m[0].length).trim();
+  }
+  return out;
+}
 
-  // 1) Remoción: "sacá/quita/elimina/borra X"
-  const removeMatch = t.match(/^(sac[aá]|quit[aá]|elimina|elimin[aá]|borr[aá]|saca|quita|elimina|borra)\s+(.+)$/i);
-  if (removeMatch) {
-    const search = removeMatch[2].trim();
-    const idx = findCartItemIndex(state.items, search);
-    if (idx === -1) {
-      return { handled: true, msg: `No encontré "${search}" en tu pedido. Tu pedido tiene: ${state.items.map((i) => i.name).join(", ")}.` };
+/** Edición de UNA cláusula del carrito ("sacame el stich", "poné 3 del de boca",
+ *  "del de boca quiero 3"). Devuelve { ok:true, msg } o { ok:false, fail }. */
+function applyCartEditClause(state, clause, products, vendorId) {
+  const t = String(clause || "").trim();
+  if (!t) return { ok: false, fail: clause };
+  const low = t.toLowerCase();
+
+  const setQty = (idx, newQty) => {
+    if (newQty <= 0) {
+      const removed = state.items.splice(idx, 1)[0];
+      return { ok: true, msg: `saqué ${removed.name}` };
     }
+    const it = state.items[idx];
+    it.qty = Math.min(99, newQty);
+    return { ok: true, msg: `cambié ${it.name} a ${it.qty}` };
+  };
+  const notFound = (search) => ({
+    ok: false,
+    fail: `"${search}" (no está en tu pedido)`,
+  });
+
+  // 1) Remoción: "sacame el stich" / "quita la coca" / "sin cerezas".
+  // OJO: lookahead, no \b después del verbo (JS trata á/í como no-word y \b falla).
+  const remMatch = low.match(/\b(sacame|sacá|saca|quitame|quita|quitá|sacale|sacales|elimina|eliminá|borra|borrá|sin)(?=[\s,.!]|$)\s*(.*)$/i);
+  if (remMatch) {
+    const desc = stripLeadFillers(remMatch[2]);
+    if (!desc) return { ok: false, fail: "no entendí qué querés sacar" };
+    const idx = findCartItemIndex(state.items, desc);
+    if (idx === -1) return notFound(desc);
     const removed = state.items.splice(idx, 1)[0];
-    return { handled: true, msg: `Listo, saqué ${removed.name} del pedido.` };
+    return { ok: true, msg: `saqué ${removed.name}` };
   }
 
-  // 2) Cambio de cantidad: "poné 3 empanadas" / "poné 3 de empanadas" /
-  //    "cambiá empanadas a 3" / "cambiá 2 por 3 empanadas" / "empanadas a 3"
-  let qtyMatch = t.match(/^(pon[eé]|cambi[aá]|modific[aá]|ajust[aá])\s+(\d+)\s+(?:de\s+)?(.+)$/i);
+  // 2a) Cambio de cantidad con verbo explícito: "poné 3 del de boca" /
+  //     "cambiá empanadas a 3" / "cambiá 2 por 3 empanadas".
+  let qtyMatch = low.match(/^(pon[eé]|cambi[aá]|modific[aá]|ajust[aá]|poneme|ponme)\s+(\d{1,3})\s+(?:de\s+)?(.+)$/i);
   if (qtyMatch) {
     const newQty = Number(qtyMatch[2]);
-    const search = qtyMatch[3].trim();
+    const search = stripLeadFillers(qtyMatch[3]);
     const idx = findCartItemIndex(state.items, search);
-    if (idx === -1) {
-      return { handled: true, msg: `No encontré "${search}" en tu pedido. Tu pedido tiene: ${state.items.map((i) => i.name).join(", ")}.` };
-    }
-    if (newQty <= 0) {
-      const removed = state.items.splice(idx, 1)[0];
-      return { handled: true, msg: `Listo, saqué ${removed.name} del pedido.` };
-    }
-    state.items[idx].qty = newQty;
-    return { handled: true, msg: `Listo, cambié ${state.items[idx].name} a ${newQty}.` };
+    if (idx === -1) return notFound(search);
+    return setQty(idx, newQty);
   }
-  qtyMatch = t.match(/^(pon[eé]|cambi[aá])\s+(.+?)\s+(?:a|por)\s+(\d+)$/i);
+  qtyMatch = low.match(/^(pon[eé]|cambi[aá]|modific[aá]|ajust[aá]|poneme|ponme)\s+(.+?)\s+(?:a|por)\s+(\d{1,3})$/i);
   if (qtyMatch) {
-    const search = qtyMatch[2].trim();
-    const newQty = Number(qtyMatch[3]);
-    const idx = findCartItemIndex(state.items, search);
-    if (idx === -1) {
-      return { handled: true, msg: `No encontré "${search}" en tu pedido. Tu pedido tiene: ${state.items.map((i) => i.name).join(", ")}.` };
-    }
-    if (newQty <= 0) {
-      const removed = state.items.splice(idx, 1)[0];
-      return { handled: true, msg: `Listo, saqué ${removed.name} del pedido.` };
-    }
-    state.items[idx].qty = newQty;
-    return { handled: true, msg: `Listo, cambié ${state.items[idx].name} a ${newQty}.` };
+    // descriptor original (sin verbo de edición y sin el "a|por" final)
+    const descRaw = t.replace(/^(pon[eé]|cambi[aá]|modific[aá]|ajust[aá]|poneme|ponme)\s+/i, "").replace(/\s+(a|por)\s+\d{1,3}\s*$/i, "");
+    const searchReal = stripLeadFillers(descRaw);
+    const idx = findCartItemIndex(state.items, searchReal);
+    if (idx === -1) return notFound(searchReal);
+    return setQty(idx, Number(qtyMatch[3]));
   }
 
-  return false;
+  // 2b) Descriptor + número al final: "del de boca quiero 3" / "cerezas 8" /
+  //     "boca quiero 3". NO si la cláusula arranca con verbo de pedido (ahí
+  //     "quiero 2 coca" = AGREGAR, lo maneja el NL de siempre).
+  const AN_ADD = /^(quiero|queria|quisiera|dame|déme|agreg[aá]|sum[aá]|mandame|pedido|mand[aá]|anot[aá]|cargame)/i;
+  if (!AN_ADD.test(low)) {
+    const mt = t.match(/^(.+?)\s+(\d{1,3})\s*$/);
+    if (mt) {
+      const desc = stripLeadFillers(mt[1]);
+      // descriptor puramente numérico = sintaxis de pick de catálogo, no es edición
+      if (desc && !/^\d[\d\s]*$/.test(desc)) {
+        const idx = findCartItemIndex(state.items, desc);
+        if (idx !== -1) return setQty(idx, Number(mt[2]));
+        // No está en el carrito: si matchea UN solo producto del menú, es un
+        // agregado ("del de cerezas 8" = agregar 8; antes moría en "no entendí").
+        if (Array.isArray(products) && products.length) {
+          const cands = matchAllProducts(products, desc);
+          if (cands && cands.length === 1) {
+            const p = cands[0];
+            const qty = Math.max(1, Math.min(99, Number(mt[2])));
+            mergeItems(state, [{ offerId: p.id, name: p.name, qty, modifiers: [] }], vendorId);
+            return { ok: true, msg: `agregué ${qty}× ${p.name}` };
+          }
+        }
+      }
+    }
+  }
+
+  return { ok: false, fail: clause };
+}
+
+/** Edición del carrito completa: parte el texto en cláusulas y aplica las que
+ *  matchean ("del de boca quiero 3 y del de cerezas 8. Sacame el de stich"). */
+function applyCartEdit(state, text, products, vendorId) {
+  if (!state.items || state.items.length === 0) return false;
+  const raw = String(text || "").trim();
+  if (!raw) return false;
+  // Separar por conjunciones y puntuación: "a y b" / "a, b" / "a. b" / "a; b".
+  const clauses = raw
+    .split(/[\n;]|\.\s+|,\s*|\s+(?:y|e)\s+/i)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const found = [];
+  const problems = [];
+  for (const clause of clauses) {
+    const r = applyCartEditClause(state, clause, products, vendorId);
+    if (r && r.ok) found.push(r.msg);
+    else problems.push((r && r.fail) || clause);
+  }
+  if (found.length === 0) return false;
+  let msg = found.map((m) => `✏️ ${m}`).join("\n");
+  if (problems.length) {
+    msg += `\n⚠️ De lo otro no me quedó claro: ${problems.join(", ")}. Mandámelo de nuevo con el nombre del producto.`;
+  }
+  return { handled: true, msg };
 }
 
 /** Busca el índice de un item del carrito por nombre (fuzzy). */
@@ -1045,7 +1113,8 @@ async function handleStep({ vendor, text, state, replies, waId }) {
   // cantidad) se aplica sin reiniciar el pedido; el resto = corrección.
   if (state.step === "confirm") {
     // Edición del carrito: "sacá la coca", "poné 3 empanadas", etc.
-    const edit = applyCartEdit(state, t);
+    const confirmProducts = await getMenu(vendor.id);
+    const edit = applyCartEdit(state, t, confirmProducts, vendor.id);
     if (edit) {
       if (state.items.length === 0) {
         replies.push("Tu pedido quedó vacío. Mandame tu pedido de nuevo, o escribí *cancelar*.");
@@ -1432,6 +1501,29 @@ async function handleStep({ vendor, text, state, replies, waId }) {
     return;
   }
 
+  // "Podemos modificar?" mid-flow → guía concreta (antes caía en la Q&A de
+  // productos y decía "Sí, tenemos: ..." — con el pedido sin tocar).
+  if (state.items.length > 0 && /\b(podemos|podes|podés|puedo|quiero|me dej[aá]s)\s*(modific|cambi|edit)/i.test(t)) {
+    replies.push(`Claro. Decime qué querés cambiar:\n• Sacar algo: *sacame el <producto>* (ej: "sacame el stich")\n• Cambiar cantidad: *del de boca quiero 3* (o "poné 3 del de boca")\n• Agregar más: *también del 17 2*\n• Ver tu pedido: *ver carrito*`);
+    replies.push(pendingQuestions(state));
+    return;
+  }
+
+  // Edición del carrito mid-flow: "sacame el stich", "poné 3 del de boca",
+  // "del de boca quiero 3 y del de cerezas 8. Sacame el de stich". Se aplica
+  // ANTES del NL (que re-parsearía el mensaje y borraría el carrito).
+  const editRes = applyCartEdit(state, t, products, vendor.id);
+  if (editRes && editRes.handled) {
+    if (state.items.length === 0) {
+      replies.push(`${editRes.msg}\n\nTu pedido quedó vacío. Mandame tu pedido de nuevo, o escribí *cancelar*.`);
+      state.step = "idle";
+      return await persist(state, vendor.id, waId, replies);
+    }
+    replies.push(editRes.msg);
+    replies.push(pendingQuestions(state));
+    return;
+  }
+
   // Pregunta mid-flow ("tenés coca?") → responder con la lista; el flujo sigue
   // intacto (el carrito y las preguntas pendientes quedan).
   if (isQuestion(t)) {
@@ -1643,9 +1735,11 @@ async function handleStep({ vendor, text, state, replies, waId }) {
   }
 
   // ——— Heurísticas de reglas (el LLM gratis suele estar caído/429) ———
+  // Verbos de edición: jamás capturar como nombre/dirección ("sacá la empanada").
+  const EDIT_VERB = /^(sacame|sacá|saca|quitame|quita|quitá|sacale|sacales|elimina|eliminá|borra|borrá|sin|pon[eé]|cambi[aá]|modific[aá]|ajust[aá]|poneme|ponme|modificar|cambiar|editar)(?=\s|$|[.,!])/i;
   // 1) Nombre: cuando falta, el texto es corto, sin dígitos (una dirección las
   //    tiene) y no es una consigna propia del flujo → tomarlo como nombre.
-  if (!got && fieldsNow.includes("name") && t.length < 40 && !/\d/.test(t) && !RESPUESTAS_FLUJO.test(t) && !RE_MENU.test(t)) {
+  if (!got && fieldsNow.includes("name") && t.length < 40 && !/\d/.test(t) && !RESPUESTAS_FLUJO.test(t) && !RE_MENU.test(t) && !EDIT_VERB.test(t)) {
     state.customerName = t;
     got = true;
   }
@@ -1697,9 +1791,24 @@ function parseCatalogQtyPicks(text, catalogLen) {
   const picks = [];
   const consumed = [];
   let m;
+  // Patrón 0 — notación "x": "1 X3" / "9x2" → producto 1 qty 3 / producto 9 qty 2.
+  const xRe = new RegExp(`(\\d{1,3})\\s*[xX×*]\\s*(\\d{1,3})`, "gi");
+  while ((m = xRe.exec(normTxt))) {
+    const pick = Number(m[1]);
+    const qty = Number(m[2]);
+    if (pick >= 1 && pick <= catalogLen && qty >= 1) {
+      picks.push({ pick, qty: Math.min(99, qty), at: m.index, until: m.index + m[0].length, hasQty: true });
+      consumed.push([m.index, m.index + m[0].length]);
+    }
+  }
+  // Texto restante con lo ya consumido en blanco para los siguientes patrones.
+  let rest = normTxt;
+  for (const [a, b] of [...consumed].sort((x, y) => y[0] - x[0])) {
+    rest = rest.slice(0, a) + " ".repeat(b - a) + rest.slice(b);
+  }
   // Patrón 1 — producto primero + cantidad detrás: "del 17 3".
   const pRe = new RegExp(`${CONN}\\s*(\\d{1,3})\\s+(\\d{1,3})(?![.\\d])`, "gi");
-  while ((m = pRe.exec(normTxt))) {
+  while ((m = pRe.exec(rest))) {
     const pick = Number(m[1]);
     const qty = Number(m[2]);
     if (pick >= 1 && pick <= catalogLen && qty >= 1) {
@@ -1708,7 +1817,6 @@ function parseCatalogQtyPicks(text, catalogLen) {
     }
   }
   // Texto restante con las coincidencias anteriores en blanco (mismas coordenadas).
-  let rest = normTxt;
   for (const [a, b] of [...consumed].sort((x, y) => y[0] - x[0])) {
     rest = rest.slice(0, a) + " ".repeat(b - a) + rest.slice(b);
   }

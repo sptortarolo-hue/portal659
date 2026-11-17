@@ -654,7 +654,7 @@ export default function DashboardComercio({
       </ConfigSection>
 
       <ConfigSection id="balanza" label="Balanza" icon="⚖️">
-        <ScaleConfigSection />
+        <ScaleConfigSection vendor={vendor} saveVendor={saveVendor} offers={offers} />
       </ConfigSection>
 
       <ConfigSection id="alertas" label="Alertas" icon="🔔">
@@ -802,6 +802,17 @@ export default function DashboardComercio({
               <p className="text-[11px] text-muted-foreground">
                 El múltiplo y el mínimo acotan lo que puede cargar el cliente en el micrositio (con chips de
                 medio kilo / 1 kg). El peso real que pesás en el mostrador o al confirmar no se limita.
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                ¿Escaneás las etiquetas que imprime la balanza? El formato del código se configura en{" "}
+                <button
+                  type="button"
+                  className="text-primary font-medium underline"
+                  onClick={() => onConfigSectionId?.("balanza")}
+                >
+                  Balanza → Etiquetas con lector
+                </button>
+                .
               </p>
             </div>
           )}

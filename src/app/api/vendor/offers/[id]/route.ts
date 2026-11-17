@@ -1,6 +1,7 @@
 import { getVendorByRequest, resolveCategoryName } from "@/lib/vendor-utils";
 import { queryOne, withTransaction } from "@/lib/db";
 import { isValidDateOnly, toDateOnly } from "@/lib/expiry";
+import { normalizePlu } from "@/lib/scale-barcode";
 import { NextResponse } from "next/server";
 
 export async function PATCH(
@@ -36,7 +37,7 @@ export async function PATCH(
     "stock_low_threshold", "currency", "neighborhood", "type", "unit",
     "has_variants", "stock_control", "requires_prep", "cash_discount_excluded",
     "pack_size", "size_guide", "promo_only", "sku", "supplier_id", "expires_at",
-    "online_available",
+    "online_available", "scale_plu",
   ] as const;
 
   const safeUpdate: Record<string, unknown> = {};
@@ -115,6 +116,46 @@ export async function PATCH(
     ).catch(() => null);
     if (dup) {
       return NextResponse.json({ error: `El código "${safeUpdate.sku}" ya está en otro producto` }, { status: 400 });
+    }
+  }
+  // PLU de balanza: se guarda normalizado y sin duplicados. Vacío = se usa el
+  // SKU como fallback. Tolerante a migración sin aplicar (solo si hay algo
+  // que guardar: un null nunca debe romper el ABM).
+  if ("scale_plu" in safeUpdate) {
+    const hasScalePlu = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'products' AND column_name = 'scale_plu'
+       ) AS exists`
+    ).catch(() => ({ exists: false }));
+    const rawPlu = safeUpdate.scale_plu;
+    const nextPlu = rawPlu != null && String(rawPlu).trim() !== "" ? normalizePlu(rawPlu) : null;
+    if (hasScalePlu?.exists !== true) {
+      // Sin la columna: guardar un PLU avisa; limpiar (null) simplemente se
+      // ignora (el catálogo manda `scale_plu: null` en cada guardado de un
+      // producto que no es "Por peso" y eso no debe romper el ABM).
+      if (nextPlu != null) {
+        return NextResponse.json(
+          { error: "Falta aplicar supabase/self-host/migrate-scale-labels.sql para guardar el PLU de balanza" },
+          { status: 503 }
+        );
+      }
+      delete safeUpdate.scale_plu;
+    } else {
+      safeUpdate.scale_plu = nextPlu;
+    }
+  }
+  if ("scale_plu" in safeUpdate && safeUpdate.scale_plu != null) {
+    const dupPlu = await queryOne<{ id: string; name: string }>(
+      `SELECT id, name FROM products
+       WHERE vendor_id = $1 AND lower(btrim(scale_plu)) = lower($2) AND id <> $3 LIMIT 1`,
+      [vendor.id, safeUpdate.scale_plu, params.id]
+    ).catch(() => null);
+    if (dupPlu) {
+      return NextResponse.json(
+        { error: `El PLU de balanza "${safeUpdate.scale_plu}" ya está en “${dupPlu.name}”` },
+        { status: 400 }
+      );
     }
   }
   // Proveedor habitual (inventario): tolerante a migración sin aplicar.

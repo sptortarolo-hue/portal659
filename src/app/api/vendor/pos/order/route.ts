@@ -390,6 +390,9 @@ export async function POST(request: Request) {
         deliveryAllowManual: true,
         paymentMethod: payment,
         cashDiscountPct: (gate.vendor as any)?.cash_discount_pct,
+        // La balanza del mostrador manda: el peso puede no ser múltiplo del
+        // configurado (etiqueta de 0,324 kg) y no debe rebotar.
+        skipWeightRules: true,
       });
       pricing.items.forEach((it, idx) => {
         (it as any).requires_prep = pricedPrep[idx] !== false;

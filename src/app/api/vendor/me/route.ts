@@ -2,6 +2,7 @@ import { getAuthUser } from "@/lib/auth";
 import { query, queryMany, queryOne } from "@/lib/db";
 import { getVendorByRequest, seedDefaultCategories } from "@/lib/vendor-utils";
 import { listVendorBankAccounts } from "@/lib/bank-accounts-server";
+import { readScaleLabelConfig } from "@/lib/scale-barcode";
 import { NextResponse } from "next/server";
 
 function slugify(text: string): string {
@@ -575,6 +576,15 @@ export async function POST(request: Request) {
         ? 7
         : Math.min(365, Math.max(0, Math.floor(n)));
   }
+  // Etiquetas de balanza: formato con el que imprime la balanza (jsonb). Se
+  // sanea acá para que un valor basura nunca rompa el Mostrador; apagar el
+  // switch conserva el formato cargado (enabled:false).
+  if (body.scale_label_config !== undefined) {
+    payload.scale_label_config =
+      body.scale_label_config === null
+        ? null
+        : JSON.stringify(readScaleLabelConfig(body.scale_label_config));
+  }
 
   if (existing) {
     let vendor: Record<string, unknown> | undefined;
@@ -638,6 +648,7 @@ export async function POST(request: Request) {
         "weight_confirm_mode",
         "weight_step_kg",
         "weight_min_kg",
+        "scale_label_config",
         "accept_orders_when_closed",
       ].filter((k) => k in payload && msg.includes(k));
       if (droppable.length > 0) {

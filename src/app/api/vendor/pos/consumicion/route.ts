@@ -195,6 +195,8 @@ export async function POST(request: Request) {
           method: "pickup",
           paymentMethod: null,
           cashDiscountPct: null,
+          // Consumición de mesa: mismo criterio que el mostrador (la balanza manda).
+          skipWeightRules: true,
         });
       } catch (e) {
         if (e instanceof PricingError) return fail(400, e.message) as never;

@@ -337,6 +337,9 @@ type OfferFormProps = {
   showSku?: boolean;
   offSku?: string;
   setOffSku?: (v: string) => void;
+  /** PLU de balanza (etiquetas de medida variable). Visible con "Por peso". */
+  offScalePlu?: string;
+  setOffScalePlu?: (v: string) => void;
   /** Foto remota sugerida por lookup (se descarga al guardar). */
   remotePhoto?: string | null;
   onRemotePhoto?: (url: string | null) => void;
@@ -379,6 +382,7 @@ export function OfferForm({
   offUnit = "unidad", setOffUnit,
   showSku = false,
   offSku = "", setOffSku,
+  offScalePlu = "", setOffScalePlu,
   remotePhoto = null, onRemotePhoto,
   offIsCombo = false, setOffIsCombo,
   offComboItems = [], setOffComboItems,
@@ -621,6 +625,20 @@ export function OfferForm({
                 El precio cargado es <strong>por kilo</strong>. En mostrador se pesa y no descuenta stock.
               </p>
             )}
+          </div>
+        )}
+        {showSku && setOffScalePlu && offUnit === "kg" && (
+          <div>
+            <Label>PLU de balanza (opcional)</Label>
+            <Input
+              value={offScalePlu}
+              onChange={(e) => setOffScalePlu(e.target.value.trim())}
+              placeholder="Ej: 123 (vacío = usa el código de barras)"
+            />
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Código con el que la balanza imprime la etiqueta de este producto. Se escanea en el
+              Mostrador y entra con el peso ya cargado.
+            </p>
           </div>
         )}
         {showSku && setOffSku && (

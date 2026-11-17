@@ -337,6 +337,8 @@ export async function POST(
         method: "pickup",
         paymentMethod,
         cashDiscountPct: (gate.vendor as any)?.cash_discount_pct,
+        // Cierre de mesa: mismo criterio que el mostrador (la balanza manda).
+        skipWeightRules: true,
       });
       pricing.items.forEach((it, idx) => {
         (it as any).requires_prep = pricedPrep[idx] !== false;

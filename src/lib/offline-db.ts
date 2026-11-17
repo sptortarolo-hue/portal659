@@ -38,6 +38,8 @@ export type CatalogSnapshot = {
   variantsMap?: Record<string, Record<string, any>[]>;
   /** Componentes por combo (badge/desglose en Mostrador). Tolerante a falta. */
   combos?: Record<string, Record<string, any>[]>;
+  /** Formato de etiquetas de balanza vigente en el comercio (offline). */
+  scaleLabelConfig?: Record<string, any> | null;
   cashPct: number;
   vertical: string | null;
   cachedAt: number;

@@ -4,6 +4,7 @@ import { getSiteUrl } from "@/lib/site-url";
 import { queryEffectiveModifiers } from "@/lib/modifier-rules";
 import { resolveVendorPlan } from "@/lib/plans";
 import { isValidDateOnly, toDateOnly } from "@/lib/expiry";
+import { normalizePlu } from "@/lib/scale-barcode";
 import { NextResponse } from "next/server";
 import type { Plan, Vendor } from "@/types/database";
 
@@ -161,6 +162,30 @@ export async function POST(request: Request) {
       ? String(body.size_guide).trim().slice(0, 2000)
       : null;
 
+  // PLU de balanza (etiquetas de medida variable). Se guarda normalizado
+  // (sin ceros a la izquierda). Tolerante a migración sin aplicar: si se
+  // intenta guardar un PLU y la columna no existe se avisa con el archivo;
+  // el resto del alta sigue funcionando.
+  const hasScalePlu = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'products' AND column_name = 'scale_plu'
+     ) AS exists`
+  ).catch(() => ({ exists: false }));
+  let scalePlu: string | null = null;
+  if (body.scale_plu != null && String(body.scale_plu).trim() !== "") {
+    if (hasScalePlu?.exists !== true) {
+      return NextResponse.json(
+        { error: "Falta aplicar supabase/self-host/migrate-scale-labels.sql para guardar el PLU de balanza" },
+        { status: 503 }
+      );
+    }
+    scalePlu = normalizePlu(body.scale_plu);
+    if (!scalePlu) {
+      return NextResponse.json({ error: "El PLU de balanza no es válido" }, { status: 400 });
+    }
+  }
+
   // Proveedor habitual y vencimiento (inventario): tolerantes a migración sin aplicar.
   const hasSupplierField = await queryOne<{ exists: boolean }>(
     `SELECT EXISTS (
@@ -221,6 +246,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `El código "${sku}" ya está en otro producto` }, { status: 400 });
     }
   }
+  // Un PLU de balanza no puede apuntar a dos productos del mismo comercio.
+  if (scalePlu != null) {
+    const dupPlu = await queryOne<{ id: string; name: string }>(
+      `SELECT id, name FROM products
+       WHERE vendor_id = $1 AND lower(btrim(scale_plu)) = lower($2) LIMIT 1`,
+      [vendor.id, scalePlu]
+    ).catch(() => null);
+    if (dupPlu) {
+      return NextResponse.json(
+        { error: `El PLU de balanza "${scalePlu}" ya está en “${dupPlu.name}”` },
+        { status: 400 }
+      );
+    }
+  }
 
   // Plan: el combo cuenta como un producto (no se excluye del tope).
   // Guardas del combo: componentes del mismo vendor, disponibles, sin
@@ -263,6 +302,7 @@ export async function POST(request: Request) {
   if (sizeGuide != null) { extraCols.push("size_guide"); extraVals.push(sizeGuide); }
   if (unit != null) { extraCols.push("unit"); extraVals.push(unit); }
   if (sku != null) { extraCols.push("sku"); extraVals.push(sku); }
+  if (scalePlu != null) { extraCols.push("scale_plu"); extraVals.push(scalePlu); }
   // Marca el combo en la descripción (el flag real vive en combo_items).
   // No se agrega columna extra: se deriva de combo_items en runtime.
   // Costo de compra manual (inventario): tolerante a migración sin aplicar.

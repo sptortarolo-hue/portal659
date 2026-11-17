@@ -1,6 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import {
+  fmtScaleKg,
+  guessScaleLabelFormats,
+  normalizePlu,
+  parseScaleLabel,
+  readScaleLabelConfig,
+  scaleLabelFormatSummary,
+  scaleLabelLength,
+  type ScaleFormatGuess,
+  type ScaleLabelConfig,
+} from "@/lib/scale-barcode";
 import {
   isWebSerialSupported,
   getCachedScalePort,
@@ -10,13 +24,156 @@ import {
   ScaleUnparsedError,
 } from "@/lib/scale-reader";
 
+type ScaleProduct = {
+  id: string;
+  name: string;
+  price?: number | string | null;
+  promo_price?: number | string | null;
+  unit?: string | null;
+  sku?: string | null;
+  scale_plu?: string | null;
+};
+
+type Props = {
+  vendor?: Record<string, any> | null;
+  saveVendor?: (data: Record<string, unknown>) => Promise<void> | void;
+  /** Catálogo (para matchear PLU en la prueba y la detección de formato). */
+  offers?: ScaleProduct[];
+};
+
+const selectClass =
+  "flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm";
+
+/** Busca el producto por PLU de balanza, con fallback al SKU. */
+function findProductByPlu(offers: ScaleProduct[], plu: string): ScaleProduct | null {
+  const n = normalizePlu(plu);
+  if (!n) return null;
+  return (
+    offers.find((o) => normalizePlu(o.scale_plu) === n) ||
+    offers.find((o) => normalizePlu(o.sku) === n) ||
+    null
+  );
+}
+
+function unitPriceOf(p: ScaleProduct): number {
+  return Number(p.promo_price ?? p.price) || 0;
+}
+
 /**
- * Sección "Balanza" de Configuración (comercio de barrio): guía de conexión
- * universal (USB / USB-serial DB9 / Bluetooth) + probador con diagnóstico
- * crudo (baudios detectados y texto exacto que envía la balanza).
- * Misma lógica de lectura que el Mostrador (src/lib/scale-reader.ts).
+ * Sección "Balanza" de Configuración (comercio de barrio): etiquetas con
+ * lector + guía de conexión universal + probador con diagnóstico crudo.
+ *
+ * Las etiquetas son EAN-13 "de medida variable": prefijo + PLU + peso/importe
+ * + dígito verificador impresos por la balanza. El formato varía por marca, por
+ * eso se configura acá (una sola vez) y el Mostrador lo usa al escanear.
  */
-export function ScaleConfigSection() {
+export function ScaleConfigSection({ vendor, saveVendor, offers }: Props) {
+  const catalog = useMemo(() => (Array.isArray(offers) ? offers : []), [offers]);
+
+  // Config de etiquetas. Se resincroniza solo si el server devuelve otra cosa
+  // (un cambio guardado), para no pisar lo que se está editando.
+  const incoming = useMemo(
+    () => JSON.stringify(readScaleLabelConfig((vendor as any)?.scale_label_config)),
+    [vendor]
+  );
+  const [cfg, setCfg] = useState<ScaleLabelConfig>(() =>
+    readScaleLabelConfig((vendor as any)?.scale_label_config)
+  );
+  const [synced, setSynced] = useState(incoming);
+  useEffect(() => {
+    if (incoming === synced) return;
+    setCfg(readScaleLabelConfig(JSON.parse(incoming)));
+    setSynced(incoming);
+  }, [incoming, synced]);
+
+  // Sin la migración, `vendor` no trae la columna. No bloqueamos el ABM: se
+  // avisa y el switch no se puede guardar.
+  const columnReady = !vendor || Object.prototype.hasOwnProperty.call(vendor, "scale_label_config");
+
+  const [saving, setSaving] = useState(false);
+  const [testCode, setTestCode] = useState("");
+  const [guesses, setGuesses] = useState<ScaleFormatGuess[] | null>(null);
+  const [detectMsg, setDetectMsg] = useState<string | null>(null);
+
+  const parsed = useMemo(
+    () => (testCode.trim() ? parseScaleLabel(testCode, cfg) : null),
+    [testCode, cfg]
+  );
+  const testProduct = parsed ? findProductByPlu(catalog, parsed.plu) : null;
+  const testTotal =
+    parsed && testProduct
+      ? parsed.kind === "peso"
+        ? Math.round((parsed.kg || 0) * unitPriceOf(testProduct) * 100) / 100
+        : parsed.amount || 0
+      : 0;
+
+  const length = scaleLabelLength(cfg);
+
+  async function persist(next: ScaleLabelConfig) {
+    setCfg(next);
+    setSaving(true);
+    try {
+      await saveVendor?.({ scale_label_config: next });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function detectFormat() {
+    setDetectMsg(null);
+    setGuesses(null);
+    const code = testCode.trim();
+    if (!code) {
+      setDetectMsg("Primero escaneá o pegá una etiqueta de un producto que ya tenga PLU.");
+      return;
+    }
+    const known: string[] = [];
+    for (const p of catalog) {
+      const plu = normalizePlu(p.scale_plu);
+      if (plu && /^\d+$/.test(plu)) known.push(plu);
+      else {
+        const sku = normalizePlu(p.sku);
+        if (sku && /^\d+$/.test(sku)) known.push(sku);
+      }
+    }
+    if (known.length === 0) {
+      setDetectMsg(
+        "Ningún producto tiene PLU cargado. Cargá el PLU en Catálogo (productos “Por peso”) y volvé a probar."
+      );
+      return;
+    }
+    const found = guessScaleLabelFormats(code, known);
+    if (found.length === 0) {
+      setDetectMsg(
+        "No pude detectar el formato con esa etiqueta. Verificá que el producto tenga el PLU correcto cargado."
+      );
+      return;
+    }
+    setGuesses(found);
+    if (found.length === 1) {
+      setCfg({ ...found[0].config, enabled: true });
+      setDetectMsg(
+        `Formato detectado: ${scaleLabelFormatSummary(found[0].config)}. Revisá y tocá “Guardar formato”.`
+      );
+    } else {
+      setDetectMsg(
+        `Hay ${found.length} formatos posibles con esa etiqueta. Elegí el que muestre el producto correcto.`
+      );
+    }
+  }
+
+  function applyGuess(g: ScaleFormatGuess) {
+    setCfg({ ...g.config, enabled: true });
+    const p = findProductByPlu(catalog, g.plu);
+    setDetectMsg(
+      `Formato aplicado: ${scaleLabelFormatSummary(g.config)}${
+        p ? ` → “${p.name}”` : ""
+      }. Revisá y tocá “Guardar formato”.`
+    );
+    setGuesses(null);
+  }
+
+  // ── Probador de balanza física (sin cambios) ──────────────────────────────
   const [busy, setBusy] = useState(false);
   const [okMsg, setOkMsg] = useState<string | null>(null);
   const [errMsg, setErrMsg] = useState<string | null>(null);
@@ -57,6 +214,258 @@ export function ScaleConfigSection() {
 
   return (
     <div className="space-y-4 text-sm">
+      {/* Etiquetas de balanza */}
+      <div className="rounded-lg border border-border bg-card p-4 space-y-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="font-medium">🏷️ Etiquetas con lector</p>
+            <p className="text-muted-foreground">
+              Leé con el lector de barras la etiqueta que imprime tu balanza (código con el
+              PLU y el peso) y el producto entra solo al Mostrador, con los kilos ya cargados.
+            </p>
+          </div>
+          <Switch
+            checked={cfg.enabled}
+            disabled={!columnReady}
+            onCheckedChange={(v) => persist({ ...cfg, enabled: v })}
+          />
+        </div>
+
+        {!columnReady && (
+          <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+            Falta aplicar <code>supabase/self-host/migrate-scale-labels.sql</code> para guardar
+            esta configuración.
+          </p>
+        )}
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div>
+            <Label htmlFor="scale-prefix">Prefijo</Label>
+            <Input
+              id="scale-prefix"
+              inputMode="numeric"
+              value={cfg.prefix}
+              maxLength={4}
+              onChange={(e) =>
+                setCfg((c) => ({ ...c, prefix: e.target.value.replace(/\D+/g, "").slice(0, 4) }))
+              }
+              placeholder="2"
+              className="mt-1 h-9"
+            />
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              Lo que va antes del PLU (casi siempre 2).
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="scale-plu-digits">Dígitos del PLU</Label>
+            <select
+              id="scale-plu-digits"
+              className={`${selectClass} mt-1`}
+              value={cfg.pluDigits}
+              onChange={(e) => setCfg((c) => ({ ...c, pluDigits: Number(e.target.value) }))}
+            >
+              {[2, 3, 4, 5, 6, 7, 8].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <Label htmlFor="scale-value-digits">Dígitos del valor</Label>
+            <select
+              id="scale-value-digits"
+              className={`${selectClass} mt-1`}
+              value={cfg.valueDigits}
+              onChange={(e) => setCfg((c) => ({ ...c, valueDigits: Number(e.target.value) }))}
+            >
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <Label htmlFor="scale-value-kind">El valor es</Label>
+            <select
+              id="scale-value-kind"
+              className={`${selectClass} mt-1`}
+              value={cfg.valueKind}
+              onChange={(e) =>
+                setCfg((c) => ({ ...c, valueKind: e.target.value as ScaleLabelConfig["valueKind"] }))
+              }
+            >
+              <option value="peso_g">Peso en gramos</option>
+              <option value="peso_kg">Peso en kilos</option>
+              <option value="importe">Importe en pesos</option>
+            </select>
+          </div>
+          <div>
+            <Label htmlFor="scale-decimals">Decimales del valor</Label>
+            <select
+              id="scale-decimals"
+              className={`${selectClass} mt-1`}
+              value={cfg.decimals}
+              disabled={cfg.valueKind === "peso_g"}
+              onChange={(e) => setCfg((c) => ({ ...c, decimals: Number(e.target.value) }))}
+            >
+              <option value={0}>0 (entero)</option>
+              <option value={1}>1 (décima)</option>
+              <option value={2}>2 (centésima)</option>
+              <option value={3}>3 (milésima)</option>
+            </select>
+          </div>
+          <div>
+            <Label htmlFor="scale-check-digit">Dígito verificador</Label>
+            <select
+              id="scale-check-digit"
+              className={`${selectClass} mt-1`}
+              value={cfg.checkDigit}
+              onChange={(e) =>
+                setCfg((c) => ({ ...c, checkDigit: e.target.value as ScaleLabelConfig["checkDigit"] }))
+              }
+            >
+              <option value="validar">Validar (recomendado)</option>
+              <option value="ignorar">Ignorar (viene pero no se valida)</option>
+              <option value="ninguno">No tiene</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-xs text-muted-foreground">
+            {scaleLabelFormatSummary(cfg)}
+            {length !== 13 && (
+              <span className="text-amber-700 dark:text-amber-400">
+                {" "}
+                · ojo: las etiquetas de balanza suelen tener 13 dígitos
+              </span>
+            )}
+          </p>
+          <button
+            type="button"
+            onClick={() => persist(cfg)}
+            disabled={saving || !columnReady || !cfg.prefix || cfg.pluDigits < 1}
+            className="ml-auto h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
+          >
+            {saving ? "Guardando…" : "Guardar formato"}
+          </button>
+        </div>
+
+        {/* Probar etiqueta */}
+        <div className="rounded-md border border-border bg-muted/30 p-3 space-y-2">
+          <Label htmlFor="scale-test">Probar etiqueta</Label>
+          <div className="flex flex-wrap gap-2">
+            <Input
+              id="scale-test"
+              value={testCode}
+              onChange={(e) => {
+                setTestCode(e.target.value);
+                setGuesses(null);
+                setDetectMsg(null);
+              }}
+              placeholder="Escaneá o pegá una etiqueta de la balanza"
+              className="h-9 flex-1 min-w-[200px] font-mono"
+              autoComplete="off"
+            />
+            <button
+              type="button"
+              onClick={detectFormat}
+              className="h-9 px-3 rounded-md border border-border text-sm hover:bg-accent"
+              title="Adivina el formato a partir de una etiqueta de un producto con PLU"
+            >
+              🔍 Detectar formato
+            </button>
+          </div>
+
+          {testCode.trim() && !parsed && (
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              No coincide con el formato: revisá el largo ({length} dígitos), el prefijo y el
+              dígito verificador.
+            </p>
+          )}
+          {parsed && (
+            <div className="text-xs space-y-1">
+              <p>
+                <span className="font-medium">PLU {parsed.plu}</span> ·{" "}
+                {parsed.kind === "peso" ? (
+                  <span className="font-medium">⚖️ {fmtScaleKg(parsed.kg)}</span>
+                ) : (
+                  <span className="font-medium">
+                    💲 Importe $
+                    {(parsed.amount || 0).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                  </span>
+                )}
+              </p>
+              {testProduct ? (
+                <p>
+                  Producto: <span className="font-medium">“{testProduct.name}”</span>
+                  {parsed.kind === "peso" ? (
+                    <>
+                      {" "}
+                      · ${unitPriceOf(testProduct).toLocaleString("es-AR")}/kg → total{" "}
+                      <span className="font-medium">
+                        ${testTotal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                      </span>
+                    </>
+                  ) : null}
+                </p>
+              ) : (
+                <p className="text-amber-700 dark:text-amber-400">
+                  Ningún producto tiene el PLU {parsed.plu}. Cargalo en Catálogo, en el producto
+                  “Por peso”.
+                </p>
+              )}
+              {testProduct && String(testProduct.unit || "") !== "kg" && (
+                <p className="text-amber-700 dark:text-amber-400">
+                  “{testProduct.name}” no está marcado como <strong>Por peso</strong>: el
+                  Mostrador no va a poder usar la etiqueta.
+                </p>
+              )}
+            </div>
+          )}
+
+          {guesses && guesses.length > 1 && (
+            <div className="space-y-1">
+              {guesses.slice(0, 5).map((g, i) => {
+                const p = findProductByPlu(catalog, g.plu);
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => applyGuess(g)}
+                    className="w-full text-left rounded-md border border-border bg-background px-2 py-1.5 text-xs hover:bg-accent"
+                  >
+                    <span className="font-medium">
+                      {g.kind === "peso" ? fmtScaleKg(g.kg) : `$${g.amount?.toFixed(2)}`}
+                    </span>{" "}
+                    · {scaleLabelFormatSummary(g.config)}
+                    {p ? ` · “${p.name}”` : ""}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {detectMsg && <p className="text-xs text-muted-foreground">{detectMsg}</p>}
+        </div>
+
+        <p className="text-xs text-muted-foreground">
+          El PLU de cada producto se carga en <strong>Catálogo → producto → PLU de balanza</strong>{" "}
+          (los productos “Por peso”). Si lo dejás vacío se usa el código de barras del producto.
+          ¿Solo querés probar tu balanza?{" "}
+          <a
+            href="/manuales/pesables"
+            target="_blank"
+            rel="noreferrer"
+            className="text-primary hover:underline"
+          >
+            Ver el manual
+          </a>
+          .
+        </p>
+      </div>
+
       {/* Probador */}
       <div className="rounded-lg border border-border bg-card p-4 space-y-3">
         <p className="font-medium">⚖️ Probar balanza</p>

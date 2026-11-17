@@ -275,6 +275,8 @@ export function MenuStudio({
   const [offCost, setOffCost] = useState("");
   // Código de barras / SKU (búsqueda y etiquetas en mostrador).
   const [offSku, setOffSku] = useState("");
+  // PLU de balanza (etiquetas de medida variable): vacío = usa el SKU.
+  const [offScalePlu, setOffScalePlu] = useState("");
   // Proveedor habitual y vencimiento (inventario).
   const [offSupplierId, setOffSupplierId] = useState("");
   const [offExpiresAt, setOffExpiresAt] = useState("");
@@ -383,6 +385,7 @@ export function MenuStudio({
     setOffPackSize("");
     setOffUnit("unidad");
     setOffSku("");
+    setOffScalePlu("");
     setOffSupplierId("");
     setOffExpiresAt("");
     setOffRemotePhoto(null);
@@ -475,6 +478,7 @@ export function MenuStudio({
     setOffPackSize(offer.pack_size ? String(offer.pack_size) : "");
     setOffUnit((offer as any).unit === "kg" ? "kg" : "unidad");
     setOffSku((offer as any).sku ? String((offer as any).sku) : "");
+    setOffScalePlu((offer as any).scale_plu ? String((offer as any).scale_plu) : "");
     setOffCost((offer as any).cost_last != null ? String((offer as any).cost_last) : "");
     setOffSupplierId((offer as any).supplier_id ? String((offer as any).supplier_id) : "");
     setOffExpiresAt(toDateOnly((offer as any).expires_at) || "");
@@ -504,7 +508,7 @@ export function MenuStudio({
     offCategory: string; offPreview: string | null; offStock: number;
     offStockControl: boolean; offPromoPrice: string; offStockLowThreshold: number;
     offRequiresPrep: boolean; offCashExcluded: boolean; offPackSize: string;
-    offUnit: string; offSku: string; offCost: string;
+    offUnit: string; offSku: string; offScalePlu: string; offCost: string;
     offSupplierId: string; offExpiresAt: string;
     offRemotePhoto: string | null; hadFile: boolean;
     galleryUrls: { url: string }[];
@@ -513,14 +517,14 @@ export function MenuStudio({
   const menuDraft = useFormDraft<MenuDraft>({
     vendorId,
     key: "menu-studio",
-    watch: [showForm, editingId, offName, offDesc, offPrice, offCategory, offPreview, offStock, offStockControl, offPromoPrice, offStockLowThreshold, offRequiresPrep, offCashExcluded, offPackSize, offUnit, offSku, offCost, offSupplierId, offExpiresAt, offRemotePhoto, galleryUrls],
+    watch: [showForm, editingId, offName, offDesc, offPrice, offCategory, offPreview, offStock, offStockControl, offPromoPrice, offStockLowThreshold, offRequiresPrep, offCashExcluded, offPackSize, offUnit, offSku, offScalePlu, offCost, offSupplierId, offExpiresAt, offRemotePhoto, galleryUrls],
     snapshot: () => {
       if (!showForm) return null;
       if (!editingId && !offName.trim() && !offPrice && !offDesc.trim() && galleryUrls.length === 0) return null;
       return {
         editingId, offName, offDesc, offPrice, offCategory, offPreview, offStock,
         offStockControl, offPromoPrice, offStockLowThreshold, offRequiresPrep,
-        offCashExcluded, offPackSize, offUnit, offSku, offCost, offSupplierId, offExpiresAt, offRemotePhoto,
+        offCashExcluded, offPackSize, offUnit, offSku, offScalePlu, offCost, offSupplierId, offExpiresAt, offRemotePhoto,
         galleryUrls,
         hadFile: offFile != null,
       };
@@ -543,6 +547,7 @@ export function MenuStudio({
       setOffPackSize(d.offPackSize || "");
       setOffUnit(d.offUnit === "kg" ? "kg" : "unidad");
       setOffSku(d.offSku || "");
+      setOffScalePlu(d.offScalePlu || "");
       setOffCost(d.offCost || "");
       setOffSupplierId(d.offSupplierId || "");
       setOffExpiresAt(d.offExpiresAt || "");
@@ -619,6 +624,8 @@ export function MenuStudio({
       pack_size: offPackSize ? Math.floor(Number(offPackSize)) : null,
       unit: offUnit,
       sku: isComercio && offSku.trim() ? offSku.trim() : null,
+      scale_plu:
+        isComercio && offUnit === "kg" && offScalePlu.trim() ? offScalePlu.trim() : null,
       cost_last: canEditCost && offCost.trim() !== "" && Number.isFinite(Number(offCost)) ? Math.round(Number(offCost) * 100) / 100 : undefined,
       supplier_id: !offIsCombo && canEditCost ? offSupplierId || null : undefined,
       expires_at: !offIsCombo && showExpiry ? offExpiresAt || null : undefined,
@@ -896,6 +903,8 @@ export function MenuStudio({
       showSku={isComercio}
       offSku={offSku}
       setOffSku={setOffSku}
+      offScalePlu={offScalePlu}
+      setOffScalePlu={setOffScalePlu}
       showCost={canEditCost}
       offCost={offCost}
       setOffCost={setOffCost}

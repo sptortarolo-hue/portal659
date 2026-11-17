@@ -177,7 +177,56 @@ export default function PesablesPage() {
         </div>
 
         <div>
-          <h2 className="font-display text-lg font-semibold mb-3">7. Preguntas frecuentes</h2>
+          <h2 className="font-display text-lg font-semibold mb-3">
+            7. Etiquetas de balanza con lector (Mostrador)
+          </h2>
+          <p className="mb-3">
+            Si tu balanza imprime etiquetas con código de barras, el lector del Mostrador las puede
+            leer: el producto entra solo al ticket con el peso ya cargado, sin tipear kilos ni buscar
+            el producto. Es el mismo circuito que usan los supermercados.
+          </p>
+          <p className="mb-3">
+            <strong>1 · Cargá el PLU.</strong> En{" "}
+            <span className="font-medium">Catálogo → producto “Por peso” → PLU de balanza</span> poné
+            el código con el que la balanza imprime ese producto (ej. <code>123</code>). Si lo dejás
+            vacío se usa el código de barras (SKU) del producto.
+          </p>
+          <p className="mb-3">
+            <strong>2 · Configurá el formato.</strong> En{" "}
+            <span className="font-medium">Configuración → Balanza → 🏷️ Etiquetas con lector</span>{" "}
+            prendé el switch y completá cómo imprime tu balanza: prefijo, dígitos del PLU, dígitos
+            del valor, si el valor es <em>peso en gramos</em>, <em>peso en kilos</em> o{" "}
+            <em>importe</em>, los decimales y qué hacer con el dígito verificador. El resumen te dice
+            cuántos dígitos tiene que tener el código (las etiquetas de balanza suelen tener 13).
+          </p>
+          <p className="mb-3">
+            <strong>3 · Probá y detectá.</strong> Escaneá una etiqueta en{" "}
+            <span className="font-medium">Probar etiqueta</span> y vas a ver el PLU, el peso y el
+            producto con el total. Si no sabés el formato, tocá{" "}
+            <span className="font-medium">🔍 Detectar formato</span> con una etiqueta de un producto
+            que ya tenga PLU: el portal prueba solo las combinaciones y te propone la que coincide.
+          </p>
+          <p className="mb-3">
+            <strong>4 · Escaneá en el Mostrador.</strong> Pasá la etiqueta por el lector y listo:
+            cada etiqueta es <span className="font-medium">una línea propia</span> (con el badge 🏷️),
+            aunque sea el mismo producto. Si la etiqueta trae <em>importe</em> en vez de peso, el
+            portal calcula los kilos con el precio por kilo del producto.
+          </p>
+          <p className="mb-3">
+            <span className="font-medium">PLU desconocido</span> · si la etiqueta no corresponde a
+            ningún producto, se abre el alta rápida ya precargada con el PLU, la venta{" "}
+            <span className="font-medium">Por peso</span> y el peso leído: completás nombre y precio,
+            guardás, y la línea entra con esos kilos.
+          </p>
+          <p className="text-muted-foreground">
+            El peso de la etiqueta manda: no se le aplican el múltiplo de venta ni el peso mínimo
+            (esos son para lo que carga el cliente en el micrositio). El formato y el PLU se
+            configuran una sola vez.
+          </p>
+        </div>
+
+        <div>
+          <h2 className="font-display text-lg font-semibold mb-3">8. Preguntas frecuentes</h2>
           <p className="mb-3">
             <span className="font-medium">¿Me equivoqué de peso?</span> · Podés corregirlo todas las
             veces que quieras <em>antes</em> de confirmar. Después de confirmar, el total quedó
@@ -201,6 +250,22 @@ export default function PesablesPage() {
             <span className="font-medium">¿Puedo probarlo sin clientes reales?</span> · Sí: con el{" "}
             <span className="font-medium">modo prueba</span> de tu micrositio hacés pedidos de prueba
             que nunca se cobran ni cuentan en tus métricas.
+          </p>
+          <p className="mb-3">
+            <span className="font-medium">¿El lector de etiquetas sirve en Mesas?</span> · No por
+            ahora: la lectura de etiquetas de balanza está sólo en el Mostrador (en Mesas se pesa
+            con el botón Pesar o a mano).
+          </p>
+          <p className="mb-3">
+            <span className="font-medium">¿Y si escaneo dos etiquetas del mismo producto?</span> ·
+            Entran como dos líneas separadas, igual que en el supermercado (el ticket muestra cada
+            etiqueta). Los precios por volumen igual suman todos los kilos del mismo producto.
+          </p>
+          <p className="mb-3">
+            <span className="font-medium">¿Qué pasa si no me coincide el formato?</span> · El
+            probador te dice cuántos dígitos espera y avisa si el código no cumple el prefijo o el
+            dígito verificador. Probá con “Detectar formato” o ajustá los campos hasta que la
+            etiqueta se lea bien.
           </p>
         </div>
 

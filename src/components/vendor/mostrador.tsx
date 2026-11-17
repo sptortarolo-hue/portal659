@@ -36,6 +36,14 @@ import {
   clearCachedScalePort,
   readScaleFromPort,
 } from "@/lib/scale-reader";
+import {
+  fmtScaleKg,
+  normalizePlu,
+  parseScaleLabel,
+  readScaleLabelConfig,
+  type ParsedScaleLabel,
+  type ScaleLabelConfig,
+} from "@/lib/scale-barcode";
 
 const OFFLINE_PAYMENT_LABELS: Record<string, string> = {
   efectivo: "Efectivo",
@@ -86,6 +94,8 @@ type Product = {
   unit?: string | null;
   /** Código de barras / SKU (búsqueda y escaneo). */
   sku?: string | null;
+  /** PLU de balanza (etiquetas de medida variable). Vacío = se usa el SKU. */
+  scale_plu?: string | null;
 };
 
 /** Variante de producto (moda): precio y promo propios, stock por combinación. */
@@ -141,6 +151,8 @@ type LineItem = {
   /** Firma del armado (JSON de [product, variante, qty]): dos armados
     distintos del mismo combo son líneas separadas. */
   _sig?: string;
+  /** Línea creada leyendo una etiqueta de balanza (badge 🏷️). */
+  label?: boolean;
 };
 
 /** Firma de las piezas del choosed combo (coincide con comboMembersKey del carrito). */
@@ -357,6 +369,9 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   // Retail (comercio/moda): textos sin referencias a cocina/comida.
   const [isRetail, setIsRetail] = useState(false);
   const [vendorVertical, setVendorVertical] = useState<string | null>(null);
+  // Etiquetas de balanza (EAN de medida variable): formato configurado por el
+  // comercio en Config → Balanza. Apagado = el escaneo por SKU sigue igual.
+  const [scaleCfg, setScaleCfg] = useState<ScaleLabelConfig>(() => readScaleLabelConfig(null));
   // Fiscal ARCA (plan Gestión + config completa): toggle por venta.
   const [fiscalReady, setFiscalReady] = useState(false);
   const [fiscalAutoEmit, setFiscalAutoEmit] = useState(false);
@@ -557,6 +572,9 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             setModifiersMap((snap.modifiersByProduct || {}) as any);
             if (snap.variantsMap) setVariantsMap(snap.variantsMap as any);
             if (snap.combos) setComboMap(snap.combos as any);
+            if (snap.scaleLabelConfig !== undefined) {
+              setScaleCfg(readScaleLabelConfig(snap.scaleLabelConfig));
+            }
             setProducts(((snap.products || []) as any[]).filter((o: any) => o.available !== false));
           }
         } catch { /* sin snapshot: espera a la red */ }
@@ -577,6 +595,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         const vertical = (me?.vendor?.vertical as string | undefined) ?? null;
         setCashPct(pct);
         setVendorVertical(vertical);
+        setScaleCfg(readScaleLabelConfig((me?.vendor as any)?.scale_label_config));
         setBankAccounts(Array.isArray(me?.bank_accounts) ? me.bank_accounts : []);
         setIsRetail(vertical === "comercio" || vertical === "moda" || vertical === "estetica" || vertical === "salud" || vertical === "taller");
         // Retail: la venta directa es el caso común (retiro con pedido queda opcional).
@@ -656,6 +675,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             combos: comboData,
             cashPct: pct,
             vertical,
+            scaleLabelConfig: (me?.vendor as any)?.scale_label_config ?? null,
           }).catch(() => {});
         }
       } catch { /* noop */ } finally {
@@ -675,7 +695,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     };
     return products.filter(
       (p) =>
-        (!q || p.name.toLowerCase().includes(q) || ((p as any).sku || "").toLowerCase() === q || ((p as any).sku || "").toLowerCase().includes(q) || (variantsMap[p.id] || []).some(matchVariantSku)) &&
+        (!q || p.name.toLowerCase().includes(q) || ((p as any).sku || "").toLowerCase() === q || ((p as any).sku || "").toLowerCase().includes(q) || ((p as any).scale_plu || "").toLowerCase().includes(q) || (variantsMap[p.id] || []).some(matchVariantSku)) &&
         (!activeCat || normCat(p.category) === activeCat)
     );
   }, [products, query, activeCat]);
@@ -693,10 +713,97 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     }
     return null;
   }
+
+  /** Busca el producto por PLU de balanza (fallback: SKU como PLU). */
+  function findProductByScalePlu(plu: string): Product | null {
+    const n = normalizePlu(plu);
+    if (!n) return null;
+    return (
+      products.find((p) => p.available !== false && normalizePlu(p.scale_plu) === n) ||
+      products.find((p) => p.available !== false && normalizePlu(p.sku) === n) ||
+      null
+    );
+  }
+
+  /**
+   * Etiqueta de balanza: entra como UNA línea propia con el peso ya cargado.
+   * Dos etiquetas del mismo producto NO se fusionan (dos renglones en el
+   * ticket, como en el supermercado); el volumen igual suma por producto.
+   */
+  function addLabelLine(p: Product, kg: number) {
+    const rounded = Math.round(kg * 1000) / 1000;
+    if (!Number.isFinite(rounded) || rounded <= 0 || rounded > 1000) return;
+    const sig = `L${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+    setItems((prev) => [
+      ...prev,
+      {
+        product_id: p.id,
+        name: p.name,
+        price: Number(p.promo_price ?? p.price) || 0,
+        qty: rounded,
+        requires_prep: p.requires_prep !== false,
+        modifiers: [],
+        hasPromo: p.promo_price != null,
+        cashExcluded: p.cash_discount_excluded === true,
+        unit: "kg",
+        label: true,
+        _sig: sig,
+      },
+    ]);
+  }
+
+  /**
+   * Resuelve una etiqueta ya parseada. PLU conocido + “Por peso” → línea con
+   * el peso. PLU desconocido → alta rápida precargada (PLU + Por peso + peso),
+   * que al guardar agrega directamente la línea sin repesar.
+   */
+  function handleScaleLabel(label: ParsedScaleLabel) {
+    const p = findProductByScalePlu(label.plu);
+    if (!p) {
+      setQuery("");
+      setMsg("");
+      openQuickCreate({
+        sku: label.pluRaw,
+        scalePlu: label.pluRaw,
+        unit: "kg",
+        labelKg: label.kg ?? null,
+      });
+      setMsg(`PLU ${label.plu} sin producto: completá el alta y se agrega con el peso leído`);
+      return;
+    }
+    if (String(p.unit || "") !== "kg") {
+      setMsg(`“${p.name}” no está marcado como venta por peso (Catálogo → PLU de balanza)`);
+      return;
+    }
+    if ((p as any).has_variants === true || (variantsMap[p.id] || []).length > 0) {
+      setMsg(`“${p.name}” tiene variantes: la etiqueta no puede elegir cuál`);
+      return;
+    }
+    let kg = label.kg || 0;
+    if (label.kind === "importe") {
+      const price = Number(p.promo_price ?? p.price) || 0;
+      if (!(price > 0)) {
+        setMsg(`“${p.name}” no tiene precio por kilo`);
+        return;
+      }
+      kg = Math.round(((label.amount || 0) / price) * 1000) / 1000;
+    }
+    if (!(kg > 0) || kg > 99) {
+      setMsg("La etiqueta no tiene un peso válido");
+      return;
+    }
+    addLabelLine(p, kg);
+    setMsg(
+      `🏷️ ${p.name}: ${fmtScaleKg(kg)}${label.kind === "importe" ? " (por importe)" : ""}`
+    );
+    setQuery("");
+    searchRef.current?.focus();
+  }
   /**
    * Resuelve un código leído (escáner) o tipeado (buscador).
    * - SKU exacto del producto → add() (suma cantidad si la línea ya existe).
    * - SKU exacto de una variante → elige variante (picker si hace falta).
+   * - Etiqueta de balanza → línea nueva con el peso ya cargado.
    * - Nombre único → add().
    * - Sin match: desde escáner, aviso simple sin popup (el alta rápida sigue
    *   disponible tipeando a mano); desde el buscador, alta rápida como siempre.
@@ -722,6 +829,15 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       setMsg("");
       searchRef.current?.focus();
       return;
+    }
+    // Etiqueta de balanza: el código trae PLU + peso/importe. Va antes del
+    // match por nombre (un número nunca debería caer en un nombre).
+    if (scaleCfg.enabled) {
+      const label = parseScaleLabel(q, scaleCfg);
+      if (label) {
+        handleScaleLabel(label);
+        return;
+      }
     }
     const named = products.filter(
       (p) => p.available !== false && p.name.toLowerCase().includes(q)
@@ -818,26 +934,41 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
   const [qcName, setQcName] = useState("");
   const [qcPrice, setQcPrice] = useState("");
   const [qcSku, setQcSku] = useState("");
+  const [qcScalePlu, setQcScalePlu] = useState("");
   const [qcUnit, setQcUnit] = useState<"unidad" | "kg">("unidad");
+  // Peso ya leído de una etiqueta: al crear, la línea entra con esos kilos.
+  const [qcLabelKg, setQcLabelKg] = useState<number | null>(null);
   const [qcRemotePhoto, setQcRemotePhoto] = useState<string | null>(null);
   const [qcLookupMsg, setQcLookupMsg] = useState("");
   const [qcSaving, setQcSaving] = useState(false);
   const [qcMsg, setQcMsg] = useState("");
   const [qcReplaceKey, setQcReplaceKey] = useState<string | null>(null);
   const [qcFromManual, setQcFromManual] = useState(false);
-  async function openQuickCreate(prefill: { name?: string; price?: string; sku?: string; replaceKey?: string; fromManual?: boolean }) {
+  async function openQuickCreate(prefill: {
+    name?: string;
+    price?: string;
+    sku?: string;
+    scalePlu?: string;
+    unit?: "unidad" | "kg";
+    labelKg?: number | null;
+    replaceKey?: string;
+    fromManual?: boolean;
+  }) {
     setQcName(prefill.name || "");
     setQcPrice(prefill.price || "");
     setQcSku(prefill.sku || "");
-    setQcUnit("unidad");
+    setQcScalePlu(prefill.scalePlu || "");
+    setQcUnit(prefill.unit === "kg" ? "kg" : "unidad");
+    setQcLabelKg(prefill.labelKg && prefill.labelKg > 0 ? prefill.labelKg : null);
     setQcRemotePhoto(null);
     setQcLookupMsg("");
     setQcMsg("");
     setQcReplaceKey(prefill.replaceKey || null);
     setQcFromManual(!!prefill.fromManual);
     setQcOpen(true);
-    // Sugerencia automática por lookup (no pisa nada cargado).
-    if (prefill.sku) {
+    // Sugerencia automática por lookup (no pisa nada cargado). Un PLU de
+    // balanza es un código interno corto: no se busca en Open Food Facts.
+    if (!prefill.scalePlu && prefill.sku && /^\d{8,}$/.test(prefill.sku)) {
       try {
         const res = await fetch(`/api/vendor/barcode-lookup?code=${encodeURIComponent(prefill.sku)}`);
         const data = await res.json().catch(() => ({}));
@@ -865,6 +996,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         body: JSON.stringify({
           name, price, category: "otros",
           sku: qcSku.trim() || undefined,
+          scale_plu: qcScalePlu.trim() || undefined,
           unit: qcUnit,
           image_url: qcRemotePhoto || undefined,
         }),
@@ -885,11 +1017,20 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         setManualPrice("");
       }
       if (qcUnit === "kg") {
-        const key = lineKey(created.id, undefined, []);
-        addLine(created, null, 0, Number(created.price) || 0, []);
-        setQcOpen(false);
-        gotoKgLine(created.id, key);
-        setMsg(`Creado “${name}”: cargá los kilos`);
+        if (qcLabelKg && qcLabelKg > 0) {
+          // Vino de una etiqueta de balanza: ya sabemos el peso, no se repesa.
+          addLabelLine(created, qcLabelKg);
+          setQcOpen(false);
+          setQuery("");
+          setMsg(`Creado “${name}”: ${fmtScaleKg(qcLabelKg)} agregado`);
+          searchRef.current?.focus();
+        } else {
+          const key = lineKey(created.id, undefined, []);
+          addLine(created, null, 0, Number(created.price) || 0, []);
+          setQcOpen(false);
+          gotoKgLine(key);
+          setMsg(`Creado “${name}”: cargá los kilos`);
+        }
       } else {
         add(created);
         setQcOpen(false);
@@ -952,31 +1093,14 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         } catch {
           break;
         }
-          const val = String(codes?.[0]?.rawValue || "").trim();
-          if (val && !seen.has(val)) {
-            seen.add(val);
-            const hit = products.find(
-              (p) => ((p as any).sku || "").toLowerCase() === val.toLowerCase() && p.available !== false
-            );
-            const vHit = !hit ? findVariantBySku(val) : null;
-            if (hit) {
-              add(hit);
-              setQuery("");
-              setMsg(`Agregado por código: ${hit.name}`);
-              await stopScan();
-              return;
-            } else if (vHit) {
-              chooseVariant(vHit.p, vHit.v);
-              setQuery("");
-              setMsg(`Agregado por código: ${vHit.p.name}`);
-              await stopScan();
-              return;
-            } else {
-              setQuery(val);
-              setMsg(`Código ${val}: no está en el catálogo`);
-            await stopScan();
-            return;
-          }
+        const val = String(codes?.[0]?.rawValue || "").trim();
+        if (val && !seen.has(val)) {
+          seen.add(val);
+          // Mismo resolver que el lector USB: SKU, variante o etiqueta de
+          // balanza (PLU + peso). No se duplica la lógica.
+          resolveScanCode(val, true);
+          await stopScan();
+          return;
         }
         await new Promise((r) => setTimeout(r, 250));
       }
@@ -994,7 +1118,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       const key = lineKey(p.id, undefined, []);
       const exists = items.some((i) => lineKey(i.product_id, i.variant_id, i.modifiers, i._sig) === key);
       if (exists) {
-        gotoKgLine(p.id, key);
+        gotoKgLine(key);
         return;
       }
     }
@@ -1205,14 +1329,19 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
   // flashKgKey: resalta la línea por peso existente al re-tocarla.
   const [flashKgKey, setFlashKgKey] = useState<string | null>(null);
   // Lleva a la línea por peso existente para repesar (scroll + foco + aviso).
-  function gotoKgLine(productId: string, key: string) {
+  function gotoKgLine(key: string) {
     setFocusKgKey(key);
     setFlashKgKey(key);
     window.setTimeout(() => {
       setFlashKgKey((cur) => (cur === key ? null : cur));
     }, 2000);
     requestAnimationFrame(() => {
-      document.getElementById(`kgline-${productId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      // Se busca por la clave de la línea (no por producto: puede haber varias
+      // líneas del mismo producto, por ejemplo una por etiqueta de balanza).
+      const el = Array.from(
+        document.querySelectorAll<HTMLInputElement>("input[data-kg-line]")
+      ).find((n) => n.dataset.kgLine === key);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
     });
     setMsg("Ya está agregado: actualizá el peso o tocá Pesar");
   }
@@ -2112,6 +2241,22 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
                 <option value="kg">Por peso</option>
               </select>
             </div>
+            {qcUnit === "kg" && (
+              <div className="space-y-1">
+                <input
+                  type="text"
+                  value={qcScalePlu}
+                  onChange={(e) => setQcScalePlu(e.target.value.trim())}
+                  placeholder="PLU de balanza (opcional)"
+                  className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background font-mono"
+                />
+                {qcLabelKg && qcLabelKg > 0 && (
+                  <p className="text-[11px] text-green-700 dark:text-green-400">
+                    🏷️ Etiqueta leída: {fmtScaleKg(qcLabelKg)} — se agrega con ese peso.
+                  </p>
+                )}
+              </div>
+            )}
             {qcSku && <p className="text-[11px] text-muted-foreground">Código: {qcSku}</p>}
             {(qcLookupMsg || qcRemotePhoto) && (
               <p className="text-[11px] text-muted-foreground">
@@ -2330,7 +2475,6 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         {items.map((i) => (
           <div
             key={lineKey(i.product_id, i.variant_id, i.modifiers, i._sig)}
-            {...(i.unit === "kg" ? { id: `kgline-${i.product_id}` } : {})}
             className={`flex items-center gap-2 text-sm rounded-lg transition-colors ${
               i.unit === "kg" && flashKgKey === lineKey(i.product_id, i.variant_id, i.modifiers, i._sig)
                 ? "bg-primary/10 outline outline-2 outline-primary/40"
@@ -2339,6 +2483,14 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           >
             <span className="flex-1 min-w-0 line-clamp-2 break-words">
               {i.name}
+              {i.label && (
+                <span
+                  className="ml-1 rounded bg-emerald-100 px-1 text-[10px] text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                  title="Leída de la etiqueta de la balanza"
+                >
+                  🏷️
+                </span>
+              )}
               {i.unit === "kg" && (
                 <span className="ml-1 rounded bg-muted px-1 text-[10px] text-muted-foreground">$/kg</span>
               )}

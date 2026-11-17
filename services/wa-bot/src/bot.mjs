@@ -558,6 +558,58 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
       }
     }
   }
+  // — Multi-pick en catálogo: "quiero el 1 y el 17" (más de un número válido) —
+  if (state.currentVendorId && Array.isArray(state.catalogSeen) && state.catalogSeen.length > 1) {
+    const allNums = [...String(text || "").matchAll(/\d{1,2}/g)].map((m) => Number(m[0])).filter((n) => n >= 1 && n <= state.catalogSeen.length);
+    if (allNums.length > 1) {
+      const numbers = [...new Set(allNums)];
+      // Interpretamos esto como picks solo si el mensaje casi no tiene otra
+      // información que no sean conectores (quiero/y/más/números…).
+      const leftovers = String(text || "")
+        .replace(/\b(quiero|dame|me das|llev[aá]|me tra[eé]s|me llev[aá]s|por favor|numero|número|num|el|la|los|las|y|e|,|\+|más|mas|tam|tamb[ií]en|mas)\b/gi, " ")
+        .replace(/\d{1,2}/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (leftovers.length <= 1) {
+        const products = await getMenu(vendor.id);
+        const added = [];
+        const needs = [];
+        for (const n of numbers) {
+          const p = products.find((x) => String(x.id) === String(state.catalogSeen[n - 1]));
+          if (!p) continue;
+          if (Array.isArray(p.variants) && p.variants.length > 0) { needs.push({ producto: p, esVariant: true }); continue; }
+          mergeItems(state, [{ offerId: p.id, name: p.name, qty: 1, modifiers: [] }], vendor.id);
+          added.push(p.name);
+        }
+        if (added.length === 0 && needs.length === 0) {
+          // fallback: sale de este bloque y cae a noMatch de siempre
+        } else {
+          state.welcomed = true;
+          state.catalogSeen = [];
+          const lines = added.length
+            ? [`Agregué a tu carrito:\n${added.map((n) => `• ${n}`).join("\n")}`]
+            : [];
+          if (needs.length > 0) {
+            // Pedir modificación por el primer producto que la necesita (qty=1).
+            const first = needs[0].producto;
+            const restantes = needs.slice(1).map((n) => n.producto.name);
+            if (restantes.length) lines.push(`(Agregando también: ${restantes.join(", ")})`);
+            state.pendingDetail = { offerId: first.id, name: first.name };
+            lines.push(`🥟 *${first.name}* — ¿qué variante querés?`);
+            const variantLines = first.variants.map((v, i) => `${i + 1}️⃣ ${v.color || "—"}${v.talle ? ` talle ${v.talle}` : ""}${v.price != null ? ` — $${Number(v.price).toLocaleString("es-AR")}` : ""}`);
+            lines.push(variantLines.join("\n"));
+            lines.push(`Respondé con el número de la variante.`);
+            replies.push(lines.join("\n"));
+            return await persist(state, vendor.id, waId, replies);
+          }
+          replies.push(lines.join("\n"));
+          if (maybeAskRequiredMods(state, products, replies)) return;
+          advanceAndAsk(state, vendor, replies);
+          return;
+        }
+      }
+    }
+  }
   // — "¿Lo de siempre?" (re-pedido con la memoria del cliente) —
   // Se responde a "sí"/"no" aunque no sea un saludo.
   if (state._awaitingReorder) {

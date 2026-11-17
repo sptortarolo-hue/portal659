@@ -2328,24 +2328,35 @@ async function replyStoreCatalog({ state, vendor, waId, replies, chosen }) {
     replies.push(portalCatalogText(catalog));
   }
   const link = slug ? `\nMirá el menú con fotos: ${storeLink}` : "";
-  replies.push(`Mandame tu pedido (ej: "2 empanadas de carne y una coca").${link}`);
+  replies.push(`¿Qué querés pedir? Mandame tu pedido como siempre lo hacés: ej: "2 empanadas de carne y una coca".${link}`);
   replies.push(portalNavFooter());
-  // Collage de imágenes del menú (best-effort).
+  // Banner de bienvenida + collage del catálogo (best-effort, 1 envío).
   const _client = getClientByVendor(vendor.id);
   if (_client) {
     try {
-      const _imgRes = await fetch(`${config.appUrl}/api/wa/menu-image?vendorId=${encodeURIComponent(chosen.id)}`, {
-        headers: { Authorization: `Bearer ${config.waBotSecret}` },
-        signal: AbortSignal.timeout(15_000),
-      });
-      if (_imgRes.ok) {
-        const _buf = Buffer.from(await _imgRes.arrayBuffer());
+      const [bRes, mRes] = await Promise.all([
+        fetch(`${config.appUrl}/api/wa/store-banner?vendorId=${encodeURIComponent(chosen.id)}`, {
+          headers: { Authorization: `Bearer ${config.waBotSecret}` },
+          signal: AbortSignal.timeout(15_000),
+        }).catch(() => null),
+        fetch(`${config.appUrl}/api/wa/menu-image?vendorId=${encodeURIComponent(chosen.id)}`, {
+          headers: { Authorization: `Bearer ${config.waBotSecret}` },
+          signal: AbortSignal.timeout(15_000),
+        }).catch(() => null),
+      ]);
+      if (bRes?.ok) {
+        const bBuf = Buffer.from(await bRes.arrayBuffer());
+        sendImage(_client, waId, bBuf.toString("base64"), `${name} — Bienvenida 🔥`);
+        console.log(`[bot][portal] banner enviado: ${name}`);
+      }
+      if (mRes?.ok) {
+        const _buf = Buffer.from(await mRes.arrayBuffer());
         const _b64 = _buf.toString("base64");
-        sendImage(_client, waId, _b64, `📋 Menú de ${name}`);
+        sendImage(_client, waId, _b64, `📋 ${name} · Destacados del día`);
         console.log(`[bot][portal] menú imagen enviado: ${name}`);
       }
     } catch (e) {
-      console.error(`[bot][portal] error enviando menú imagen: ${e?.message}`);
+      console.error(`[bot][portal] error enviando imágenes del menú: ${e?.message}`);
     }
   }
   return persist(state, vendor.id, waId, replies);

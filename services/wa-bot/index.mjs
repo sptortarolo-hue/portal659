@@ -17,6 +17,36 @@ import { trackEvent, trackMessage } from "./src/telemetry.mjs";
 const stats = { messages: 0, replies: 0, errors: 0, loggedOut: 0, limitsHit: 0 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Consolida todas las replies de un turno en 1-2 burbujas máximo — la
+ *  experiencia de WhatsApp nativa es UNA novedad a la vez, no wall of text. */
+const MAX_BUBBLE_CHARS = 1400;
+function coalesceReplies(replies) {
+  const full = (replies || []).filter((x) => x != null && String(x).trim()).join('\n');
+  if (!full.trim()) return [];
+  // Split por doble newline si existe; si no, por newline simple; si no, corte seco por longitud.
+  const paragraphs = full.split(/\n{2,}/);
+  const parts = [];
+  let buf = '';
+  for (const para of paragraphs) {
+    const piece = buf ? '\n\n' + para : para;
+    if (buf.length + piece.length > MAX_BUBBLE_CHARS && buf) {
+      parts.push(buf);
+      buf = para;
+    } else {
+      buf += piece;
+    }
+  }
+  if (buf) parts.push(buf);
+  // Si una burbuja supera MAX_BUBBLE_CHARS (un bloque largo sin newlines), la dividimos a la fuerza.
+  const out = [];
+  for (const p of parts) {
+    if (p.length <= MAX_BUBBLE_CHARS) { out.push(p); continue; }
+    for (let i = 0; i < p.length; i += MAX_BUBBLE_CHARS) out.push(p.slice(i, i + MAX_BUBBLE_CHARS));
+  }
+  // Límite duro de 2 burbujas en total
+  return out.slice(0, 2);
+}
 const rand = (min, max) => Math.round(min + Math.random() * (max - min));
 
 // Teléfono en E.164 para el envío. El relay arma <num>@s.whatsapp.net, así
@@ -375,7 +405,7 @@ async function attach(ws, token) {
           buffer,
         });
         if (!result.handled) return;
-        for (const reply of result.replies || []) {
+        for (const reply of coalesceReplies(result.replies || [])) {
           const sent = sendText(getClient(token), msg.wa_id, reply);
           console.log(`[bot] reply a ${msg.wa_id} (${sent ? "enviado" : "SIN_CONEXION"}): ${reply.slice(0, 80)}`);
           trackMessage(vendor.id, msg.wa_id, "out", reply);
@@ -440,7 +470,9 @@ async function attach(ws, token) {
       console.log(`[bot] handoff de ${msg.wa_id} (bot apagado) -> responde el dueño`);
       return;
     }
-    const replies = result.replies || [];
+    // Consolida TODAS las replies del turno en 1-2 burbujas máximo. La pantalla
+    // del cliente no es una consola de logs; cada ping extra lo expone a silencio.
+    const replies = coalesceReplies(result.replies || []);
     if (!replies.length) return;
 
     // Rate limit de salida: si este lote supera los caps de hora/día, no mandar

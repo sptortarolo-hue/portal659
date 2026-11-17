@@ -2676,6 +2676,14 @@ async function fetchCustomer(vendorId, phone) {
 /** Envía el menú corto de 5 opciones del portal (capa 1 informativa). */
 async function sendPortalMenu(state, vendor, waId, replies) {
   const greetName = state.customerName ? ` ${state.customerName}` : "";
+  // El menú principal INVALIDA cualquier lista numerada pendiente (tiendas,
+  // rubros, categorías de ofertas): sin esto, "1-6" seguían eligiendo de la
+  // lista vieja en vez de ser opciones del menú.
+  state.portalVendorList = [];
+  state.rubroList = [];
+  state.offerCats = [];
+  state.rubroShownAt = 0;
+  state.offerCatsAt = 0;
   replies.push(portalGreeting(greetName));
   replies.push("");
   replies.push(portalMainMenuText());

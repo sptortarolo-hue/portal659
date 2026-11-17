@@ -323,7 +323,14 @@ if (state.pausedUntil && state.pausedUntil > Date.now()) {
 
 // Contexto para la llamada IA: carrito actual + qué se le preguntó + historial.
 function llmCtx(state, vendor) {
-  return { cart: state.items, pending: missingFields(state, vendor), history: state.history, vendorId: vendor?.id || vendor?.vendorId || null, vertical: vendor?.vertical || null };
+  return {
+    cart: state.items,
+    pending: missingFields(state, vendor),
+    history: state.history,
+    vendorId: vendor?.id || vendor?.vendorId || null,
+    vertical: vendor?.vertical || null,
+    stage: state.step || 'idle',
+  };
 }
 
 /** Parseo de ítems con tres capas de robustez:

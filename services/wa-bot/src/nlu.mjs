@@ -305,6 +305,12 @@ CAPA 2 — PEDIDOS (después de elegir tienda):
 19) Cliente: "quiero un turno de masaje relajante" → items:[{name:"Masaje Relajante",qty:1,unit:"unidad"}], complete:false
 20) Cliente: "envíalo a la misma dirección de siempre" → method:"delivery", complete:false
 
+REGLAS DE STOCK Y DESTACADAS:
+- Si un producto dice "SIN STOCK" o el stock es 0, nunca elijas ese producto y nunca lo sugieras. Aunque el cliente insista, declinás y preguntás qué otra cosa quiere (o mostrá categorías disponibles/completamos al final).
+- Si un producto dice "[DESTACADA hoy]", podés mencionarlo como recomendación si encaja con lo que el cliente pregunta (ej: "¿tienen recomendaciones?", "¿qué está bueno?").
+- Nunca inventes stock positivo para productos SIN STOCK.
+- Los precios nunca se generan si el producto no tiene precio exacto en el menú — si no estás seguro, items:[] con unknownItems:["<lo que el cliente dijo>"]. Pero si el producto EXISTE en el menú aunque esté "SIN STOCK", tampoco lo agregues aunque el cliente lo pida — explicá está agotado.
+
 REGLAS DE NEGACIÓN:
 - "no quiero X" / "sin X" / "sacá X" → QUITAR X del carrito (op:"remove").
 - "no quiero nada" / "cancelá" → carrito vacío, complete:false.
@@ -565,6 +571,12 @@ async function callOnce(message, products, ctx = null) {
   const menu = products.slice(0, 40)
     .map((p) => {
       let line = `${p.id}|${p.name}|${p.price}`;
+      if (p.stock_control) {
+        line += Number(p.stock) > 0
+          ? ` [stock: ${p.stock}]`
+          : ` [SIN STOCK]`;
+      }
+      if (p.featured_today) line += ` [DESTACADA hoy]`;
       if (p.pack_size) line += ` [pack de ${p.pack_size} unidades]`;
       if (p.unit === 'kg') line += ` [venta por kg]`;
       else if (p.weight_step_kg) line += ` [pesable, paso ${p.weight_step_kg}kg]`;
@@ -617,7 +629,15 @@ async function callOnce(message, products, ctx = null) {
     } catch {}
   }
 
-  const systemWithVertical = SYSTEM.replace('{vertical}', ctx?.vertical || 'desconocida');
+  const STAGE_LABEL = {
+    idle: 'BROWSING (el cliente puede preguntar info o iniciar un pedido)',
+    flow: 'ORDERING (el cliente armó parte del pedido, está agregando ítems o datos)',
+    confirm: 'CONFIRMING (verificar resumen; el cliente puede cambiar cualquier cosa)',
+    awaiting_receipt: 'AWAITING_RECEIPT (esperando comprobante de transferencia)',
+    completed: 'DONE',
+  };
+  const stageLabel = STAGE_LABEL[ctx?.stage] || `${ctx?.stage || 'BROWSING'}`;
+  const systemWithVertical = SYSTEM.replace('{vertical}', ctx?.vertical || 'desconocida').replace('{stage}', stageLabel) + `\nTu etapa de la conversación es: ${stageLabel}.`;
   const llmResult = await llmChat(
     [
       { role: "system", content: systemWithVertical + fewShot },

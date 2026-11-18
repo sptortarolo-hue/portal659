@@ -351,6 +351,17 @@ function VendorDashboardInner() {
     window.addEventListener("portal:go-menu", handler);
     return () => window.removeEventListener("portal:go-menu", handler);
   }, []);
+  // Atajo desde Catálogo → Etiquetas → solapa Adhesiva: salta directo a la
+  // sección de configuración indicada por detail (ej. "balanza").
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<string>).detail;
+      if (typeof detail === "string" && detail) handleConfigSection(detail);
+    };
+    window.addEventListener("portal:go-config", handler);
+    return () => window.removeEventListener("portal:go-config", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Atajo desde Configuración → pestaña Facturación (misma idea: la
   // operatoria fiscal vive en su propia pestaña; Config muestra el acceso).
   useEffect(() => {
@@ -2243,6 +2254,7 @@ function VendorDashboardInner() {
                     vendorName={vendor?.store_name || null}
                     productImages={productImages}
                     comboItemsByProduct={comboItemsByProduct}
+                    vendor={vendor}
                   />
                   </TabErrorBoundary>
                 ) : (

@@ -255,9 +255,12 @@ export default function PesablesPage() {
             sale bien, el lenguaje queda fijado solo.
           </p>
           <p className="mb-3">
-            <strong>3 · Emití las etiquetas.</strong> Tocá{" "}
-            <span className="font-medium">🏷️ Emitir etiqueta…</span>: elegís el producto (o lo
-            buscás), y si es <span className="font-medium">Por peso</span> la balanza pesa en
+            <strong>3 · Emití las etiquetas.</strong> Pedí ir a{" "}
+            <span className="font-medium">Catálogo → Productos → 🏷️ Etiquetas</span> y elegí la
+            solapa <span className="font-medium">📦 Adhesiva (PL-500)</span> (la otra solapa es
+            “Góndola (térmica)”, para la impresora de tickets): buscá el producto por nombre, SKU o
+            PLU, y si es{" "}
+            <span className="font-medium">Por peso</span> la balanza pesa en
             vivo. La etiqueta muestra los valores al instante y con el botón{" "}
             <span className="font-medium">🖨️ Imprimir</span> sale. El flujo queda abierto para el
             siguiente producto: pesás, imprimís, y así hasta terminar.

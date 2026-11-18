@@ -24,27 +24,16 @@ import {
   type LabelTemplateId,
 } from "@/lib/label-spec";
 import { listLocalUsbPrinters, type UsbPrinterEntry } from "@/lib/local-print";
-import { StickerModal } from "@/components/dashboard/sticker-modal";
 
 type Props = {
   vendor: Record<string, any> | null | undefined;
   saveVendor?: (data: Record<string, unknown>) => Promise<void> | void;
-  offers?: {
-    id: string;
-    name: string;
-    price?: number | string | null;
-    promo_price?: number | string | null;
-    unit?: string | null;
-    sku?: string | null;
-    scale_plu?: string | null;
-    expires_at?: string | null;
-  }[];
 };
 
 const selectClass =
   "flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm";
 
-export function LabelPrinterCard({ vendor, saveVendor, offers }: Props) {
+export function LabelPrinterCard({ vendor, saveVendor }: Props) {
   const [cfg, setCfg] = useState<LabelPrinterConfig>(() =>
     readLabelPrinterConfig((vendor as any)?.label_printer_config)
   );
@@ -55,7 +44,6 @@ export function LabelPrinterCard({ vendor, saveVendor, offers }: Props) {
   const [calibrating, setCalibrating] = useState<string | null>(null);
   const [calibrateMsg, setCalibrateMsg] = useState<string | null>(null);
   const [calibrateErr, setCalibrateErr] = useState<string | null>(null);
-  const [issuerOpen, setIssuerOpen] = useState(false);
 
   const columnReady =
     !vendor || Object.prototype.hasOwnProperty.call(vendor, "label_printer_config");
@@ -316,29 +304,13 @@ export function LabelPrinterCard({ vendor, saveVendor, offers }: Props) {
         </p>
       </div>
 
-      {/* Emisor */}
-      <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
-        <button
-          type="button"
-          onClick={() => setIssuerOpen(true)}
-          disabled={!columnReady || !cfg.enabled}
-          className="h-10 px-5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
-        >
-          🏷️ Emitir etiqueta…
-        </button>
-        <p className="text-xs text-muted-foreground">
-          {cfg.enabled
-            ? "Elegí el producto, pesá y pegá. Sin salir de este módulo."
-            : "Activá la impresora de etiquetas para abrir el emisor."}
-        </p>
-      </div>
-
-      <StickerModal
-        open={issuerOpen}
-        onClose={() => setIssuerOpen(false)}
-        vendor={vendor}
-        offers={offers}
-      />
+      {/* Por dónde se emite */}
+      <p className="border-t border-border pt-3 text-xs text-muted-foreground">
+        🏷️ Para <strong>imprimir</strong> etiquetas vas a{" "}
+        <strong>Catálogo → Productos → 🏷️ Etiquetas → solapa “Adhesiva (PL-500)”</strong>: ahí
+        buscás el producto, pesás en vivo y sale. Esta sección queda para configurar la impresora y
+        calibrarla.
+      </p>
     </div>
   );
 }

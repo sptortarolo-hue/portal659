@@ -467,8 +467,8 @@ export function ScaleConfigSection({ vendor, saveVendor, offers }: Props) {
         </p>
       </div>
 
-      {/* Impresora de etiquetas adhesivas + emisor */}
-      <LabelPrinterCard vendor={vendor} saveVendor={saveVendor} offers={offers} />
+      {/* Impresora de etiquetas adhesivas (config + calibración) */}
+      <LabelPrinterCard vendor={vendor} saveVendor={saveVendor} />
 
       {/* Probador */}
       <div className="rounded-lg border border-border bg-card p-4 space-y-3">

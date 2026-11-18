@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PhotoPicker } from "@/components/ui/photo-picker";
 import { Modal } from "@/components/ui/modal";
+import { StickerPanel } from "@/components/dashboard/sticker-issuer";
+import { readLabelPrinterConfig } from "@/lib/label-spec";
 import {
   OfferForm,
   OfferList,
@@ -92,6 +94,8 @@ type Props = {
   vendorLogo?: string | null;
   /** Nombre del comercio (fallback del preview de etiquetas). */
   vendorName?: string | null;
+  /** Comercios completo (la solapa Adhesiva necesita label_printer_config + scale_label_config). */
+  vendor?: Record<string, any> | null;
 };
 
 type View = "productos" | "categorias" | "opciones" | "volumen" | "combos";
@@ -229,6 +233,7 @@ export function MenuStudio({
   vendorId = null,
   vendorLogo = null,
   vendorName = null,
+  vendor = null,
   productImages = [],
   comboItemsByProduct = {},
 }: Props) {
@@ -240,6 +245,32 @@ export function MenuStudio({
   const [showImportWa, setShowImportWa] = useState(false);
   // Etiquetas de góndola (requiere impresora + SKU en el producto).
   const [showLabels, setShowLabels] = useState(false);
+  const LABELS_TAB_KEY = "portal659-labels-tab";
+  const [labelsTab, setLabelsTab] = useState<"gondola" | "adhesiva">(() => {
+    try {
+      return localStorage.getItem(LABELS_TAB_KEY) === "adhesiva" ? "adhesiva" : "gondola";
+    } catch {
+      return "gondola";
+    }
+  });
+  const pickLabelsTab = useCallback((tab: "gondola" | "adhesiva") => {
+    setLabelsTab(tab);
+    try {
+      localStorage.setItem(LABELS_TAB_KEY, tab);
+    } catch {
+      /* noop */
+    }
+  }, []);
+  // ¿Está habilitada la impresora de etiquetas adhesivas (PL-500)?
+  const labelPrinterCfg = useMemo(
+    () => readLabelPrinterConfig((vendor as any)?.label_printer_config),
+    [vendor]
+  );
+  const labelPrinterReady =
+    !!vendor &&
+    Object.prototype.hasOwnProperty.call(vendor, "label_printer_config") &&
+    labelPrinterCfg.enabled &&
+    !!labelPrinterCfg.usbName;
   const [labelProductId, setLabelProductId] = useState("");
   const [labelChecked, setLabelChecked] = useState<Set<string>>(new Set());
   const [labelSearch, setLabelSearch] = useState("");
@@ -1351,8 +1382,10 @@ export function MenuStudio({
       <Modal
         open={showLabels}
         onClose={() => setShowLabels(false)}
-        title="Imprimir etiquetas"
+        title="Etiquetas"
+        size={labelsTab === "adhesiva" ? "lg" : "md"}
         footer={
+          labelsTab === "adhesiva" ? undefined : (
           <>
             <Button
               type="button"
@@ -1395,8 +1428,36 @@ export function MenuStudio({
               Cancelar
             </Button>
           </>
+          )
         }
       >
+        {/* Solapas del modal: góndola (térmica, como siempre) | adhesiva (PL-500) */}
+        <div className="mb-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => pickLabelsTab("gondola")}
+            className={`h-9 px-4 rounded-md border text-sm font-medium transition-colors ${
+              labelsTab === "gondola"
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border hover:bg-accent"
+            }`}
+          >
+            🏷️ Góndola (térmica)
+          </button>
+          <button
+            type="button"
+            onClick={() => pickLabelsTab("adhesiva")}
+            className={`h-9 px-4 rounded-md border text-sm font-medium transition-colors ${
+              labelsTab === "adhesiva"
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border hover:bg-accent"
+            }`}
+          >
+            📦 Adhesiva (PL-500)
+          </button>
+        </div>
+
+        {labelsTab === "gondola" ? (
         <div className="space-y-3">
           <LabelPreview
             offer={offers.find((o) => o.id === labelProductId) || null}
@@ -1461,6 +1522,28 @@ export function MenuStudio({
             Logo + nombre + precio (con promo) + código de barras. Usá papel de etiquetas (no el rollo de tickets).
           </p>
         </div>
+        ) : labelPrinterReady ? (
+          <StickerPanel vendor={vendor} offers={offers} />
+        ) : (
+          <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+            <p className="font-medium">La impresora de etiquetas adhesivas no está configurada.</p>
+            <p className="mt-1">
+              En <strong>Config → Balanza → 🏷️ Impresora de etiquetas adhesivas</strong>: prendé el
+              switch, elegí la cola USB de la PL-500 (con “🔎 Buscar colas”), los píxeles del rollo y
+              calibrá el lenguaje con los botones Probar TSPL / ZPL / ESC-POS.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setShowLabels(false);
+                window.dispatchEvent(new CustomEvent("portal:go-config", { detail: "balanza" }));
+              }}
+              className="mt-3 h-9 px-4 rounded-md bg-amber-600 text-white text-xs font-medium hover:bg-amber-700"
+            >
+              Ir a configurar la impresora →
+            </button>
+          </div>
+        )}
       </Modal>
 
       {/* Precios masivos (desktop) */}

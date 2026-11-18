@@ -124,7 +124,7 @@ function UsageBar({ label, value, cap }: { label: string; value: number; cap: nu
   );
 }
 
-function PortalFunnel() {
+function PortalFunnel({ usage }: { usage?: { total_tokens: number; calls: number } | null }) {
   const [days, setDays] = useState(30);
   const [data, setData] = useState<{ funnel: { key: string; label: string; total: number; unique: number }[]; byDay: { day: string; count: number }[] } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -144,6 +144,8 @@ function PortalFunnel() {
   const order = data?.funnel?.find((f) => f.key === "order_created");
   const conv = menu && menu.unique > 0 ? Math.round(((order?.unique || 0) / menu.unique) * 100) : 0;
   const shown = (data?.funnel ?? []).filter((f) => f.total > 0);
+  const ordersCount = order?.total ?? 0;
+  const tokensPerOrder = ordersCount > 0 && usage && usage.total_tokens > 0 ? Math.round(usage.total_tokens / ordersCount) : null;
 
   return (
     <div className="rounded-xl border border-border bg-card p-3 space-y-2">
@@ -161,11 +163,12 @@ function PortalFunnel() {
         <p className="text-[11px] text-muted-foreground">Sin datos de telemetría del portal todavía (wa_bot_events vacía o wabot sin desplegar este build).</p>
       ) : (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-center">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-center">
             <div className="rounded-lg bg-muted/40 p-2"><p className="text-[10px] text-muted-foreground">Conversaciones</p><p className="text-base font-bold">{menu?.unique ?? 0}</p></div>
             <div className="rounded-lg bg-muted/40 p-2"><p className="text-[10px] text-muted-foreground">Eligió tienda</p><p className="text-base font-bold">{data?.funnel?.find((f) => f.key === "funnel_store_selected")?.unique ?? 0}</p></div>
             <div className="rounded-lg bg-muted/40 p-2"><p className="text-[10px] text-muted-foreground">Pedido creado</p><p className="text-base font-bold">{order?.unique ?? 0}</p></div>
             <div className="rounded-lg bg-muted/40 p-2"><p className="text-[10px] text-muted-foreground">Conversión</p><p className="text-base font-bold">{conv}%</p></div>
+            <div className="rounded-lg bg-muted/40 p-2" title="Tokens totales del cerebro (desde el último reinicio) ÷ pedidos en la ventana"><p className="text-[10px] text-muted-foreground">Tokens/pedido*</p><p className="text-base font-bold">{tokensPerOrder != null ? `≈${tokensPerOrder.toLocaleString("es-AR")}` : "—"}</p></div>
           </div>
           <div className="space-y-1">
             {shown.map((f) => (
@@ -179,6 +182,7 @@ function PortalFunnel() {
             ))}
           </div>
           <p className="text-[10px] text-muted-foreground">Números = eventos totales (usuarios únicos entre paréntesis cuando difiere).</p>
+          <p className="text-[10px] text-muted-foreground/70">*Tokens acumulados desde el último reinicio del cerebro ÷ pedidos del período (no contable, guía de costo del bot).</p>
         </>
       )}
     </div>
@@ -328,7 +332,7 @@ export default function AdminBotsPage() {
       </div>
 
       {/* Embudo del bot del portal */}
-      <PortalFunnel />
+      <PortalFunnel usage={llm?.usage} />
 
       {/* Alertas */}
       {conAlerta.length > 0 && (

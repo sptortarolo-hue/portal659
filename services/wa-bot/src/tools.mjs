@@ -132,6 +132,100 @@ defTool("not_an_order", {
 // API pública del registry
 // ———————————————————————————————————————————————————————————————————————————
 
+function norm(s) {
+  return String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+// ———————————————————————————————————————————————————————————————————————————
+// search_products — buscar productos del menú por nombre/categoría
+// ———————————————————————————————————————————————————————————————————————————
+defTool("search_products", {
+  description:
+    "Buscar productos del menú de la tienda activa por nombre o categoría. Devuelve hasta 5 coincidencias. Usar cuando el cliente pregunte por disponibilidad/precio de un producto o mencione uno con nombre ambiguo.",
+  parameters: {
+    type: "object",
+    properties: {
+      query: { type: "string", description: "Texto de búsqueda (nombre o categoría del producto)" },
+    },
+    required: ["query"],
+  },
+  exposeToLlm: false, // se habilita en el canary con LLM_ORDER_LOOP=1 (Fase 2)
+  handler(args, ctx) {
+    const q = norm(args?.query);
+    const products = Array.isArray(ctx?.products) ? ctx.products : [];
+    if (!q || !products.length) return { ok: false, matches: [] };
+    const qTokens = q.split(" ").filter((w) => w.length >= 2);
+    // ¿El query es un índice del catálogo mostrado? no — safe: solo por nombre.
+    const scored = [];
+    for (const p of products) {
+      const pNorm = norm(`${p.name || ""} ${p.category || ""}`);
+      const hits = qTokens.filter((t) => pNorm.includes(t)).length;
+      if (hits > 0 && String(p.available ?? "true") !== "false") {
+        scored.push({ name: p.name, price: p.price, category: p.category ?? null, score: hits });
+      }
+    }
+    scored.sort((a, b) => b.score - a.score);
+    return { ok: true, matches: scored.slice(0, 5) };
+  },
+});
+
+// ———————————————————————————————————————————————————————————————————————————
+// track_order — estado del último pedido del teléfono (read-only)
+// ———————————————————————————————————————————————————————————————————————————
+defTool("track_order", {
+  description:
+    "Consultar el estado del último pedido del cliente (por teléfono) y devolver el link de seguimiento. Solo lectura.",
+  parameters: {
+    type: "object",
+    properties: {
+      phone: { type: "string", description: "Teléfono del cliente (con o sin código de país)" },
+    },
+    required: ["phone"],
+  },
+  exposeToLlm: false, // se habilita en el canary con LLM_ORDER_LOOP=1 (Fase 2)
+  async handler(args) {
+    const phone = String(args?.phone || "").trim();
+    if (!phone) return { ok: false, orders: [] };
+    const { config } = await import("./config.mjs");
+    try {
+      const res = await fetch(`${config.appUrl}/api/wa/portal-orders?phone=${encodeURIComponent(phone)}`, {
+        headers: { Authorization: `Bearer ${config.waBotSecret}` },
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) return { ok: false, orders: [] };
+      const data = await res.json().catch(() => null);
+      const orders = (data?.orders || []).slice(0, 3).map((o) => ({
+        store: o.storeName,
+        status: o.status,
+        pickupNumber: o.pickupNumber ?? null,
+        trackUrl: o.trackUrl ?? null,
+      }));
+      return { ok: true, orders };
+    } catch {
+      return { ok: false, orders: [] };
+    }
+  },
+});
+
+// ———————————————————————————————————————————————————————————————————————————
+// request_human — handoff a una persona del comercio (o del portal)
+// ———————————————————————————————————————————————————————————————————————————
+defTool("request_human", {
+  description:
+    "Escalar la conversación a una persona. Usar únicamente si el cliente lo pide explícitamente, está enojado, o el bot no puede ayudarlo de ninguna forma.",
+  parameters: {
+    type: "object",
+    properties: {
+      reason: { type: "string", description: "Por qué se escala (ej. 'cliente enojado', 'no entendió', 'pedido > 20 items')" },
+    },
+    required: ["reason"],
+  },
+  exposeToLlm: false, // se habilita en el canary con LLM_ORDER_LOOP=1 (Fase 2)
+  handler(args) {
+    return { intent: "handoff", complete: false, items: [], reason: String(args?.reason || "").slice(0, 200), reasoning: "tool:request_human" };
+  },
+});
+
 /** Schemas en formato OpenAI function-calling (lo que se pasa a tools= en el
  *  request). Solo las tools con exposeToLlm=true. */
 export function toolSchemasForLlm() {
@@ -149,11 +243,11 @@ export function toolNames() {
 
 /** Ejecuta una tool validada contra el schema (best-effort: lo rompe el
  *  handler adentro, el schema acá es el gate contra basura del modelo). */
-export function dispatchTool(name, args, ctx) {
+export async function dispatchTool(name, args, ctx) {
   const t = REGISTRY.get(name);
   if (!t || typeof t.handler !== "function") return null;
   try {
-    return t.handler(args, ctx);
+    return await t.handler(args, ctx);
   } catch (e) {
     console.error(`[tools] dispatchTool ${name} err: ${e?.message}`);
     return null;

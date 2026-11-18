@@ -7,6 +7,16 @@ import { CASH_METHOD_LABELS } from "@/lib/cash-methods";
 
 type MethodTotals = { count: number; total: number };
 
+type CashAdjustment = {
+  id: string;
+  amount: number;
+  method: string;
+  kind: string;
+  reason: string;
+  created_at: string;
+  created_by_name?: string | null;
+};
+
 type Closing = {
   id: string;
   closed_at: string;
@@ -26,6 +36,13 @@ type Closing = {
   handed_to?: string | null;
   movements?: { ingresos: number; retiros: number } | null;
   expected_cash?: number | null;
+  /** Ajustes post-cierre (ver migrate-cash-adjustments.sql). */
+  adjustments?: CashAdjustment[];
+  adjustment_total?: number;
+  adjustment_cash?: number;
+  adjusted_net_total?: number;
+  adjusted_expected_cash?: number;
+  adjusted_cash_difference?: number | null;
 };
 
 const METHOD_ORDER = ["efectivo", "transferencia", "tarjeta", "mixto", "whatsapp", "mercadopago"];
@@ -97,6 +114,9 @@ export default function CierrePrintPage() {
     (a, b) => (METHOD_ORDER.indexOf(a[0]) + 1 || 99) - (METHOD_ORDER.indexOf(b[0]) + 1 || 99)
   );
   const diff = c.cash_difference != null ? Number(c.cash_difference) : null;
+  const diffAdj =
+    c.adjusted_cash_difference != null ? Number(c.adjusted_cash_difference) : diff;
+  const adjustments = Array.isArray(c.adjustments) ? c.adjustments : [];
   const movIng = Number(c.movements?.ingresos) || 0;
   const movRet = Number(c.movements?.retiros) || 0;
 
@@ -147,7 +167,12 @@ export default function CierrePrintPage() {
               {movIng > 0 && <p><span className="font-bold">Ingresos manuales:</span> {money(movIng)}</p>}
               {movRet > 0 && <p><span className="font-bold">Retiros manuales:</span> {money(movRet)}</p>}
               {c.expected_cash != null && (
-                <p><span className="font-bold">Esperado:</span> {money(c.expected_cash)}</p>
+                <p>
+                  <span className="font-bold">Esperado:</span> {money(c.expected_cash)}
+                  {adjustments.length > 0 && c.adjusted_expected_cash != null && (
+                    <span className="text-neutral-600"> · con ajustes {money(c.adjusted_expected_cash)}</span>
+                  )}
+                </p>
               )}
             </div>
           </div>
@@ -181,6 +206,9 @@ export default function CierrePrintPage() {
             <p className="flex justify-between"><span>Desc. efectivo:</span> <span>−${Number(c.discounts_total).toLocaleString("es-AR")}</span></p>
           )}
           <p className="flex justify-between text-lg font-bold"><span>NETO:</span> <span>${Number(c.net_total).toLocaleString("es-AR")}</span></p>
+          {adjustments.length > 0 && c.adjusted_net_total != null && (
+            <p className="flex justify-between font-bold"><span>NETO con ajustes:</span> <span>${Number(c.adjusted_net_total).toLocaleString("es-AR")}</span></p>
+          )}
         </div>
 
         {c.cash_declared != null && (
@@ -188,10 +216,33 @@ export default function CierrePrintPage() {
             <p className="flex justify-between"><span className="font-bold">Arqueo (contado):</span> <span>{money(c.cash_declared)}</span></p>
             {diff != null && (
               <p className="flex justify-between font-bold">
-                <span>Diferencia:</span>
+                <span>Diferencia{diffAdj !== diff ? " (Z)" : ""}:</span>
                 <span>{diff === 0 ? "Cuadra ✓" : `${diff > 0 ? "Sobra" : "Falta"} ${money(Math.abs(diff))}`}</span>
               </p>
             )}
+            {diffAdj !== diff && (
+              <p className="flex justify-between font-bold">
+                <span>Diferencia con ajustes:</span>
+                <span>{diffAdj === 0 ? "Cuadra ✓" : `${(diffAdj ?? 0) > 0 ? "Sobra" : "Falta"} ${money(Math.abs(diffAdj || 0))}`}</span>
+              </p>
+            )}
+          </div>
+        )}
+
+        {adjustments.length > 0 && (
+          <div className="border border-neutral-300 rounded-lg p-3 mb-4 text-sm">
+            <p className="font-bold mb-1">Ajustes post-cierre</p>
+            <p className="text-xs text-neutral-600 mb-2">
+              Correcciones cargadas después del cierre: no mueven dinero, corrigen lo registrado.
+            </p>
+            {adjustments.map((a) => (
+              <div key={a.id} className="flex justify-between gap-3 border-t border-neutral-100 py-0.5">
+                <span>
+                  {a.amount >= 0 ? "+" : "−"}{money(Math.abs(a.amount))} · {CASH_METHOD_LABELS[a.method] || a.method} · {a.reason}
+                  <span className="text-neutral-500"> ({fmt(a.created_at)}{a.created_by_name ? ` · ${a.created_by_name}` : ""})</span>
+                </span>
+              </div>
+            ))}
           </div>
         )}
 

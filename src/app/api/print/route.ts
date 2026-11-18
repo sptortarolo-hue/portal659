@@ -5,7 +5,7 @@ import { dispatchPrint, dispatchSticker, type CashClosingPrintData, type CashSna
 import { buildStickerForProduct, calibrateSticker } from "@/lib/sticker-server";
 import { readLabelPrinterConfig } from "@/lib/label-spec";
 import { getSiteUrl } from "@/lib/site-url";
-import { computeCashClosing, computeShiftSummary, getOpenShift, lastClosingSince } from "@/lib/cash-closing";
+import { computeCashClosing, computeShiftSummary, getOpenShift, lastClosingSince, applyClosingAdjustments, listClosingAdjustments } from "@/lib/cash-closing";
 import { resolveVendorPlan } from "@/lib/plans";
 import { fetchOrderPayments } from "@/lib/order-payments";
 import { isOrderBooking } from "@/lib/agenda";
@@ -182,7 +182,12 @@ export async function POST(request: Request) {
     if (!closing) {
       return NextResponse.json({ ok: false, error: "Cierre no encontrado" }, { status: 404 });
     }
-    const result = await dispatchPrint({ vendor, type: "cash_close", extra: { closing } });
+    // Ajustes post-cierre: el Z se imprime con su bloque de ajustes (si los
+    // hay) y el neto/diferencia "ajustados". Sin migración aplicada no hay
+    // ajustes y el ticket sale igual que siempre.
+    const closingAdjustments = await listClosingAdjustments(vendor.id, [String(closingId)]);
+    const closingWithAdjustments = applyClosingAdjustments(closing, closingAdjustments);
+    const result = await dispatchPrint({ vendor, type: "cash_close", extra: { closing: closingWithAdjustments } });
     await recordLastPrint(vendor.id, result);
     return printResponse({
     ...result,

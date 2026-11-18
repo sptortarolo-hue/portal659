@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { CASH_METHOD_LABELS } from "@/lib/cash-methods";
 import { EXPENSE_CATEGORIES } from "@/lib/expenses";
+import { CashAdjustmentModal } from "@/components/dashboard/cash-adjustment-modal";
 
 type MethodTotals = { count: number; total: number };
 
@@ -47,6 +48,16 @@ type CashMovement = {
   created_at: string;
 };
 
+type ClosingAdjustment = {
+  id: string;
+  amount: number;
+  method: string;
+  kind: "venta_faltante" | "venta_duplicada" | "otro";
+  reason: string;
+  created_at: string;
+  created_by_name?: string | null;
+};
+
 type Closing = {
   id: string;
   closed_at: string;
@@ -65,6 +76,14 @@ type Closing = {
   handed_to?: string | null;
   movements?: { ingresos: number; retiros: number } | null;
   expected_cash?: number | null;
+  /** Ajustes post-cierre (ver migrate-cash-adjustments.sql). */
+  adjustments?: ClosingAdjustment[];
+  adjustment_count?: number;
+  adjustment_total?: number;
+  adjustment_cash?: number;
+  adjusted_net_total?: number;
+  adjusted_expected_cash?: number;
+  adjusted_cash_difference?: number | null;
 };
 
 function money(n: number | null | undefined): string {
@@ -123,6 +142,8 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
   // Tras cerrar con entrega: ofrece abrir el turno del receptor.
   const [handoverDone, setHandoverDone] = useState<{ name: string; amount: number } | null>(null);
   const [openingNext, setOpeningNext] = useState(false);
+  // Ajuste post-cierre: cierre elegido en el historial (modal).
+  const [adjClosing, setAdjClosing] = useState<Closing | null>(null);
 
   async function loadReceivers() {
     try {
@@ -877,6 +898,12 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
                 {Number(report.falta) > 0 && `Falta ${money(report.falta)}`}
               </p>
             )}
+            {Number(report.adjustmentsCount) > 0 && (
+              <p className="text-xs text-muted-foreground">
+                Incluye {report.adjustmentsCount} ajuste{report.adjustmentsCount === 1 ? "" : "s"} post-cierre:{" "}
+                {money(report.adjustmentsTotal)}
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -897,6 +924,14 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
             ) : (
               closings.map((c) => {
                 const diff = c.cash_difference != null ? Number(c.cash_difference) : null;
+                const adjustments = Array.isArray(c.adjustments) ? c.adjustments : [];
+                const hasAdj = adjustments.length > 0;
+                // Con ajustes, el semáforo del arqueo se lee sobre el esperado
+                // corregido; el Z original sigue mostrando sus números.
+                const diffShown =
+                  c.adjusted_cash_difference != null
+                    ? Number(c.adjusted_cash_difference)
+                    : diff;
                 return (
                   <div key={c.id} className="border border-border rounded-lg p-3 text-sm">
                     <div className="flex items-center justify-between gap-2">
@@ -913,18 +948,54 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
                         )}
                       </div>
                       <div className="text-right flex-shrink-0">
-                        <p className="font-bold tabular-nums">{money(c.net_total)}</p>
-                        {diff != null && diff !== 0 && (
-                          <p className={`text-xs font-medium ${diff > 0 ? "text-green-600" : "text-red-600"}`}>
-                            {diff > 0 ? "sobra" : "falta"} {money(Math.abs(diff))}
+                        <p className="font-bold tabular-nums">
+                          {money(hasAdj ? c.adjusted_net_total ?? c.net_total : c.net_total)}
+                        </p>
+                        {hasAdj && (
+                          <p className="text-[10px] text-muted-foreground tabular-nums">
+                            Z: {money(c.net_total)}
+                          </p>
+                        )}
+                        {diffShown != null && diffShown !== 0 && (
+                          <p className={`text-xs font-medium ${diffShown > 0 ? "text-green-600" : "text-red-600"}`}>
+                            {diffShown > 0 ? "sobra" : "falta"} {money(Math.abs(diffShown))}
+                            {hasAdj ? " (con ajustes)" : ""}
                           </p>
                         )}
                       </div>
                     </div>
+                    {hasAdj && (
+                      <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs space-y-0.5">
+                        <p className="font-medium text-amber-800">
+                          🔧 Ajustes post-cierre: {Number(c.adjustment_total) >= 0 ? "+" : "−"}
+                          {money(Math.abs(Number(c.adjustment_total) || 0))}
+                        </p>
+                        {adjustments.map((a) => (
+                          <p key={a.id} className="text-amber-900/80 break-words">
+                            {a.amount >= 0 ? "+" : "−"}
+                            {money(Math.abs(a.amount))} · {CASH_METHOD_LABELS[a.method] || a.method} · {a.reason}
+                            <span className="text-amber-900/60">
+                              {" "}
+                              ({fmtDateTime(a.created_at)}
+                              {a.created_by_name ? ` · ${a.created_by_name}` : ""})
+                            </span>
+                          </p>
+                        ))}
+                        {c.cash_declared != null && (
+                          <p className="text-amber-900/80">
+                            Contado {money(c.cash_declared)} · esperado con ajustes{" "}
+                            {money(c.adjusted_expected_cash ?? c.expected_cash)} ·{" "}
+                            {diffShown == null || diffShown === 0
+                              ? "cuadra ✓"
+                              : `${diffShown > 0 ? "sobra" : "falta"} ${money(Math.abs(diffShown))}`}
+                          </p>
+                        )}
+                      </div>
+                    )}
                     {c.notes && (
                       <p className="text-xs text-muted-foreground mt-1.5 break-words">"{c.notes}"</p>
                     )}
-                    <div className="mt-2 flex gap-2">
+                    <div className="mt-2 flex flex-wrap gap-2">
                       <Button
                         variant="outline"
                         size="sm"
@@ -938,6 +1009,14 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
                           📄 A4
                         </Button>
                       </a>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setAdjClosing(c)}
+                        title="Corregir una venta sin registrar, duplicada o con el medio de pago equivocado"
+                      >
+                        🔧 Ajuste post-cierre
+                      </Button>
                     </div>
                   </div>
                 );
@@ -1284,6 +1363,18 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
             )}
           </div>
         </div>
+      )}
+
+      {adjClosing && (
+        <CashAdjustmentModal
+          closing={adjClosing}
+          onClose={() => setAdjClosing(null)}
+          onSaved={(message) => {
+            setAdjClosing(null);
+            setMsg(message);
+            load();
+          }}
+        />
       )}
     </div>
   );

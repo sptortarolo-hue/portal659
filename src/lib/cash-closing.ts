@@ -207,6 +207,158 @@ export async function computeShiftSummary(
 }
 
 /**
+ * Ajuste post-cierre (migrate-cash-adjustments).
+ *
+ * El Z congela el período y no se reescribe: si después aparece una venta sin
+ * registrar, una venta duplicada o un medio de pago equivocado, se carga un
+ * ajuste firmado. `amount` positivo sube el neto (y el efectivo esperado si el
+ * medio es efectivo); negativo lo baja. Nunca mueve dinero ni reabre el turno.
+ */
+export type CashAdjustmentKind = "venta_faltante" | "venta_duplicada" | "otro";
+
+export type CashAdjustment = {
+  id: string;
+  closing_id: string;
+  amount: number;
+  method: string;
+  kind: CashAdjustmentKind;
+  reason: string;
+  created_by: string | null;
+  created_by_name: string | null;
+  created_at: string;
+};
+
+export type AdjustmentTotals = {
+  count: number;
+  /** Suma firmada de todos los ajustes (corrige el neto del cierre). */
+  net: number;
+  /** Parte en efectivo (corrige el esperado y la diferencia del arqueo). */
+  cash: number;
+  byMethod: Record<string, ClosingMethodTotals>;
+};
+
+/**
+ * Ajustes de un comercio (o de un conjunto de cierres), con autor resuelto.
+ * Tolerante a migración sin aplicar: sin tabla devuelve [].
+ */
+export async function listClosingAdjustments(
+  vendorId: string,
+  closingIds?: string[]
+): Promise<CashAdjustment[]> {
+  if (closingIds && closingIds.length === 0) return [];
+  try {
+    const params: unknown[] = [vendorId];
+    let scope = "";
+    if (closingIds && closingIds.length > 0) {
+      params.push(closingIds);
+      scope = "AND a.closing_id = ANY($2)";
+    }
+    const rows = await queryMany<{
+      id: string;
+      closing_id: string;
+      amount: number | string;
+      method: string | null;
+      kind: string | null;
+      reason: string | null;
+      created_by: string | null;
+      created_by_name: string | null;
+      created_at: string;
+    }>(
+      `SELECT a.id, a.closing_id, a.amount, a.method, a.kind, a.reason,
+              a.created_by, a.created_at, p.full_name AS created_by_name
+       FROM cash_closing_adjustments a
+       LEFT JOIN profiles p ON p.id = a.created_by
+       WHERE a.vendor_id = $1 ${scope}
+       ORDER BY a.created_at ASC`,
+      params
+    );
+    return (rows || []).map((r) => ({
+      id: r.id,
+      closing_id: r.closing_id,
+      amount: round2(Number(r.amount) || 0),
+      method: r.method || "efectivo",
+      kind:
+        r.kind === "venta_faltante" || r.kind === "venta_duplicada" ? r.kind : "otro",
+      reason: r.reason || "",
+      created_by: r.created_by,
+      created_by_name: r.created_by_name,
+      created_at: new Date(r.created_at).toISOString(),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/** Totales firmados de una lista de ajustes (neto, efectivo y por medio). */
+export function summarizeAdjustments(list: CashAdjustment[]): AdjustmentTotals {
+  const byMethod: Record<string, ClosingMethodTotals> = {};
+  let net = 0;
+  let cash = 0;
+  for (const a of list) {
+    const amount = Number(a.amount) || 0;
+    if (amount === 0) continue;
+    const m = a.method || "efectivo";
+    if (!byMethod[m]) byMethod[m] = { count: 0, total: 0 };
+    byMethod[m].count++;
+    byMethod[m].total += amount;
+    net += amount;
+    if (m === "efectivo") cash += amount;
+  }
+  for (const d of Object.values(byMethod)) d.total = round2(d.total);
+  return { count: list.length, net: round2(net), cash: round2(cash), byMethod };
+}
+
+function parseByMethod(raw: unknown): Record<string, ClosingMethodTotals> {
+  if (!raw) return {};
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw) || {};
+    } catch {
+      return {};
+    }
+  }
+  return (raw as Record<string, ClosingMethodTotals>) || {};
+}
+
+/**
+ * Cierre + ajustes post-cierre: agrega los campos derivados que consumen el
+ * panel, el A4 y el ticket. Nunca toca lo congelado (`net_total`,
+ * `cash_declared`, `cash_difference`): el "antes" queda intacto.
+ *
+ * Base del esperado: `expected_cash` del turno; en cierres legacy (sin turno)
+ * el efectivo del cierre (`by_method.efectivo`).
+ */
+export function applyClosingAdjustments<
+  T extends {
+    gross_total?: unknown;
+    net_total?: unknown;
+    expected_cash?: unknown;
+    cash_declared?: unknown;
+    by_method?: unknown;
+  }
+>(closing: T, adjustments: CashAdjustment[]) {
+  const byMethod = parseByMethod(closing.by_method);
+  const cashFrozen = Number(byMethod["efectivo"]?.total) || 0;
+  const totals = summarizeAdjustments(adjustments);
+  const expectedBase =
+    closing.expected_cash != null ? Number(closing.expected_cash) || 0 : cashFrozen;
+  const declared = closing.cash_declared != null ? Number(closing.cash_declared) || 0 : null;
+  const adjustedExpected = round2(expectedBase + totals.cash);
+  return {
+    ...closing,
+    adjustments,
+    adjustment_count: totals.count,
+    adjustment_total: totals.net,
+    adjustment_cash: totals.cash,
+    adjusted_net_total: round2((Number(closing.net_total) || 0) + totals.net),
+    adjusted_gross_total: round2((Number(closing.gross_total) || 0) + totals.net),
+    adjusted_expected_cash: adjustedExpected,
+    adjusted_cash_difference:
+      declared == null ? null : round2(declared - adjustedExpected),
+  };
+}
+
+/**
  * Cobros del rango (paid_at no nulo, no cancelados) agrupados por medio de
  * pago. Con descuento en efectivo, `orders.total` es neto y `cash_discount`
  * el desagregado: bruto = total + descuento, neto = total.

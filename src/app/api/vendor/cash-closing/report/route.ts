@@ -1,10 +1,22 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
 import { queryMany } from "@/lib/db";
+import {
+  applyClosingAdjustments,
+  listClosingAdjustments,
+  type CashAdjustment,
+  type CashAdjustmentKind,
+} from "@/lib/cash-closing";
 import { CASH_METHOD_LABELS } from "@/lib/cash-methods";
 import { NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 
 const MAX_RANGE_DAYS = 366;
+
+const ADJUSTMENT_KIND_LABELS: Record<CashAdjustmentKind, string> = {
+  venta_faltante: "Venta sin registrar",
+  venta_duplicada: "Venta duplicada",
+  otro: "Otro",
+};
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
@@ -73,6 +85,29 @@ export async function GET(request: Request) {
   }
   rows = rows || [];
 
+  // Ajustes post-cierre: correcciones cargadas después de cerrar (venta sin
+  // registrar, venta duplicada o medio de pago equivocado). Se suman al neto
+  // y al medio corregido, y la diferencia del arqueo se muestra "con ajustes".
+  // Tolerante a migración sin aplicar (sin tabla devuelve []).
+  let adjustments: CashAdjustment[] = [];
+  try {
+    adjustments = await listClosingAdjustments(
+      gate.vendor.id,
+      rows.map((r) => String(r.id))
+    );
+  } catch {
+    adjustments = [];
+  }
+  const adjByClosing = new Map<string, CashAdjustment[]>();
+  for (const a of adjustments) {
+    const list = adjByClosing.get(a.closing_id) || [];
+    list.push(a);
+    adjByClosing.set(a.closing_id, list);
+  }
+  for (const r of rows) {
+    Object.assign(r, applyClosingAdjustments(r, adjByClosing.get(String(r.id)) || []));
+  }
+
   // Detalle de movimientos manuales por cierre (tolerante a migración sin
   // aplicar o cierres legacy sin turno: quedan con lista vacía).
   try {
@@ -119,12 +154,21 @@ export async function GET(request: Request) {
   let opening = 0;
   let ingresos = 0;
   let retiros = 0;
+  let adjustmentsTotal = 0;
   const byAccount: Record<string, { label: string; count: number; total: number }> = {};
   for (const r of rows) {
+    const adjustmentTotal = Number(r.adjustment_total) || 0;
+    adjustmentsTotal += adjustmentTotal;
     for (const [m, d] of Object.entries((r.by_method || {}) as Record<string, any>)) {
       if (!byMethod[m]) byMethod[m] = { count: 0, total: 0 };
       byMethod[m].count += Number(d?.count) || 0;
       byMethod[m].total += Number(d?.total) || 0;
+    }
+    // Los ajustes corrigen el bucket del medio que se cargó en el ajuste.
+    for (const a of (r.adjustments || []) as CashAdjustment[]) {
+      const m = a.method || "efectivo";
+      if (!byMethod[m]) byMethod[m] = { count: 0, total: 0 };
+      byMethod[m].total += Number(a.amount) || 0;
     }
     // Desglose por cuenta (multi-cuenta): viene en by_account (jsonb).
     let rawAcct: unknown = r.by_account;
@@ -142,13 +186,20 @@ export async function GET(request: Request) {
         if (a?.label) byAccount[id].label = String(a.label);
       }
     }
-    gross += Number(r.gross_total) || 0;
+    gross += (Number(r.gross_total) || 0) + adjustmentTotal;
     discounts += Number(r.discounts_total) || 0;
-    net += Number(r.net_total) || 0;
+    net += (Number(r.net_total) || 0) + adjustmentTotal;
     orders += Number(r.orders_count) || 0;
-    if (r.expected_cash != null) expected += Number(r.expected_cash) || 0;
+    if (r.expected_cash != null) expected += (Number(r.expected_cash) || 0) + Number(r.adjustment_cash || 0);
     if (r.cash_declared != null) declared += Number(r.cash_declared) || 0;
-    const diff = r.cash_difference != null ? Number(r.cash_difference) : null;
+    // Diferencia "con ajustes": si hay ajustes en efectivo, el esperado (y la
+    // diferencia) cambian; el Z original queda igual en el detalle.
+    const diff =
+      r.adjusted_cash_difference != null
+        ? Number(r.adjusted_cash_difference)
+        : r.cash_difference != null
+          ? Number(r.cash_difference)
+          : null;
     if (diff != null) {
       if (diff > 0) sobra += diff;
       else falta += Math.abs(diff);
@@ -177,6 +228,9 @@ export async function GET(request: Request) {
     opening: round2(opening),
     ingresos: round2(ingresos),
     retiros: round2(retiros),
+    /** Ajustes post-cierre del rango (ya están sumados en net/gross/byMethod). */
+    adjustmentsCount: adjustments.length,
+    adjustmentsTotal: round2(adjustmentsTotal),
     closings: rows,
   };
 
@@ -201,17 +255,32 @@ export async function GET(request: Request) {
   }));
   const detailRows = rows.map((r) => {
     const diff = r.cash_difference != null ? Number(r.cash_difference) : null;
+    const diffAdj = r.adjusted_cash_difference != null ? Number(r.adjusted_cash_difference) : diff;
     return {
       cierre: fmtDT(r.closed_at),
       abiertaPor: r.opened_by_name || "—",
       entregadaA: r.handed_to || "—",
       pedidos: Number(r.orders_count) || 0,
-      neto: Number(r.net_total) || 0,
-      esperado: r.expected_cash != null ? Number(r.expected_cash) : "",
+      neto: Number(r.adjusted_net_total ?? r.net_total) || 0,
+      ajustes: Number(r.adjustment_total) || 0,
+      esperado: r.adjusted_expected_cash != null ? Number(r.adjusted_expected_cash) : "",
       contado: r.cash_declared != null ? Number(r.cash_declared) : "",
       dif: diff == null ? "" : diff === 0 ? "Cuadra" : `${diff > 0 ? "Sobra " : "Falta "}${Math.abs(diff)}`,
+      difAjustada:
+        diffAdj == null ? "" : diffAdj === 0 ? "Cuadra" : `${diffAdj > 0 ? "Sobra " : "Falta "}${Math.abs(diffAdj)}`,
     };
   });
+  const adjustmentRows = adjustments.map((a) => ({
+    cierre: fmtDT(
+      rows.find((r) => String(r.id) === a.closing_id)?.closed_at || a.created_at
+    ),
+    fecha: fmtDT(a.created_at),
+    tipo: ADJUSTMENT_KIND_LABELS[a.kind] || a.kind,
+    medio: CASH_METHOD_LABELS[a.method] || a.method,
+    monto: a.amount,
+    motivo: a.reason || "",
+    por: a.created_by_name || "—",
+  }));
   const movementRows: Record<string, any>[] = [];
   for (const r of rows) {
     for (const m of (r.movement_list || []) as Record<string, any>[]) {
@@ -266,6 +335,7 @@ export async function GET(request: Request) {
       { k: "Falta", v: payload.falta },
       { k: "Ingresos manuales", v: payload.ingresos },
       { k: "Retiros manuales", v: payload.retiros },
+      { k: "Ajustes post-cierre", v: payload.adjustmentsTotal },
     ];
     table("Resumen números", [{ header: "Concepto", key: "k" }, { header: "Valor", key: "v", numFmt: moneyFmt }], sumRows);
     table("Por método", [
@@ -286,10 +356,23 @@ export async function GET(request: Request) {
       { header: "Entregada a", key: "entregadaA", width: 22 },
       { header: "Pedidos", key: "pedidos", width: 12 },
       { header: "Neto", key: "neto", numFmt: moneyFmt },
+      { header: "Ajustes", key: "ajustes", numFmt: moneyFmt },
       { header: "Esperado", key: "esperado", numFmt: moneyFmt },
       { header: "Contado", key: "contado", numFmt: moneyFmt },
       { header: "Dif.", key: "dif", width: 16 },
+      { header: "Dif. con ajustes", key: "difAjustada", width: 18 },
     ], detailRows);
+    if (adjustmentRows.length > 0) {
+      table("Ajustes post-cierre", [
+        { header: "Cierre", key: "cierre", width: 18 },
+        { header: "Fecha", key: "fecha", width: 18 },
+        { header: "Tipo", key: "tipo", width: 22 },
+        { header: "Medio", key: "medio", width: 18 },
+        { header: "Monto", key: "monto", numFmt: moneyFmt },
+        { header: "Motivo", key: "motivo", width: 40 },
+        { header: "Por", key: "por", width: 22 },
+      ], adjustmentRows);
+    }
     if (movementRows.length > 0) {
       table("Movimientos", [
         { header: "Cierre", key: "cierre", width: 18 },
@@ -334,6 +417,7 @@ export async function GET(request: Request) {
       ["Falta", payload.falta],
       ["Ingresos manuales", payload.ingresos],
       ["Retiros manuales", payload.retiros],
+      ["Ajustes post-cierre", payload.adjustmentsTotal],
     ].map((r) => r.map(cell).join(";")),
     "",
     ["Medio", "Pedidos", "Total"].map(cell).join(";"),
@@ -346,8 +430,15 @@ export async function GET(request: Request) {
           "",
         ]
       : []),
-    ["Cierre", "Abierta por", "Entregada a", "Pedidos", "Neto", "Esperado", "Contado", "Dif."].map(cell).join(";"),
-    ...detailRows.map((r) => [r.cierre, r.abiertaPor, r.entregadaA, r.pedidos, r.neto, r.esperado, r.contado, r.dif].map(cell).join(";")),
+    ["Cierre", "Abierta por", "Entregada a", "Pedidos", "Neto", "Ajustes", "Esperado", "Contado", "Dif.", "Dif. con ajustes"].map(cell).join(";"),
+    ...detailRows.map((r) => [r.cierre, r.abiertaPor, r.entregadaA, r.pedidos, r.neto, r.ajustes, r.esperado, r.contado, r.dif, r.difAjustada].map(cell).join(";")),
+    ...(adjustmentRows.length > 0
+      ? [
+          "",
+          ["Cierre", "Fecha", "Tipo", "Medio", "Monto", "Motivo", "Por"].map(cell).join(";"),
+          ...adjustmentRows.map((r) => [r.cierre, r.fecha, r.tipo, r.medio, r.monto, r.motivo, r.por].map(cell).join(";")),
+        ]
+      : []),
     ...(movementRows.length > 0
       ? [
           "",

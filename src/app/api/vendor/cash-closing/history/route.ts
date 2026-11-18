@@ -1,5 +1,10 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
 import { queryMany } from "@/lib/db";
+import {
+  applyClosingAdjustments,
+  listClosingAdjustments,
+  type CashAdjustment,
+} from "@/lib/cash-closing";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
@@ -56,5 +61,19 @@ export async function GET(request: Request) {
     // Sin columnas/tablas de turnos: historial legacy sin enriquecer.
   }
 
-  return NextResponse.json({ closings: closings || [] });
+  // Ajustes post-cierre (tolerante a migración sin aplicar: la tabla puede no
+  // existir y el historial sale igual). Los campos `adjusted_*` corrigen el
+  // neto y la diferencia sin pisar los valores congelados del Z.
+  const adjustments = await listClosingAdjustments(gate.vendor.id);
+  const adjByClosing = new Map<string, CashAdjustment[]>();
+  for (const a of adjustments) {
+    const list = adjByClosing.get(a.closing_id) || [];
+    list.push(a);
+    adjByClosing.set(a.closing_id, list);
+  }
+  const enriched = (closings || []).map((c) =>
+    applyClosingAdjustments(c, adjByClosing.get(String(c.id)) || [])
+  );
+
+  return NextResponse.json({ closings: enriched });
 }

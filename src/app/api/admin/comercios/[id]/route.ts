@@ -93,6 +93,7 @@ export async function POST(
       // --- Caja / gastos (van antes: cash_shifts linkea cash_closings) ---
       counted.cashMovements = await wipe(tx, "cash_movements");
       counted.cashShifts = await wipe(tx, "cash_shifts");
+      counted.cashAdjustments = await wipe(tx, "cash_closing_adjustments");
       counted.cashClosings = await wipe(tx, "cash_closings");
       counted.expenses = await wipe(tx, "expenses");
       // --- Tarjetas de regalo (giftcard_moves cae en cascada) ---

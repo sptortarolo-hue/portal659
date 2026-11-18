@@ -122,6 +122,22 @@ export type CashClosingPrintData = {
   handed_to?: string | null;
   movements?: { ingresos: number; retiros: number } | null;
   expected_cash?: number | null;
+  /** Ajustes post-cierre: correcciones cargadas después del Z (venta sin
+   *  registrar, duplicada o medio equivocado). Se imprimen como bloque aparte
+   *  sin tocar los números congelados. */
+  adjustments?: {
+    amount: number;
+    method: string;
+    reason: string;
+    created_at?: string;
+    created_by_name?: string | null;
+  }[];
+  adjustment_total?: number;
+  adjustment_cash?: number;
+  /** Neto y diferencia con los ajustes ya sumados (null = sin arqueo). */
+  adjusted_net_total?: number;
+  adjusted_expected_cash?: number;
+  adjusted_cash_difference?: number | null;
 };
 
 export type DispatchResult = {
@@ -1208,6 +1224,31 @@ async function composeCashClose(
     printer.bold(true);
     printer.println(`Diferencia: ${diff >= 0 ? "+" : "-"}$${Math.abs(diff).toLocaleString("es-AR")}`);
     printer.bold(false);
+  }
+
+  // Ajustes post-cierre (si los hay): el Z original sigue arriba intacto y
+  // acá van las correcciones + el neto/diferencia ajustados.
+  const adjustments = Array.isArray(closing.adjustments) ? closing.adjustments : [];
+  if (adjustments.length > 0) {
+    printer.alignLeft();
+    printer.println(separator);
+    printer.bold(true);
+    printer.println("AJUSTES POST-CIERRE");
+    printer.bold(false);
+    for (const a of adjustments) {
+      const amount = Number(a.amount) || 0;
+      const method = CASH_METHOD_LABELS[a.method] || a.method;
+      printer.println(`${amount >= 0 ? "+" : "-"}$${Math.abs(amount).toLocaleString("es-AR")} ${method}: ${a.reason}`);
+    }
+    if (closing.adjusted_net_total != null) {
+      printer.println(`Neto ajustado: $${Number(closing.adjusted_net_total).toLocaleString("es-AR")}`);
+    }
+    if (closing.cash_declared != null && closing.adjusted_cash_difference != null) {
+      const adj = Number(closing.adjusted_cash_difference) || 0;
+      printer.bold(true);
+      printer.println(`Diferencia ajustada: ${adj >= 0 ? "+" : "-"}$${Math.abs(adj).toLocaleString("es-AR")}`);
+      printer.bold(false);
+    }
   }
 
   if (closing.notes && closing.notes.trim()) {

@@ -145,6 +145,12 @@ function ReportePrintInner() {
             <p><span className="font-bold">Contado total:</span> {money(data.declared)}</p>
             <p><span className="font-bold">Ingresos manuales:</span> {money(data.ingresos)}</p>
             <p><span className="font-bold">Retiros manuales:</span> {money(data.retiros)}</p>
+            {Number(data.adjustmentsCount) > 0 && (
+              <p>
+                <span className="font-bold">Ajustes post-cierre:</span> {Number(data.adjustmentsCount)} ·{" "}
+                {money(data.adjustmentsTotal)}
+              </p>
+            )}
             <p>
               <span className="font-bold">Diferencia:</span>{" "}
               {Number(data.sobra) === 0 && Number(data.falta) === 0
@@ -166,7 +172,10 @@ function ReportePrintInner() {
           <tbody>
             {(data.closings || []).map((c: any) => {
               const diff = c.cash_difference != null ? Number(c.cash_difference) : null;
+              const diffAdj =
+                c.adjusted_cash_difference != null ? Number(c.adjusted_cash_difference) : diff;
               const movs = (c.movement_list || []) as any[];
+              const adj = (c.adjustments || []) as any[];
               return (
                 <Fragment key={c.id}>
                   <tr key={c.id} className="border-b border-neutral-100">
@@ -175,11 +184,33 @@ function ReportePrintInner() {
                       {c.opened_by_name ? <span className="text-neutral-500"> · {c.opened_by_name}</span> : null}
                       {c.handed_to ? <span className="text-neutral-500"> → {c.handed_to}</span> : null}
                     </td>
-                    <td className="py-1 pr-2 text-right">${Number(c.net_total).toLocaleString("es-AR")}</td>
+                    <td className="py-1 pr-2 text-right">
+                      ${Number(c.adjusted_net_total ?? c.net_total).toLocaleString("es-AR")}
+                    </td>
                     <td className="py-1 text-right">
-                      {diff == null ? "—" : diff === 0 ? "✓" : `${diff > 0 ? "+" : "−"}${money(Math.abs(diff))}`}
+                      {diffAdj == null
+                        ? "—"
+                        : diffAdj === 0
+                          ? adj.length > 0
+                            ? "✓ (con ajustes)"
+                            : "✓"
+                          : `${diffAdj > 0 ? "+" : "−"}${money(Math.abs(diffAdj))}`}
                     </td>
                   </tr>
+                  {adj.map((a: any) => (
+                    <tr key={`${c.id}-a${a.id}`} className="border-b border-neutral-100 text-amber-700">
+                      <td className="py-1 pr-2 pl-4">
+                        🔧 Ajuste post-cierre: {a.reason}
+                        {a.by_name || a.created_by_name ? ` (${a.by_name || a.created_by_name})` : ""}
+                        {a.method ? ` · ${CASH_METHOD_LABELS[a.method] || a.method}` : ""}
+                      </td>
+                      <td className="py-1 pr-2 text-right">
+                        {Number(a.amount) >= 0 ? "+" : "−"}
+                        {money(Math.abs(Number(a.amount)))}
+                      </td>
+                      <td className="py-1 text-right">{fmtDateTime(a.created_at)}</td>
+                    </tr>
+                  ))}
                   {movs.map((m: any, i: number) => (
                     <tr key={`${c.id}-m${i}`} className="border-b border-neutral-100 text-neutral-600">
                       <td className="py-1 pr-2 pl-4">

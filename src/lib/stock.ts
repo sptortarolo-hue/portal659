@@ -57,11 +57,23 @@ async function resolveComboMembersFromDb(
   }
 }
 
+export type AdjustStockOptions = {
+  /**
+   * Permite dejar el stock en negativo al descontar. Se usa SOLO en ventas
+   * retrospectivas (ajuste post-cierre): el producto ya salió físicamente, así
+   * que bloquear la corrección por falta de stock es peor que dejar el saldo
+   * en negativo con aviso. En ventas normales se mantiene la validación.
+   */
+  allowNegative?: boolean;
+};
+
 export async function adjustStockForItems(
   tx: Tx,
   items: OrderItem[] | null | undefined,
-  direction: "decrement" | "increment"
+  direction: "decrement" | "increment",
+  options: AdjustStockOptions = {}
 ): Promise<StockMove[]> {
+  const allowNegative = options.allowNegative === true;
   const moved: StockMove[] = [];
   for (const item of items || []) {
     if (!item) continue;
@@ -76,7 +88,7 @@ export async function adjustStockForItems(
         if (rows.length > 0) moved.push({ variant_id: item.variant_id, qty });
       } else {
         const rows = await tx.query<{ id: string }>(
-          `UPDATE product_variants SET stock = stock - $1 WHERE id = $2 AND stock >= $1 RETURNING id`,
+          `UPDATE product_variants SET stock = stock - $1 WHERE id = $2 ${allowNegative ? "" : "AND stock >= $1"} RETURNING id`,
           [qty, item.variant_id]
         );
         if (rows.length === 0) throw new OutOfStockError(item.name);
@@ -123,7 +135,7 @@ export async function adjustStockForItems(
             if (rows.length > 0) moved.push({ variant_id: m.variant_id, qty: mqty });
           } else {
             const rows = await tx.query<{ id: string }>(
-              `UPDATE product_variants SET stock = stock - $1 WHERE id = $2 AND stock >= $1 RETURNING id`,
+              `UPDATE product_variants SET stock = stock - $1 WHERE id = $2 ${allowNegative ? "" : "AND stock >= $1"} RETURNING id`,
               [mqty, m.variant_id]
             );
             if (rows.length === 0) throw new OutOfStockError(memberName);
@@ -140,7 +152,7 @@ export async function adjustStockForItems(
         } else {
           const rows = await tx.query<{ id: string }>(
             `UPDATE products SET stock = stock - $1
-             WHERE id = $2 AND stock_control = true AND COALESCE(stock, 0) >= $1
+             WHERE id = $2 AND stock_control = true ${allowNegative ? "" : "AND COALESCE(stock, 0) >= $1"}
              RETURNING id`,
             [mqty, m.product_id]
           );
@@ -167,7 +179,7 @@ export async function adjustStockForItems(
       } else {
         const cRows = await tx.query<{ id: string }>(
           `UPDATE products SET stock = stock - $1
-           WHERE id = $2 AND stock_control = true AND COALESCE(stock, 0) >= $1
+           WHERE id = $2 AND stock_control = true ${allowNegative ? "" : "AND COALESCE(stock, 0) >= $1"}
            RETURNING id`,
           [qty, item.product_id]
         );
@@ -194,7 +206,7 @@ export async function adjustStockForItems(
       } else {
         const rows = await tx.query<{ id: string }>(
           `UPDATE products SET stock = stock - $1
-           WHERE id = $2 AND stock_control = true AND COALESCE(stock, 0) >= $1
+           WHERE id = $2 AND stock_control = true ${allowNegative ? "" : "AND COALESCE(stock, 0) >= $1"}
            RETURNING id`,
           [qty, item.product_id]
         );

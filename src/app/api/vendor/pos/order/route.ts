@@ -11,6 +11,7 @@ import { fetchVendorDelivery } from "@/lib/delivery-server";
 import { resolveDeliveryFee, type DeliverySelection } from "@/lib/delivery";
 import { nextOrderNumber } from "@/lib/order-number";
 import { cashDiscountForItems, normalizeCashPct } from "@/lib/cash-discount";
+import { CASH_METHOD_LABELS } from "@/lib/cash-methods";
 import {
   resolveOrderPricing,
   PricingError,
@@ -79,7 +80,9 @@ export async function POST(request: Request) {
 
   // Venta directa (mostrador, todos los verticales): vende en el acto sin
   // generar pedido (solo delivery/retiro generan pedido con flow).
-  const direct = body?.direct === true;
+  // `directIn` = lo que pidió el cliente; más abajo la venta de un ajuste
+  // post-cierre se fuerza directa (la plata ya entró: no hay pedido que seguir).
+  const directIn = body?.direct === true;
   const caps = await getOfflineSyncCaps();
   const clientKey = caps.ordersClientKey ? normalizeClientKey((body as any)?.client_key) : null;
   const occurredAt = caps.ordersOccurredAt
@@ -278,6 +281,74 @@ export async function POST(request: Request) {
 
   const now = new Date().toISOString();
 
+  // Ajuste post-cierre (migrate-cash-adjustments / -orders): la venta que
+  // faltaba se registra retrospectivamente dentro del cierre elegido. Se
+  // estampa con la fecha del cierre (no con "ahora") para que Historial y
+  // Analytics la ubiquen ese día; el rastro de cuándo se cargó queda en la
+  // fila del ajuste.
+  const adjustClosingId =
+    typeof (body as any)?.adjust_closing_id === "string"
+      ? String((body as any).adjust_closing_id).trim()
+      : "";
+  const adjustReasonIn =
+    typeof (body as any)?.adjust_reason === "string"
+      ? String((body as any).adjust_reason).trim().slice(0, 240)
+      : "";
+  let adjustClosing: { id: string; closed_at: string } | null = null;
+  if (adjustClosingId) {
+    // Requiere la tabla base y el vínculo con el pedido: sin ellas el ajuste
+    // sería un número suelto (y esta venta entraría al próximo Z).
+    const adjTable = await queryOne<{ ok: boolean }>(
+      `SELECT to_regclass('public.cash_closing_adjustments') IS NOT NULL AS ok`
+    ).catch(() => null);
+    if (!adjTable?.ok) {
+      return NextResponse.json(
+        {
+          error: "Falta aplicar migrate-cash-adjustments.sql (ajustes de caja)",
+          code: "migration_missing",
+        },
+        { status: 503 }
+      );
+    }
+    const adjCol = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'cash_closing_adjustments' AND column_name = 'order_id'
+       ) AS exists`
+    ).catch(() => null);
+    if (adjCol?.exists !== true) {
+      return NextResponse.json(
+        {
+          error: "Falta aplicar migrate-cash-adjustments-orders.sql (venta del ajuste)",
+          code: "migration_missing",
+        },
+        { status: 503 }
+      );
+    }
+    adjustClosing =
+      (await queryOne<{ id: string; closed_at: string }>(
+        `SELECT id, closed_at FROM cash_closings WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+        [adjustClosingId, gate.vendor.id]
+      ).catch(() => null)) || null;
+    if (!adjustClosing) {
+      return NextResponse.json({ error: "El cierre del ajuste no existe" }, { status: 404 });
+    }
+    // El ajuste representa plata que entró: una venta fiada o con pago diferido
+    // no tiene cobro que corregir.
+    if (payment === "fiado" || deferPayment === true) {
+      return NextResponse.json(
+        { error: "El ajuste registra una venta cobrada: elegí un medio de pago (no fiado ni diferido)" },
+        { status: 400 }
+      );
+    }
+  }
+  const stampAt = adjustClosing ? new Date(adjustClosing.closed_at).toISOString() : now;
+  const occurredAtFinal = adjustClosing ? stampAt : occurredAt;
+  // La venta del ajuste es una venta que YA ocurrió: nace directa (cerrada y
+  // con closed_at) aunque el cliente no mande `direct`. Si no, quedaría como
+  // pedido pendiente de un cierre ya cerrado.
+  const direct = directIn || adjustClosing != null;
+
   // Número de pedido universal (mostrador/delivery): además de
   // referenciarlo a la caja, el pedido queda con su número de oraculo en tickets.
   // Diario en gastronomía, correlativo continuo en el resto (ver order-number.ts).
@@ -346,6 +417,7 @@ export async function POST(request: Request) {
     }
   }
   let order: Record<string, any> | null = null;
+  let adjustmentRows = 0;
   let giftcardIssued: { id: string; code: string; amount: number }[] = [];
   let resolvedVolumeApplied: ResolvedPricing["volumeApplied"] = [];
   let resolvedManualDiscount = 0;
@@ -459,7 +531,14 @@ export async function POST(request: Request) {
     // Pedidos de prueba (preview) no tocan el stock real.
     let movedStock: StockMove[] = [];
     if (!previewOrder) {
-      movedStock = await adjustStockForItems(tx, finalItems.filter((i) => i.unit !== "kg" && !i.manual && (i.product_id || i.variant_id)), "decrement");
+      movedStock = await adjustStockForItems(
+        tx,
+        finalItems.filter((i) => i.unit !== "kg" && !i.manual && (i.product_id || i.variant_id)),
+        "decrement",
+        // Venta retrospectiva (ajuste post-cierre): el producto ya salió, así
+        // que se permite dejar el stock en negativo en vez de bloquear.
+        { allowNegative: adjustClosing != null }
+      );
     }
 
     // Canje de giftcard en mostrador: DENTRO de la tx y ANTES del INSERT,
@@ -527,7 +606,7 @@ const entries: Array<[string, unknown]> = [
       ["total", finalTotal],
       ["status", status],
       ["channel", "mostrador"],
-      ["paid_at", (deferPayment === true || payment === "fiado") ? null : now],
+      ["paid_at", (deferPayment === true || payment === "fiado") ? null : stampAt],
       ["notes", notes || null],
       ["pickup_number", pickupNumber],
       ["is_preview", previewOrder],
@@ -541,11 +620,14 @@ const entries: Array<[string, unknown]> = [
       entries.push(["manual_discount_reason", manualIn ? manualIn.reason : null]);
       entries.push(["manual_discount_value", manualIn ? manualIn.value : null]);
     }
-    if (direct && !deferPayment && hasClosedAt) entries.push(["closed_at", now]);
+    if (direct && !deferPayment && hasClosedAt) entries.push(["closed_at", stampAt]);
     if (direct && !deferPayment && hasDirectCol) entries.push(["is_direct", true]);
     if (hasPayStatus) entries.push(["payment_status", deferPayment === true ? "pending" : (payment === "fiado" ? "pending" : "paid")]);
     if (caps.ordersClientKey) entries.push(["client_key", clientKey]);
-    if (caps.ordersOccurredAt) entries.push(["occurred_at", occurredAt]);
+    if (caps.ordersOccurredAt) entries.push(["occurred_at", occurredAtFinal]);
+    // La venta del ajuste se ubica en el día del cierre (Historial/Analytics
+    // filtran por created_at); el ajuste guarda la fecha real de la carga.
+    if (adjustClosing) entries.push(["created_at", stampAt]);
     if (hasZoneCols) {
       entries.push(["delivery_zone_id", deliveryResolved.zoneId]);
       entries.push(["delivery_zone_name", deliveryResolved.zoneName]);
@@ -584,6 +666,34 @@ const entries: Array<[string, unknown]> = [
         await tx.queryVoid(`UPDATE orders SET paid_via_payments = true WHERE id = $1`, [order.id]);
       } catch {
         /* columna sin migrar: se ignora */
+      }
+    }
+
+    // Ajuste post-cierre con venta (faltante): la venta recién creada se
+    // vincula al cierre ya cerrado y se registra el ajuste de caja en la
+    // MISMA transacción (si algo falla no queda ni venta ni ajuste). Con pago
+    // combinado va una fila por medio para que el arqueo por medio cuadre.
+    if (adjustClosing && order?.id && !previewOrder) {
+      const adjRows: { method: string; amount: number }[] = split
+        ? split.map((p) => ({ method: p.method, amount: Number(p.amount) || 0 }))
+        : [{ method: paymentMethodDb || "efectivo", amount: finalTotal }];
+      for (const r of adjRows) {
+        if (!(r.amount > 0)) continue;
+        await tx.queryVoid(
+          `INSERT INTO cash_closing_adjustments
+             (vendor_id, closing_id, amount, method, kind, reason, order_id, created_by)
+           VALUES ($1, $2, $3, $4, 'venta_faltante', $5, $6, $7)`,
+          [
+            gate.vendor.id,
+            adjustClosing.id,
+            Math.round(r.amount * 100) / 100,
+            r.method in CASH_METHOD_LABELS ? r.method : "efectivo",
+            adjustReasonIn || "Venta faltante registrada desde el ajuste post-cierre",
+            order.id,
+            gate.previewSession ? null : gate.user?.id ?? null,
+          ]
+        );
+        adjustmentRows++;
       }
     }
 
@@ -629,7 +739,7 @@ const entries: Array<[string, unknown]> = [
         name: customerName?.trim() || null,
         address: customerAddress?.trim() || null,
         total: finalTotal,
-        at: now,
+        at: stampAt,
       });
     }
 
@@ -677,5 +787,5 @@ const entries: Array<[string, unknown]> = [
     );
   }
 
-  return NextResponse.json({ ok: true, orderId: order?.id, order, volumeDiscount: (order as any)?.volume_discount ?? 0, volumeApplied: resolvedVolumeApplied, manualDiscount: resolvedManualDiscount, giftcardIssued, payments: resolvedSplit, store: { name: gate.vendor.store_name, logo: ((gate.vendor as any)?.logo_url ?? null) as string | null } });
+  return NextResponse.json({ ok: true, orderId: order?.id, order, volumeDiscount: (order as any)?.volume_discount ?? 0, volumeApplied: resolvedVolumeApplied, manualDiscount: resolvedManualDiscount, giftcardIssued, payments: resolvedSplit, adjustmentRows, adjustClosingId: adjustClosing?.id ?? null, store: { name: gate.vendor.store_name, logo: ((gate.vendor as any)?.logo_url ?? null) as string | null } });
 }

@@ -223,6 +223,10 @@ export type CashAdjustment = {
   method: string;
   kind: CashAdjustmentKind;
   reason: string;
+  /** Venta vinculada: la creada (faltante) o la anulada (duplicada). */
+  order_id?: string | null;
+  /** Número de pedido (pickup_number) para mostrarlo en el panel/A4/ticket. */
+  order_number?: number | null;
   created_by: string | null;
   created_by_name: string | null;
   created_at: string;
@@ -247,6 +251,9 @@ export async function listClosingAdjustments(
 ): Promise<CashAdjustment[]> {
   if (closingIds && closingIds.length === 0) return [];
   try {
+    // order_id es de migrate-cash-adjustments-orders.sql: sin esa columna el
+    // ajuste sigue siendo de solo números (tolerante a migración pendiente).
+    const hasOrderCol = await hasColumn("cash_closing_adjustments", "order_id");
     const params: unknown[] = [vendorId];
     let scope = "";
     if (closingIds && closingIds.length > 0) {
@@ -260,14 +267,18 @@ export async function listClosingAdjustments(
       method: string | null;
       kind: string | null;
       reason: string | null;
+      order_id?: string | null;
+      order_number?: number | null;
       created_by: string | null;
       created_by_name: string | null;
       created_at: string;
     }>(
       `SELECT a.id, a.closing_id, a.amount, a.method, a.kind, a.reason,
               a.created_by, a.created_at, p.full_name AS created_by_name
+              ${hasOrderCol ? ", a.order_id, o.pickup_number AS order_number" : ""}
        FROM cash_closing_adjustments a
        LEFT JOIN profiles p ON p.id = a.created_by
+       ${hasOrderCol ? "LEFT JOIN orders o ON o.id = a.order_id" : ""}
        WHERE a.vendor_id = $1 ${scope}
        ORDER BY a.created_at ASC`,
       params
@@ -280,6 +291,8 @@ export async function listClosingAdjustments(
       kind:
         r.kind === "venta_faltante" || r.kind === "venta_duplicada" ? r.kind : "otro",
       reason: r.reason || "",
+      order_id: r.order_id ?? null,
+      order_number: r.order_number != null ? Number(r.order_number) : null,
       created_by: r.created_by,
       created_by_name: r.created_by_name,
       created_at: new Date(r.created_at).toISOString(),
@@ -445,6 +458,26 @@ async function hasPaymentsTable(): Promise<boolean> {
 }
 
 /**
+ * Filtro SQL para que las ventas nacidas de un ajuste post-cierre no vuelvan a
+ * contar en ningún Z. El ajuste ya representa ese dinero en el cierre
+ * congelado; si además entrara la venta, el próximo cierre la contaría dos
+ * veces. Devuelve "" si la tabla o la columna todavía no existen (migración
+ * sin aplicar: comportamiento anterior intacto).
+ */
+async function adjustmentSalesFilter(alias = "o"): Promise<string> {
+  try {
+    const t = await queryOne<{ ok: boolean }>(
+      `SELECT to_regclass('public.cash_closing_adjustments') IS NOT NULL AS ok`
+    );
+    if (!t?.ok) return "";
+    if (!(await hasColumn("cash_closing_adjustments", "order_id"))) return "";
+    return `AND NOT EXISTS (SELECT 1 FROM cash_closing_adjustments aca WHERE aca.order_id = ${alias}.id)`;
+  } catch {
+    return "";
+  }
+}
+
+/**
  * Desglose de cobros del período agrupado por medio (migrate-order-payments).
  * Dos bloques:
  *  - `kind='cobro'`: la venta/pago de un pedido, anclado al `paid_at`.
@@ -458,12 +491,14 @@ async function fetchPaymentsByMethod(
 ): Promise<Record<string, { count: number; total: number }>> {
   const byMethod: Record<string, { count: number; total: number }> = {};
   try {
+    const notAdjustment = await adjustmentSalesFilter("o");
     const cobro = await queryMany<{ method: string; total: number | string; cnt: number | string }>(
       `SELECT p.method, SUM(p.amount) AS total, COUNT(*)::int AS cnt
        FROM order_payments p
        JOIN orders o ON o.id = p.order_id
        WHERE p.vendor_id = $1 AND p.kind = 'cobro'
          AND o.paid_at IS NOT NULL AND o.paid_at >= $2 AND o.status != 'cancelled'
+         ${notAdjustment}
        GROUP BY p.method`,
       [vendorId, since]
     );
@@ -509,6 +544,8 @@ async function fetchTransferByAccount(
   })();
   if (!hasBankCol) return [];
 
+  const notAdjustment = await adjustmentSalesFilter("o");
+
   const hasOrdersBankCol = await (async () => {
     try {
       const r = await queryOne<{ exists: boolean }>(
@@ -539,6 +576,7 @@ async function fetchTransferByAccount(
        WHERE p.vendor_id = $1 AND p.method = 'transferencia' AND p.kind = 'cobro'
          AND p.bank_account_id IS NOT NULL
          AND o.paid_at IS NOT NULL AND o.paid_at >= $2 AND o.status != 'cancelled'
+         ${notAdjustment}
        GROUP BY p.bank_account_id, a.label`,
       [vendorId, since]
     );
@@ -579,6 +617,7 @@ async function fetchTransferByAccount(
            AND o.bank_account_id IS NOT NULL
            AND o.paid_at IS NOT NULL AND o.paid_at >= $2 AND o.status != 'cancelled'
            AND COALESCE(o.paid_via_payments, false) = false
+           ${notAdjustment}
          GROUP BY o.bank_account_id, a.label`,
         [vendorId, since]
       );
@@ -640,6 +679,7 @@ export async function computeCashClosing(
   const viaFlag = paymentsTable
     ? `AND COALESCE(o.paid_via_payments, false) = false`
     : "";
+  const notAdjustment = await adjustmentSalesFilter("o");
   const rows = await queryMany<{
     payment_method: string | null;
     total: number;
@@ -647,7 +687,7 @@ export async function computeCashClosing(
   }>(
     `SELECT o.payment_method, o.total, o.cash_discount
      FROM orders o
-     WHERE o.vendor_id = $1 AND o.paid_at IS NOT NULL AND o.paid_at >= $2 AND o.status != 'cancelled' ${viaFlag}`,
+     WHERE o.vendor_id = $1 AND o.paid_at IS NOT NULL AND o.paid_at >= $2 AND o.status != 'cancelled' ${viaFlag} ${notAdjustment}`,
     [vendorId, since]
   );
 

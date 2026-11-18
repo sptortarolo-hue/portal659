@@ -201,6 +201,11 @@ function ReportePrintInner() {
                     <tr key={`${c.id}-a${a.id}`} className="border-b border-neutral-100 text-amber-700">
                       <td className="py-1 pr-2 pl-4">
                         🔧 Ajuste post-cierre: {a.reason}
+                        {a.order_id
+                          ? ` · ${a.kind === "venta_duplicada" ? "anuló" : "cargó"} ${
+                              a.order_number ? `Venta N°${a.order_number}` : "una venta"
+                            }`
+                          : ""}
                         {a.by_name || a.created_by_name ? ` (${a.by_name || a.created_by_name})` : ""}
                         {a.method ? ` · ${CASH_METHOD_LABELS[a.method] || a.method}` : ""}
                       </td>

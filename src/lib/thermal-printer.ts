@@ -129,6 +129,8 @@ export type CashClosingPrintData = {
     amount: number;
     method: string;
     reason: string;
+    kind?: string;
+    order_number?: number | null;
     created_at?: string;
     created_by_name?: string | null;
   }[];
@@ -1238,7 +1240,10 @@ async function composeCashClose(
     for (const a of adjustments) {
       const amount = Number(a.amount) || 0;
       const method = CASH_METHOD_LABELS[a.method] || a.method;
-      printer.println(`${amount >= 0 ? "+" : "-"}$${Math.abs(amount).toLocaleString("es-AR")} ${method}: ${a.reason}`);
+      const venta = a.order_number
+        ? ` [${a.kind === "venta_duplicada" ? "anulo" : "cargo"} Venta N.${a.order_number}]`
+        : "";
+      printer.println(`${amount >= 0 ? "+" : "-"}$${Math.abs(amount).toLocaleString("es-AR")} ${method}: ${a.reason}${venta}`);
     }
     if (closing.adjusted_net_total != null) {
       printer.println(`Neto ajustado: $${Number(closing.adjusted_net_total).toLocaleString("es-AR")}`);

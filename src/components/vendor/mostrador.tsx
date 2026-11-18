@@ -195,7 +195,23 @@ const PAYMENT_OPTIONS = [
   { key: "fiado", label: "📓 Fiado" },
 ];
 
-export function Mostrador({ vendorId }: { vendorId?: string | null }) {
+export type MostradorAdjustContext = {
+  closingId: string;
+  closedAt?: string | null;
+  reason?: string | null;
+};
+
+export function Mostrador({
+  vendorId,
+  adjustContext,
+  onAdjustDone,
+}: {
+  vendorId?: string | null;
+  /** Venta faltante de un ajuste post-cierre: nace directa, pagada y con la
+   *  fecha del cierre elegido (el servidor estampa fechas y crea el ajuste). */
+  adjustContext?: MostradorAdjustContext | null;
+  onAdjustDone?: () => void;
+}) {
   const [products, setProducts] = useState<Product[]>([]);
   const [items, setItems] = useState<LineItem[]>([]);
   const [payment, setPayment] = useState("transferencia");
@@ -269,7 +285,9 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   // por defecto para reducir la carga visual (se expanden on-demand).
   const [desgloseOpen, setDesgloseOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
-  const [method, setMethod] = useState<"pickup" | "delivery" | "direct">("pickup");
+  const [method, setMethod] = useState<"pickup" | "delivery" | "direct">(
+    adjustContext?.closingId ? "direct" : "pickup"
+  );
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
   const [loading, setLoading] = useState(true);
@@ -294,6 +312,14 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
       .then((d) => setMpConfigured(d?.configured === true))
       .catch(() => setMpConfigured(false));
   }, [vendorId]);
+  // Ajuste post-cierre: la venta faltante se cobra en el acto y directa (la
+  // plata ya entró). Si el contexto llega con el mostrador ya montado, se
+  // fuerza igual; fiado no aplica (no hay deuda que regularizar).
+  useEffect(() => {
+    if (!adjustContext?.closingId) return;
+    setMethod("direct");
+    setPayment((p) => (p === "fiado" ? "efectivo" : p));
+  }, [adjustContext?.closingId]);
   const msgIsErr = /^(No se pudo|Sin |Error|Hay |Ingresá|El envío|Completá)/.test(msg) || msg.includes("⚠️");
   const [recent, setRecent] = useState<MostradorOrder[]>([]);
   const [query, setQuery] = useState("");
@@ -1241,8 +1267,11 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         setCustomerPhone(d.customerPhone || "");
         setCustomerAddress(d.customerAddress || "");
         setPosReferences(d.posReferences || "");
-        if (d.payment) setPayment(d.payment);
-        if (d.method === "pickup" || d.method === "delivery" || d.method === "direct") setMethod(d.method);
+        // En un ajuste post-cierre la modalidad la manda el ajuste (venta
+        // directa, sin fiado): el borrador no la pisa.
+        const adjusting = !!adjustContext?.closingId;
+        if (d.payment && !adjusting) setPayment(d.payment);
+        if (!adjusting && (d.method === "pickup" || d.method === "delivery" || d.method === "direct")) setMethod(d.method);
         setNotes(d.notes || "");
         setWithFiscal(d.withFiscal === true);
         if (d.fiscalReceptorTipo === "cf" || d.fiscalReceptorTipo === "dni" || d.fiscalReceptorTipo === "cuit") {
@@ -1702,6 +1731,14 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       bankAccountId: payment === "transferencia" ? transferAccountId : undefined,
       client_key: newClientKey(),
       occurred_at: new Date().toISOString(),
+      // Ajuste post-cierre: el servidor estampa las fechas del cierre elegido
+      // y registra el ajuste vinculado en la misma transacción.
+      ...(adjustContext?.closingId
+        ? {
+            adjust_closing_id: adjustContext.closingId,
+            adjust_reason: adjustContext.reason || undefined,
+          }
+        : {}),
     };
 
     setSaving(true);
@@ -1911,7 +1948,8 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       ? `Venta registrada $${netTotal.toLocaleString("es-AR")}${withReceipt ? " · comprobante" : ""}`
       : isDelivery
       ? "Pedido a domicilio registrado"
-      : `Cobrado $${netTotal.toLocaleString("es-AR")}${withReceipt ? (isRetail ? " · comprobante" : " · comprobante de retiro") : ""}`) + tenderMsg;
+      : `Cobrado $${netTotal.toLocaleString("es-AR")}${withReceipt ? (isRetail ? " · comprobante" : " · comprobante de retiro") : ""}`) + tenderMsg
+      + (adjustContext?.closingId ? " · 🧾 Cargada en el cierre ajustado" : "");
 
     // /api/print responde 200 aunque el trabajo falle (ok:false en el body):
     // hay que leerlo, si no una comanda fallida pasa en silencio y sale
@@ -1976,6 +2014,13 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     }
     const comandaSuffix = () => (comandaError ? ` · ⚠️ ${comandaError}` : "");
     setMsg(baseMsg);
+    // El ajuste ya quedó registrado junto con la venta: se limpia el contexto
+    // (la banda ámbar desaparece) y la modalidad vuelve al default del
+    // mostrador para que la próxima venta no herede "directa".
+    if (adjustContext?.closingId) {
+      onAdjustDone?.();
+      setMethod("pickup");
+    }
     setCatalogVersion((v) => v + 1);
     clearSaleForm();
     setFiscalPrintId(null);
@@ -2861,7 +2906,9 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           )}
           {/* Descuento manual movido justo encima del Total. */}
 
-          {/* Modalidad de venta (fija arriba del cobro) */}
+          {/* Modalidad de venta (fija arriba del cobro). En un ajuste la venta
+              ya ocurrió: nace directa y no se puede cambiar la modalidad. */}
+          {!adjustContext?.closingId && (
           <div className="flex flex-wrap gap-1.5 pt-1">
             <button
               onClick={() => selectMethod("direct")}
@@ -2888,10 +2935,11 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
               🛵 Envío
             </button>
           </div>
+          )}
 
           {/* Modalidad de pago (fija arriba del cobro) */}
           <div className="flex flex-wrap gap-1.5 pt-1">
-            {PAYMENT_OPTIONS.map((o) => (
+            {PAYMENT_OPTIONS.filter((o) => !(adjustContext?.closingId && o.key === "fiado")).map((o) => (
               <button
                 key={o.key}
                 onClick={() => {
@@ -3006,6 +3054,33 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             title="¿A qué cuenta va la transferencia?"
             hint="La cuenta elegida queda registrada en el cobro y en los informes."
           />
+        )}
+        {adjustContext?.closingId && (
+          <div className="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2">
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-amber-900">🧾 Ajuste post-cierre · venta faltante</p>
+              <p className="text-[11px] leading-snug text-amber-900/90">
+                Esta venta se registra en el cierre
+                {adjustContext.closedAt
+                  ? ` del ${new Date(adjustContext.closedAt).toLocaleString("es-AR", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}`
+                  : " elegido"}
+                . Se cobra en el acto (directa) y el stock se descuenta ahora.
+                {adjustContext.reason ? ` Motivo: ${adjustContext.reason}.` : ""}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onAdjustDone?.()}
+              className="text-xs font-medium text-amber-900 underline flex-shrink-0"
+            >
+              Cancelar
+            </button>
+          </div>
         )}
         {restored && (
           <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">

@@ -13,6 +13,8 @@ type CashAdjustment = {
   method: string;
   kind: string;
   reason: string;
+  order_id?: string | null;
+  order_number?: number | null;
   created_at: string;
   created_by_name?: string | null;
 };
@@ -239,6 +241,11 @@ export default function CierrePrintPage() {
               <div key={a.id} className="flex justify-between gap-3 border-t border-neutral-100 py-0.5">
                 <span>
                   {a.amount >= 0 ? "+" : "−"}{money(Math.abs(a.amount))} · {CASH_METHOD_LABELS[a.method] || a.method} · {a.reason}
+                  {a.order_id && (
+                    <span className="font-semibold">
+                      {" "}· {a.kind === "venta_duplicada" ? "anuló" : "cargó"} {a.order_number ? `Venta N°${a.order_number}` : "una venta"}
+                    </span>
+                  )}
                   <span className="text-neutral-500"> ({fmt(a.created_at)}{a.created_by_name ? ` · ${a.created_by_name}` : ""})</span>
                 </span>
               </div>

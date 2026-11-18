@@ -54,6 +54,10 @@ type ClosingAdjustment = {
   method: string;
   kind: "venta_faltante" | "venta_duplicada" | "otro";
   reason: string;
+  /** Venta vinculada (migrate-cash-adjustments-orders.sql): la creada o la
+   *  anulada desde el ajuste. NULL = solo números. */
+  order_id?: string | null;
+  order_number?: number | null;
   created_at: string;
   created_by_name?: string | null;
 };
@@ -974,6 +978,12 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
                           <p key={a.id} className="text-amber-900/80 break-words">
                             {a.amount >= 0 ? "+" : "−"}
                             {money(Math.abs(a.amount))} · {CASH_METHOD_LABELS[a.method] || a.method} · {a.reason}
+                            {a.order_id && (
+                              <span className="ml-1 rounded bg-amber-100 px-1 font-medium">
+                                🧾 {a.kind === "venta_duplicada" ? "anuló" : "cargó"}{" "}
+                                {a.order_number ? `Venta N°${a.order_number}` : "una venta"}
+                              </span>
+                            )}
                             <span className="text-amber-900/60">
                               {" "}
                               ({fmtDateTime(a.created_at)}

@@ -1315,6 +1315,39 @@ function VendorDashboardInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEmployee, tab]);
 
+  // ── Ajuste post-cierre: venta faltante ────────────────────────────────────
+  // El modal de Caja manda a cargar la venta en el Mostrador con el cierre
+  // como contexto. Se persiste 24h (borrador) para que una recarga a mitad de
+  // la venta no pierda el ajuste: si la venta se cobra sin contexto, quedaría
+  // una venta normal y el cierre seguiría faltando.
+  type AdjustCtx = { closingId: string; closedAt: string; reason: string };
+  const [adjustCtx, setAdjustCtx] = useState<AdjustCtx | null>(null);
+  const clearAdjustCtx = useCallback(() => {
+    setAdjustCtx(null);
+    if (vendor?.id) clearDraft(vendor.id, "adjust");
+  }, [vendor?.id]);
+  useEffect(() => {
+    if (!vendor?.id) return;
+    const d = loadDraft<AdjustCtx>(vendor.id, "adjust");
+    if (d?.closingId) setAdjustCtx(d);
+  }, [vendor?.id]);
+  useEffect(() => {
+    const handler = (ev: Event) => {
+      const d = (ev as CustomEvent<Partial<AdjustCtx>>).detail;
+      if (!d?.closingId) return;
+      const ctx: AdjustCtx = {
+        closingId: d.closingId,
+        closedAt: d.closedAt || "",
+        reason: d.reason || "",
+      };
+      setAdjustCtx(ctx);
+      if (vendor?.id) saveDraft(vendor.id, "adjust", ctx);
+      handleTabChange(isHybrid ? "mostrador" : "pos");
+    };
+    window.addEventListener("portal:adjust-sale", handler);
+    return () => window.removeEventListener("portal:adjust-sale", handler);
+  }, [handleTabChange, isHybrid, vendor?.id]);
+
   const dashboardProps = useMemo(() => ({
     vendor, offers, categories, modifiers, gallery, bookings, msg,
     setMsg, reload: loadData, saveVendor, uploading: false, onCrop: openCrop,
@@ -2126,7 +2159,11 @@ function VendorDashboardInner() {
               ) : isHybrid && tab === "mostrador" ? (
                 <TabErrorBoundary tab="pos">
                   {effectivePlan.can("pos") ? (
-                    <MemoMostrador vendorId={vendor.id} />
+                    <MemoMostrador
+                      vendorId={vendor.id}
+                      adjustContext={adjustCtx}
+                      onAdjustDone={clearAdjustCtx}
+                    />
                   ) : (
                     <PlanLock
                       title="Mostrador"
@@ -2297,7 +2334,7 @@ function VendorDashboardInner() {
               {mountedTabs.has("pos") && (
                 <div className={tab === "pos" ? "" : "hidden"}>
                   {effectivePlan.can("pos") ? (
-                    <TabErrorBoundary tab="pos"><MemoMostrador vendorId={vendor.id} /></TabErrorBoundary>
+                    <TabErrorBoundary tab="pos"><MemoMostrador vendorId={vendor.id} adjustContext={adjustCtx} onAdjustDone={clearAdjustCtx} /></TabErrorBoundary>
                   ) : (
                     <PlanLock
                       title="Mostrador"

@@ -279,6 +279,11 @@ export async function GET(request: Request) {
     medio: CASH_METHOD_LABELS[a.method] || a.method,
     monto: a.amount,
     motivo: a.reason || "",
+    venta: a.order_number
+      ? `${a.kind === "venta_duplicada" ? "Anuló" : "Cargó"} N°${a.order_number}`
+      : a.order_id
+      ? "Vinculada"
+      : "",
     por: a.created_by_name || "—",
   }));
   const movementRows: Record<string, any>[] = [];
@@ -369,7 +374,8 @@ export async function GET(request: Request) {
         { header: "Tipo", key: "tipo", width: 22 },
         { header: "Medio", key: "medio", width: 18 },
         { header: "Monto", key: "monto", numFmt: moneyFmt },
-        { header: "Motivo", key: "motivo", width: 40 },
+        { header: "Motivo", key: "motivo", width: 34 },
+        { header: "Venta", key: "venta", width: 20 },
         { header: "Por", key: "por", width: 22 },
       ], adjustmentRows);
     }
@@ -435,8 +441,8 @@ export async function GET(request: Request) {
     ...(adjustmentRows.length > 0
       ? [
           "",
-          ["Cierre", "Fecha", "Tipo", "Medio", "Monto", "Motivo", "Por"].map(cell).join(";"),
-          ...adjustmentRows.map((r) => [r.cierre, r.fecha, r.tipo, r.medio, r.monto, r.motivo, r.por].map(cell).join(";")),
+          ["Cierre", "Fecha", "Tipo", "Medio", "Monto", "Motivo", "Venta", "Por"].map(cell).join(";"),
+          ...adjustmentRows.map((r) => [r.cierre, r.fecha, r.tipo, r.medio, r.monto, r.motivo, r.venta, r.por].map(cell).join(";")),
         ]
       : []),
     ...(movementRows.length > 0

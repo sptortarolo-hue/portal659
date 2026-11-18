@@ -28,15 +28,25 @@ const CAFE_STORE = {
     { id: "tost", name: "Tostada", price: 3200, category: "Comidas / Panaderia", modifiers: [], variants: [] },
   ],
 };
+const OFFER_STORE = {
+  id: "feria-pinos", store_name: "Feria Los Pinos", slug: "feria-los-pinos", vertical: "comercio", store_open: true, open_text: "Abierto ahora",
+  products: [
+    { id: "o1", name: "Alfajor triple", price: 1500, category: "Golosinas", modifiers: [], variants: [], featured_today: true },
+    { id: "o2", name: "Coca-Cola 500ml", price: 1000, category: "Bebidas", modifiers: [], variants: [], featured_today: true },
+  ],
+};
 
-const MOCK_MENU = { vendors: [STICKER_STORE, CAFE_STORE] };
+const MOCK_MENU = { vendors: [STICKER_STORE, CAFE_STORE, OFFER_STORE] };
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (url, opts) => {
   const u = String(url);
   if (u.includes("/api/wa/portal-menu")) return { ok: true, json: async () => MOCK_MENU };
   if (u.includes("/api/wa/menu")) {
-    const store = u.includes("stickers-dt") ? STICKER_STORE : CAFE_STORE;
+    const store = u.includes("stickers-dt") ? STICKER_STORE : u.includes("feria-pinos") ? OFFER_STORE : CAFE_STORE;
     return { ok: true, json: async () => ({ vendor: store, products: store.products }) };
+  }
+  if (u.includes("/api/wa/portal-orders")) {
+    return { ok: true, json: async () => ({ orders: [{ storeName: "Stickers DT", status: "preparing", pickupNumber: 12, trackUrl: "https://www.portal659.com.ar/seguimiento/tok-test-1" }] }) };
   }
   if (u.includes("http")) return realFetch(url, opts);
   return { ok: true, json: async () => ({}) };
@@ -228,8 +238,45 @@ r = await send("como están?"); // NL no hace nada → no toca el carrito
 }
 
 // =====================================================================
-// 13) Tool registry: schemas expuestos al LLM + handlers coherentes
+// 14) Ofertas del día: menú → ofertas → categorías → todas → volver → volver → menú
 // =====================================================================
+await clearState(vendor.id, wa);
+r = await send("3"); // opción 3 → ofertas picker
+condition("'3' → picker de categorías de ofertas", /Ofertas del día|de qué categoría/i.test(textsOf(r)));
+r = await send("0"); // todas
+condition("'0' → oferta(s) mostradas", /Alfajor triple|Coca-Cola 500ml/i.test(textsOf(r)));
+r = await send("volver"); // → picker
+condition("volver → picker de ofertas de nuevo", /Ofertas del día|de qué categoría/i.test(textsOf(r)));
+r = await send("volver"); // → menú
+condition("volver → menú principal", /¿Qué querés hacer\?/i.test(textsOf(r)));
+
+// =====================================================================
+// 15) ¿Cómo comprar / pagar? (opción 4)
+// =====================================================================
+await clearState(vendor.id, wa);
+r = await send("4");
+condition("'4' → cómo comprar + cómo se paga", /Elegís la tienda|Cómo se paga/i.test(textsOf(r)));
+
+// =====================================================================
+// 16) Identificar comercio por nombre-producto ("boca" → match con store Stickers DT)
+// =====================================================================
+await clearState(vendor.id, wa);
+r = await send("quiero boca");
+condition("'quiero boca' → Stickers DT en resultados", /Stickers DT/i.test(textsOf(r)));
+
+// =====================================================================
+// 17) Seguimiento: "¿cómo va mi pedido?" → estado + link
+// =====================================================================
+await clearState(vendor.id, wa);
+r = await send("¿cómo va mi pedido?");
+condition("seguimiento → muestra Nro 12 + link tok", /12/.test(textsOf(r)) && /tok-test-1/.test(textsOf(r)));
+
+// =====================================================================
+// 18) Saludo sigue intacto: "hola" NO entra al flujo de pedidos ni ofertas
+// =====================================================================
+await clearState(vendor.id, wa);
+r = await send("hola");
+condition("'hola' → menú informativo", /¿Qué querés hacer\?/i.test(textsOf(r)));
 {
   const { toolSchemasForLlm, dispatchTool, toolNames } = await import("./src/tools.mjs");
   const names = toolNames();

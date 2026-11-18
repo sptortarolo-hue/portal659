@@ -4213,7 +4213,10 @@ export async function sweepAbandonedCarts() {
     } catch { /* sin redis: se sigue */ }
 
     const cartSummary = state.items.map((i) => `${i.qty || 1}x ${i.name}`).join(', ');
-    const nudgeMsg = `¿Te quedó algo en el carrito? Tenés: ${cartSummary}.\n\nMandame tu pedido cuando quieras. Si cambiaste de idea, escribí *cancelar*. 👋`;
+    // Portal: mismo mensaje pero con la salida correcta (comercios/menú), no "mandame tu pedido".
+    const nudgeMsg = isPortalVendor(vendor)
+      ? `¿Te quedó algo en el carrito? Tenés: ${cartSummary}.\n\nDecime el nombre del producto o escribí *comercios*. Si cambiaste de idea, *cancelar*. 👋`
+      : `¿Te quedó algo en el carrito? Tenés: ${cartSummary}.\n\nMandame tu pedido cuando quieras. Si cambiaste de idea, escribí *cancelar*. 👋`;
     try {
       await sleep(humanDelay(nudgeMsg.length));
       sendTyping(client, waId);

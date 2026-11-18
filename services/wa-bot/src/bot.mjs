@@ -32,8 +32,9 @@ const DEFAULT_STATE = {
   pendingConfirm: null, // { items } - confirmacion de baja confianza
   portalStep: null,     // menu | open_stores | all_stores | select_store | cart | method | details | confirm | awaiting_receipt | completed
   deliveryWindow: null, // turno de entrega elegido (ej: "2026-11-15|18:00-20:00")
-  navStack: [],         // back-stack del portal: [{ kind: "menu"|"rubros"|"stores"|"allstores"|"offers_cats"|"offers_list"|"catalog", ...payload }]
-  portalListContext: null, // descriptor de la pantalla actual del portal (para apilar en cada transición)
+  navStack: [],         // back-stack del portal
+  portalListContext: null, // descriptor de la pantalla actual del portal
+  pendingResume: null,  // { storeId, storeName, storeSlug, vertical, delivery, items, method, payment, customerName, customerAddress } — carrito abandonado al resetear sesión
 };
 
 const AWAITING_RECEIPT_TTL = 15 * 60; // 15 min para acreditar el comprobante
@@ -3171,11 +3172,31 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
   if (!state.zone) state.zone = "sicardi-garibaldi";
   if (!state.portalVendorList) state.portalVendorList = [];
 
-  // B5: Timeout de sesión (30 min sin actividad → resetear como conversación nueva).
+  // B5: Timeout de sesión (30 min sin actividad → resetear como conversación
+  // nueva). Portal: en vez de tirar el carrito, se guarda en pendingResume y se
+  // le pregunta al cliente si lo quiere retomar (solo el bot central habla así;
+  // el flujo por-comercio no se toca).
   const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
   if (state.touchedAt && Date.now() - Number(state.touchedAt) > SESSION_TIMEOUT_MS && state.welcomed) {
     const savedPhone = state.customerPhone;
-    state = { ...DEFAULT_STATE, customerPhone: savedPhone };
+    const keepItems = Array.isArray(state.items) && state.items.length
+      ? state.items.map((i) => ({ ...i }))
+      : [];
+    const stash = keepItems.length
+      ? {
+          storeId: state.currentVendorId || null,
+          storeName: state.currentVendorName || "la tienda",
+          storeSlug: state.currentVendorSlug || null,
+          vertical: state.currentVendorVertical || "comercio",
+          delivery: state.currentVendorDelivery || "ambos",
+          items: keepItems,
+          method: state.method || null,
+          payment: state.payment || null,
+          customerName: state.customerName || null,
+          customerAddress: state.customerAddress || null,
+        }
+      : null;
+    state = { ...DEFAULT_STATE, customerPhone: savedPhone, pendingResume: stash, welcomed: true, _personalGreetingDone: true };
     await clearState(vendor.id, waId).catch(() => {});
   }
 
@@ -3208,6 +3229,42 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
       state._cleared = true;
       await clearState(vendor.id, waId);
       return { replies: ["Ok, cancelé todo. Cuando quieras retomamos. 👋"] };
+    }
+
+    // — Portal: carrito abandonado en la sesión anterior → preguntar si retomar. —
+    if (state.pendingResume) {
+      const pr = state.pendingResume;
+      const t = text.trim().toLowerCase();
+      const names = (pr.items || []).map((i) => `${i.qty || 1}× ${i.name}`).join(", ");
+      if (/^(1|s[ií]|dale|confirmo?|sigue|sigo|seguir)$/i.test(t)) {
+        state.items = pr.items || [];
+        state.method = pr.method || null;
+        state.payment = pr.payment || null;
+        state.customerName = pr.customerName || null;
+        state.customerAddress = pr.customerAddress || null;
+        state.currentVendorId = pr.storeId || null;
+        state.currentVendorName = pr.storeName || null;
+        state.currentVendorSlug = pr.storeSlug || null;
+        state.currentVendorVertical = pr.vertical || "comercio";
+        state.currentVendorDelivery = pr.delivery || "ambos";
+        state.pendingResume = null;
+        state.welcomed = true;
+        state.step = "flow";
+        const storeCtx = { id: pr.storeId, store_name: pr.storeName, slug: pr.storeSlug || null, enabled: true, vertical: pr.vertical || "comercio", delivery_options: pr.delivery || "ambos" };
+        replies.push(`Listo, retomamos tu pedido de *${pr.storeName}*. 🛒`);
+        replies.push(`Tu carrito: ${names}`);
+        advanceAndAsk(state, storeCtx, replies);
+        return persist(state, vendor.id, waId, replies);
+      }
+      if (/^(2|no|nada|empezar|empieza|descartar|borrar|cancelar)$/i.test(t)) {
+        state.pendingResume = null;
+        state.step = "idle";
+        replies.push("Dale, empezamos de cero. 👋");
+        state.portalListContext = { kind: "menu" };
+        return sendPortalMenu(state, vendor, waId, replies);
+      }
+      replies.push(`¿Seguimos con tu pedido de *${pr.storeName}*? Tenés: ${names}.\n\n1️⃣ Sí, seguir   2️⃣ No, empezar de nuevo`);
+      return persist(state, vendor.id, waId, replies);
     }
 
     // — Comandos de navegación (presentes en cualquier paso del portal).

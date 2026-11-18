@@ -7,7 +7,7 @@
 process.env.BOT_TAKE_ORDERS = "";
 
 const { handleInbound, persist } = await import("./src/bot.mjs");
-const { clearState, getState } = await import("./src/state.mjs");
+const { clearState, getState, setState, DEFAULT_STATE } = await import("./src/state.mjs");
 
 const NAMES = ['Boca Juniors #2','Boca juniors #1','Cerezas 🍒','Estudiantes de La Plata','Frases #1','Frutillita #1','Frutillita #2','Gatitos #1','Maradona','Mickey y Minnie','Perritos #1','River Plate','Salchi #1','Sarah kay #1','Sarah kay #2','Snoopy','Stich'];
 const STICKER_NAMES = NAMES;
@@ -297,6 +297,63 @@ condition("'hola' → menú informativo", /¿Qué querés hacer\?/i.test(textsOf
   const human = await dispatchTool("request_human", { reason: "no entendió" });
   condition("request_human: devuelve intent handoff", human?.intent === "handoff");
   condition("dispatchTool tool inexistente → null", (await dispatchTool("no_existe", {})) === null);
+}
+
+// =====================================================================
+// 19) Reanudar carrito abandonado: cliente vuelve con carrito de 30+ min →
+//     el bot pregunta si retoma ANTES de cualquier otra cosa
+// =====================================================================
+await clearState(vendor.id, wa);
+await setState(vendor.id, wa, {
+  ...DEFAULT_STATE,
+  step: "flow",
+  welcomed: true,
+  currentVendorId: "stickers-dt",
+  currentVendorName: "Stickers DT",
+  currentVendorVertical: "comercio",
+  items: [
+    { offerId: "sticker-1", name: "Boca Juniors #2", qty: 2, modifiers: [] },
+    { offerId: "sticker-9", name: "Maradona", qty: 1, modifiers: [] },
+  ],
+  method: "pickup",
+  payment: "whatsapp",
+  touchedAt: Date.now() - 40 * 60 * 1000, // 40 minutos sin actividad
+});
+r = await send("hola");
+{
+  const t = textsOf(r);
+  condition("stale cart → 'hola' → pregunta si seguimos", /Seguimos con tu pedido/i.test(t) && /Boca Juniors #2/i.test(t));
+  const st = await getState(vendor.id, wa);
+  condition("stale cart → carrito guardado en pendingResume", Array.isArray(st?.pendingResume?.items) && st.pendingResume.items.length === 2);
+}
+r = await send("1");
+{
+  const st = await getState(vendor.id, wa);
+  const hasBoca = (st.items || []).find((i) => i.name === "Boca Juniors #2");
+  const hasMara = (st.items || []).find((i) => i.name === "Maradona");
+  condition("'1' → carrito restaurado (2 Boca + Maradona)", hasBoca && Number(hasBoca.qty) === 2 && hasMara && Number(hasMara.qty) === 1);
+  condition("'1' → pendingResume limpiado y step=flow", st.pendingResume == null && st.step === "flow");
+}
+
+// =====================================================================
+// 20) Reanudar carrito abandonado → cliente dice no → carrito descartado
+// =====================================================================
+await clearState(vendor.id, wa);
+await setState(vendor.id, wa, {
+  ...DEFAULT_STATE,
+  step: "flow",
+  welcomed: true,
+  currentVendorId: "stickers-dt",
+  currentVendorName: "Stickers DT",
+  currentVendorVertical: "comercio",
+  items: [{ offerId: "sticker-1", name: "Boca Juniors #2", qty: 1, modifiers: [] }],
+  touchedAt: Date.now() - 45 * 60 * 1000,
+});
+r = await send("hola");
+r = await send("2");
+{
+  const st = await getState(vendor.id, wa);
+  condition("'2' → carrito descartado y menú mostrado", /¿Qué querés hacer\?/i.test(textsOf(r)) && (st.items || []).length === 0);
 }
 
 console.log(`\n=== GOLDEN: ${checks} checks, ${failures} fallas ===`);

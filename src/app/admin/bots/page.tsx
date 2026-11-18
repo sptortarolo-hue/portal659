@@ -276,8 +276,11 @@ export default function AdminBotsPage() {
               </p>
               <p className="text-muted-foreground">{llm.lastModel || "-"}{llm.lastAt ? ` · ${fmtDate(llm.lastAt)}` : ""}</p>
               <div className="flex flex-wrap gap-x-3 gap-y-0.5 pt-1 text-muted-foreground/90">
-                <span>🔢 {llm.usage?.total_tokens ?? 0} tokens · {llm.usage?.calls ?? 0} llamadas</span>
+                <span>🔢 {llm.usage?.total_tokens ?? 0} tokens · {llm.usage?.calls ?? 0} llamadas{(llm.usage?.calls ?? 0) > 0 ? ` · ${Math.round((llm.usage?.total_tokens ?? 0) / (llm.usage?.calls ?? 1))} tok/llamada` : ""}</span>
                 <span>🧠 {llm.parses?.llm ?? 0} LLM · 📐 {llm.parses?.rules ?? 0} reglas{(llm.parses?.lowConfidence ?? 0) > 0 ? ` · ⚠️ ${llm.parses?.lowConfidence} baja confianza` : ""}</span>
+                {(llm.parses?.llm ?? 0) + (llm.parses?.rules ?? 0) > 0 && (
+                  <span>📐 {Math.round(((llm.parses?.rules ?? 0) / ((llm.parses?.llm ?? 0) + (llm.parses?.rules ?? 0))) * 100)}% por reglas</span>
+                )}
               </div>
             </div>
           ) : (

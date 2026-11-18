@@ -553,7 +553,10 @@ process.on("SIGINT", () => process.exit(0));
 
 server.listen(config.port, () => {
   console.log(`[wa-bot] cerebro escuchando en :${config.port}`);
-  console.log(`[wa-bot] LLM ${config.llmApiKey ? `activo (${config.llmModel} via ${config.llmBaseUrl})` : "DESACTIVADO — mensajes sin saludo solo"}`);
+  // El log dice la verdad: ¿hay ALGÚN proveedor activo? (no sólo la llave legacy)
+  const anyProvider = (config.llmProviders || []).some(p => p.apiKey);
+  const providerChain = (config.llmProviders || []).map(p => p.name).join(' → ');
+  console.log(`[wa-bot] LLM ${anyProvider ? `activo (${providerChain})` : "DESACTIVADO — mensajes sin saludo solo"}`);
   console.log(`[wa-bot] redis=${config.redisUrl ? "on" : "off"} db=${config.databaseUrl ? "ok" : "no conf"} appUrl=${config.appUrl}`);
 });
 

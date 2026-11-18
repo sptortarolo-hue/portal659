@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Cerebro del bot de pedidos por WhatsApp (relay WS + estados + NLU + createOrder)",
   "scripts": {
-    "start": "node index.mjs"
+    "start": "node index.mjs",
+    "lab": "node laboratorio.mjs"
   },
   "dependencies": {
     "@upstash/redis": "^1.38.2",

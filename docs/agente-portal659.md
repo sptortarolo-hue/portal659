@@ -122,6 +122,15 @@ rate-limits por comercio y por número.
 
 Exponer en `/admin/bots` como sección "Salud del agente" (solo admin).
 
+## Menú Laboratorio (`npm run lab`)
+
+`laboratorio.mjs`: 6 clientes simulados (decidido, preguntón, enojado, fuera-de-conocimiento, exige-humano, typo-argentino) hablan con el bot REAL usando mocks del portal-menu. Asserts deterministas (el peso real de la suite) + juez LLM opcional que puntúa 0-100 leyendo la transcripción (usa el mismo proveedor configurado; en local sin llaves corre solo los asserts; como en Vocero, cada personaje nuevo que falle debe convertirse en caso del `test-golden.mjs`).
+
+- `node laboratorio.mjs` — todas
+- `node laboratorio.mjs --list`
+- `node laboratorio.mjs --strict` — exit 1 si alguna persona falla
+- `node laboratorio.mjs --json out.json`
+
 ## Principios de diseño (lo que NO se diluye)
 
 1. **Nada toca la DB sin handler**. El LLM emite intención-argument; el handler

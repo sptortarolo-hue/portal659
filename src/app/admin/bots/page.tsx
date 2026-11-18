@@ -33,6 +33,8 @@ type LlmInfo = {
   cooldown: number;
   lastModel: string | null;
   lastAt: string | null;
+  usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number; calls: number };
+  parses?: { llm: number; rules: number; lowConfidence: number };
 } | null;
 
 type BrainStats = { messages: number; replies: number; errors: number; loggedOut: number; limitsHit: number } | null;
@@ -273,6 +275,10 @@ export default function AdminBotsPage() {
                 {llm.hasKey ? `ok ${llm.ok} · fallas ${llm.fail}` : "Sin LLM_API_KEY (respuestas fijas)"}
               </p>
               <p className="text-muted-foreground">{llm.lastModel || "-"}{llm.lastAt ? ` · ${fmtDate(llm.lastAt)}` : ""}</p>
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5 pt-1 text-muted-foreground/90">
+                <span>🔢 {llm.usage?.total_tokens ?? 0} tokens · {llm.usage?.calls ?? 0} llamadas</span>
+                <span>🧠 {llm.parses?.llm ?? 0} LLM · 📐 {llm.parses?.rules ?? 0} reglas{(llm.parses?.lowConfidence ?? 0) > 0 ? ` · ⚠️ ${llm.parses?.lowConfidence} baja confianza` : ""}</span>
+              </div>
             </div>
           ) : (
             <p className="text-xs text-muted-foreground">—</p>

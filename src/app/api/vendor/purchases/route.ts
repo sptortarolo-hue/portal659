@@ -413,5 +413,112 @@ export async function POST(request: Request) {
     /* el gasto se puede cargar manual después */
   }
 
-  return NextResponse.json({ purchase_id: purchaseId, total });
+  // Aviso post-compra: productos/variantes con lista de margen cuyo costo
+  // cambió (para proponer el recálculo de precios). Best-effort: si falta la
+  // migración no hay aviso y la compra queda igual.
+  type CostChangedItem = { id: string; kind: "product" | "variant"; name: string; oldCost: number | null; newCost: number };
+  type CostChangedList = { listId: string; listName: string; rule: string; pct: number; count: number; items: CostChangedItem[] };
+  let costChangedLists: CostChangedList[] | null = null;
+  try {
+    const cols = await queryMany<{ table_name: string; column_name: string }>(
+      `SELECT table_name, column_name FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND ((table_name = 'margin_lists') OR (table_name = 'products' AND column_name = 'margin_list_id'))`
+    );
+    const hasMarginLists =
+      cols.some((c) => c.table_name === "margin_lists") &&
+      cols.some((c) => c.table_name === "products" && c.column_name === "margin_list_id");
+    const merch = (items as { kind: string; product_id: string; variant_id?: string; unit_cost: number }[]).filter(
+      (i) => i.kind === "product" || i.kind === "variant"
+    );
+    const pids = [...new Set(merch.map((i) => i.product_id))];
+    const vids = merch.filter((i) => i.kind === "variant").map((i) => (i as { variant_id: string }).variant_id);
+    if (hasMarginLists && pids.length > 0) {
+      const byList = new Map<
+        string,
+        { listId: string; listName: string; rule: string; pct: number; items: CostChangedItem[] }
+      >();
+      const pushToList = (
+        list: { id: string; name: string; rule: string; pct: number },
+        item: CostChangedItem
+      ) => {
+        const key = list.id;
+        let entry = byList.get(key);
+        if (!entry) {
+          entry = { listId: list.id, listName: list.name, rule: list.rule, pct: Number(list.pct), items: [] };
+          byList.set(key, entry);
+        }
+        entry.items.push(item);
+      };
+
+      // Costos viejos: snapshot pre-tx de prodMap (solo si hasCostCols) — el
+      // map guarda cost_last leído antes del UPDATE.
+      const newCostByPid = new Map<string, number>();
+      for (const it of merch) {
+        if (it.kind === "product") newCostByPid.set(it.product_id, it.unit_cost);
+      }
+      const prow = await queryMany<{ id: string; name: string; cost_last: number | null; list_id: string; list_name: string; list_rule: string; list_pct: number }>(
+        `SELECT p.id, p.name, p.cost_last,
+                ml.id AS list_id, ml.name AS list_name, ml.rule AS list_rule, ml.pct::float8 AS list_pct
+           FROM products p JOIN margin_lists ml ON ml.id = p.margin_list_id
+          WHERE p.vendor_id = $1 AND p.id = ANY($2::uuid[])`,
+        [gate.vendor.id, pids]
+      );
+      for (const p of prow) {
+        const oldCostRaw = (prodMap.get(p.id) as { cost_last?: number | null } | undefined)?.cost_last;
+        const oldCost = oldCostRaw ?? null;
+        const newCost = newCostByPid.get(p.id) ?? Number(p.cost_last);
+        // Si el costo no cambió de verdad, no proponer recálculo.
+        if (oldCost != null && Math.round(Number(oldCost) * 100) === Math.round(Number(newCost) * 100)) continue;
+        pushToList(
+          { id: p.list_id, name: p.list_name, rule: p.list_rule, pct: p.list_pct },
+          { id: p.id, kind: "product", name: p.name, oldCost, newCost }
+        );
+      }
+
+      if (vids.length > 0) {
+        const newCostByVid = new Map<string, number>();
+        for (const it of merch) {
+          if (it.kind === "variant") newCostByVid.set((it as { variant_id: string }).variant_id, it.unit_cost);
+        }
+        const vrows2 = await queryMany<{ vid: string; product_name: string; color: string | null; talle: string | null; list_id: string; list_name: string; list_rule: string; list_pct: number; new_cost: number | null }>(
+          `SELECT v.id AS vid, p.name AS product_name, v.color, v.talle,
+                  ml.id AS list_id, ml.name AS list_name, ml.rule AS list_rule, ml.pct::float8 AS list_pct,
+                  v.cost_last AS new_cost
+             FROM product_variants v
+             JOIN products p ON p.id = v.product_id
+             JOIN margin_lists ml ON ml.id = p.margin_list_id
+            WHERE p.vendor_id = $1 AND v.id = ANY($2::uuid[])`,
+          [gate.vendor.id, vids]
+        );
+        for (const v of vrows2) {
+          const oldCostRaw = (varMap.get(v.vid) as { cost_last?: number | null } | undefined)?.cost_last;
+          const oldCost = oldCostRaw ?? null;
+          const newCost = newCostByVid.get(v.vid) ?? Number(v.new_cost);
+          if (oldCost != null && Math.round(Number(oldCost) * 100) === Math.round(Number(newCost) * 100)) continue;
+          const label = [v.color, v.talle].filter((s) => String(s || "").trim()).join(" ");
+          pushToList(
+            { id: v.list_id, name: v.list_name, rule: v.list_rule, pct: v.list_pct },
+            { id: v.vid, kind: "variant", name: label ? `${v.product_name} — ${label}` : v.product_name, oldCost, newCost }
+          );
+        }
+      }
+
+      costChangedLists = [...byList.values()]
+        .filter((l) => l.items.length > 0)
+        .map((l) => ({
+          listId: l.listId,
+          listName: l.listName,
+          rule: l.rule,
+          pct: l.pct,
+          count: l.items.length,
+          items: l.items.slice(0, 50),
+        }));
+      if (costChangedLists.length === 0) costChangedLists = null;
+    }
+  } catch {
+    costChangedLists = null;
+  }
+
+  return NextResponse.json({ purchase_id: purchaseId, total, ...(costChangedLists ? { cost_changed_lists: costChangedLists } : {}) });
 }

@@ -14,6 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { isGiftProductRow } from "@/lib/gift-card-share";
 import { GiftcardManageButton } from "@/components/dashboard/giftcard-manage-button";
 import { saveDraft, loadDraft, clearDraft } from "@/lib/draft";
+import { marginListRuleLabel } from "@/lib/cost-reprice";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
 import { BankAccountsManager } from "@/components/dashboard/bank-accounts-manager";
 import { SupplierSelect } from "@/components/dashboard/supplier-select";
@@ -330,6 +331,11 @@ type OfferFormProps = {
   showSupplier?: boolean;
   offSupplierId?: string;
   setOffSupplierId?: (v: string) => void;
+  /** Lista de margen (costo→precio). Select con las listas del comercio. */
+  showMarginLists?: boolean;
+  marginLists?: { id: string; name: string; rule: "markup" | "margin"; pct: number }[];
+  offMarginListId?: string;
+  setOffMarginListId?: (v: string) => void;
   showExpiry?: boolean;
   offExpiresAt?: string;
   setOffExpiresAt?: (v: string) => void;
@@ -372,6 +378,7 @@ export function OfferForm({
   offPromoPrice = "", setOffPromoPrice,
   showCost = false, offCost = "", setOffCost, costLabel = "Costo compra ($)",
   showSupplier = false, offSupplierId = "", setOffSupplierId,
+  showMarginLists = false, marginLists = [], offMarginListId = "", setOffMarginListId,
   showExpiry = false, offExpiresAt = "", setOffExpiresAt,
   offStockLowThreshold = 5, setOffStockLowThreshold,
   showPrep = false,
@@ -551,6 +558,26 @@ export function OfferForm({
         )}
         {!offIsCombo && showSupplier && setOffSupplierId && (
           <SupplierSelect value={offSupplierId} onChange={setOffSupplierId} />
+        )}
+        {!offIsCombo && showMarginLists && setOffMarginListId && (
+          <div>
+            <Label>Lista de margen</Label>
+            <select
+              value={offMarginListId}
+              onChange={(e) => setOffMarginListId(e.target.value)}
+              className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="">Sin lista</option>
+              {marginLists.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name} — {marginListRuleLabel(l)}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              El recálculo de la lista aplica esta regla sobre el costo de cada producto.
+            </p>
+          </div>
         )}
         {!offIsCombo && showExpiry && setOffExpiresAt && (
           <div>

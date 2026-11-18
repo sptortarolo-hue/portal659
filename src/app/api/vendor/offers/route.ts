@@ -303,6 +303,23 @@ export async function POST(request: Request) {
   if (unit != null) { extraCols.push("unit"); extraVals.push(unit); }
   if (sku != null) { extraCols.push("sku"); extraVals.push(sku); }
   if (scalePlu != null) { extraCols.push("scale_plu"); extraVals.push(scalePlu); }
+  // Lista de margen (tolerante a migración sin aplicar): valida que la lista sea del comercio.
+  const hasMarginListCol = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'products' AND column_name = 'margin_list_id'
+     ) AS exists`
+  ).catch(() => ({ exists: false }));
+  if (hasMarginListCol?.exists === true && body?.margin_list_id) {
+    const mlid = String(body.margin_list_id).trim();
+    if (mlid) {
+      const owned = await queryOne<{ id: string }>(
+        `SELECT id FROM margin_lists WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+        [mlid, vendor.id]
+      ).catch(() => null);
+      if (owned) { extraCols.push("margin_list_id"); extraVals.push(owned.id); }
+    }
+  }
   // Marca el combo en la descripción (el flag real vive en combo_items).
   // No se agrega columna extra: se deriva de combo_items en runtime.
   // Costo de compra manual (inventario): tolerante a migración sin aplicar.

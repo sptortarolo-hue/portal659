@@ -21,6 +21,7 @@ import { toDateOnly } from "@/lib/expiry";
 import { HeladeriaKitCard, ProductModifiersBlock } from "@/components/dashboard/modifier-editor";
 import { ProductOptionsEditor } from "@/components/dashboard/product-options-editor";
 import { VolumeEditor } from "@/components/dashboard/volume-editor";
+import { MarginListsManager, type MarginList } from "@/components/dashboard/margin-lists-manager";
 import { MenuImportModal } from "@/components/dashboard/menu-import";
 import { MenuImportWaModal } from "@/components/dashboard/menu-import-wa";
 import { ProductsTable } from "@/components/dashboard/products-table";
@@ -98,7 +99,7 @@ type Props = {
   vendor?: Record<string, any> | null;
 };
 
-type View = "productos" | "categorias" | "opciones" | "volumen" | "combos";
+type View = "productos" | "categorias" | "opciones" | "volumen" | "combos" | "listas";
 
 /**
  * Vista previa de la etiqueta de góndola (estilo supermercado): nombre
@@ -188,18 +189,28 @@ const VIEWS: { id: View; icon: string; label: string }[] = [
   { id: "opciones", icon: "⚙️", label: "Opciones" },
   { id: "volumen", icon: "📦", label: "Precios por volumen" },
   { id: "combos", icon: "🧩", label: "Combos" },
+  { id: "listas", icon: "🏷️", label: "Listas" },
 ];
 
-type BulkOp = "pct_up" | "pct_down" | "add" | "set";
+type BulkOp = "pct_up" | "pct_down" | "add" | "set" | "markup_pct" | "margin_pct";
 
 const BULK_OPS: { id: BulkOp; label: string }[] = [
   { id: "pct_up", label: "Subir %" },
   { id: "pct_down", label: "Bajar %" },
   { id: "add", label: "Sumar $" },
   { id: "set", label: "Precio fijo $" },
+  { id: "markup_pct", label: "Recargo % sobre costo" },
+  { id: "margin_pct", label: "Margen % sobre precio" },
 ];
 
-function applyOp(price: number, op: BulkOp, value: number): number {
+/** Ops basadas en costo: solo tienen sentido con costo cargado (cost_last). */
+const COST_BULK_OPS: BulkOp[] = ["markup_pct", "margin_pct"];
+
+function applyOp(price: number, op: BulkOp, value: number, cost?: number | null): number {
+  if (op === "markup_pct" || op === "margin_pct") {
+    if (cost == null || !isFinite(cost) || cost < 0) return NaN;
+    return op === "markup_pct" ? Math.round((cost * (100 + value)) / 100) : Math.round(cost / (1 - value / 100));
+  }
   const n =
     op === "pct_up"
       ? Math.round((price * (100 + value)) / 100)
@@ -208,7 +219,7 @@ function applyOp(price: number, op: BulkOp, value: number): number {
         : op === "add"
           ? price + value
           : value;
-  return Math.max(0, n);
+  return Math.max(0, Math.round(n));
 }
 
 /**
@@ -337,6 +348,30 @@ export function MenuStudio({
   const [bulkOp, setBulkOp] = useState<BulkOp>("pct_up");
   const [bulkValue, setBulkValue] = useState("");
   const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkIncludePromos, setBulkIncludePromos] = useState(false);
+
+  // Listas de margen: estado del select del editor + solapa Listas.
+  const [marginLists, setMarginLists] = useState<MarginList[] | null>(null);
+  const [marginListsError, setMarginListsError] = useState<string | null>(null);
+  const [offMarginListId, setOffMarginListId] = useState("");
+  const refreshMarginLists = useCallback(async () => {
+    if (!canEditCost) return;
+    try {
+      const res = await fetch("/api/vendor/margin-lists");
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d.ok) {
+        setMarginLists(d.lists ?? []);
+        setMarginListsError(null);
+        return;
+      }
+      setMarginLists([]);
+      setMarginListsError(d.error || "No se pudieron cargar las listas");
+    } catch {
+      setMarginLists([]);
+      setMarginListsError("No se pudieron cargar las listas");
+    }
+  }, [canEditCost]);
+  useEffect(() => { refreshMarginLists(); }, [refreshMarginLists]);
 
   // Contexto de preparación: se carga lazy la primera vez que se abre el drawer.
   const [recipeCtx, setRecipeCtx] = useState<RecipeCtx | null>(null);
@@ -418,6 +453,7 @@ export function MenuStudio({
     setOffSku("");
     setOffScalePlu("");
     setOffSupplierId("");
+    setOffMarginListId("");
     setOffExpiresAt("");
     setOffRemotePhoto(null);
     setOffIsCombo(false);
@@ -511,6 +547,7 @@ export function MenuStudio({
     setOffSku((offer as any).sku ? String((offer as any).sku) : "");
     setOffScalePlu((offer as any).scale_plu ? String((offer as any).scale_plu) : "");
     setOffCost((offer as any).cost_last != null ? String((offer as any).cost_last) : "");
+    setOffMarginListId((offer as any).margin_list_id ? String((offer as any).margin_list_id) : "");
     setOffSupplierId((offer as any).supplier_id ? String((offer as any).supplier_id) : "");
     setOffExpiresAt(toDateOnly((offer as any).expires_at) || "");
     setOffRemotePhoto(null);
@@ -659,6 +696,7 @@ export function MenuStudio({
         isComercio && offUnit === "kg" && offScalePlu.trim() ? offScalePlu.trim() : null,
       cost_last: canEditCost && offCost.trim() !== "" && Number.isFinite(Number(offCost)) ? Math.round(Number(offCost) * 100) / 100 : undefined,
       supplier_id: !offIsCombo && canEditCost ? offSupplierId || null : undefined,
+      margin_list_id: !offIsCombo && canEditCost ? offMarginListId || null : undefined,
       expires_at: !offIsCombo && showExpiry ? offExpiresAt || null : undefined,
       is_combo: offIsCombo,
       combo_items: offIsCombo ? offComboItems.map((c) => ({ product_id: c.product_id, qty: c.qty })) : [],
@@ -861,10 +899,21 @@ export function MenuStudio({
     return scoped;
   }, [offers, selected, filteredOffers]);
 
+  const isCostBulkOp = bulkOp === "markup_pct" || bulkOp === "margin_pct";
+  const visibleBulkOps = canEditCost ? BULK_OPS : BULK_OPS.filter((o) => !COST_BULK_OPS.includes(o.id));
+
   async function applyBulkPrice() {
     const value = Number(bulkValue);
     if (!bulkValue || !isFinite(value) || value < 0) {
       setMsg("Ingresá un valor válido para modificar precios");
+      return;
+    }
+    if (bulkOp === "markup_pct" && value > 1000) {
+      setMsg("El recargo sobre costo no puede superar el 1000%");
+      return;
+    }
+    if (bulkOp === "margin_pct" && value >= 100) {
+      setMsg("El margen debe ser menor al 100%");
       return;
     }
     if (bulkTargets.length === 0) return;
@@ -873,17 +922,27 @@ export function MenuStudio({
       const res = await fetch("/api/vendor/offers/bulk-price", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: bulkTargets.map((o) => o.id), op: bulkOp, value }),
+        body: JSON.stringify({
+          ids: bulkTargets.map((o) => o.id),
+          op: bulkOp,
+          value,
+          includePromos: isCostBulkOp && bulkIncludePromos,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) {
         setMsg(data.error || "No se pudieron actualizar los precios");
         return;
       }
-      setMsg(`Precios actualizados en ${data.updated ?? bulkTargets.length} ${itemLabelPlural}`);
+      const parts = [`${data.updated ?? 0} ${itemLabelPlural}`];
+      if (data.variantsUpdated > 0) parts.push(`${data.variantsUpdated} variantes`);
+      if (data.promosUpdated > 0) parts.push(`${data.promosUpdated} promos`);
+      const tail = data.skippedNoCost > 0 ? ` · ${data.skippedNoCost} sin costo omitidos` : "";
+      setMsg(`Precios actualizados en ${parts.join(" + ")}${tail}`);
       setSelected(new Set());
       setBulkOpen(false);
       setBulkValue("");
+      setBulkIncludePromos(false);
       reload();
     } finally {
       setBulkSaving(false);
@@ -943,6 +1002,10 @@ export function MenuStudio({
       showSupplier={canEditCost}
       offSupplierId={offSupplierId}
       setOffSupplierId={setOffSupplierId}
+      showMarginLists={canEditCost && !offIsCombo && !marginListsError}
+      marginLists={marginLists ?? []}
+      offMarginListId={offMarginListId}
+      setOffMarginListId={setOffMarginListId}
       showExpiry={showExpiry}
       offExpiresAt={offExpiresAt}
       setOffExpiresAt={setOffExpiresAt}
@@ -1048,6 +1111,24 @@ export function MenuStudio({
 
   const sample = bulkTargets[0];
   const bulkValueNum = Number(bulkValue);
+  const sampleCostRaw = sample ? (sample as { cost_last?: number | null }).cost_last : null;
+  const sampleCostNum = sampleCostRaw != null && isFinite(Number(sampleCostRaw)) ? Number(sampleCostRaw) : null;
+  const sampleCost = sampleCostNum != null && sampleCostNum >= 0 ? sampleCostNum : null;
+  const samplePromoRaw = sample ? (sample as { promo_price?: number | null }).promo_price : null;
+  const samplePromo = samplePromoRaw != null && isFinite(Number(samplePromoRaw)) ? Number(samplePromoRaw) : null;
+  const samplePriceNum = sample ? Number(sample.price) : NaN;
+  const previewNewPrice =
+    sample && bulkValue && isFinite(bulkValueNum) && bulkValueNum >= 0
+      ? applyOp(samplePriceNum, bulkOp, bulkValueNum, sampleCost)
+      : NaN;
+  const previewPromoRatio =
+    isFinite(samplePriceNum) && samplePriceNum > 0 && samplePromo != null
+      ? Math.min(Math.max(samplePromo, 0), samplePriceNum) / samplePriceNum
+      : null;
+  const previewNewPromo =
+    isCostBulkOp && bulkIncludePromos && previewPromoRatio != null && isFinite(previewNewPrice)
+      ? Math.min(previewNewPrice, Math.max(0, Math.round(previewNewPrice * previewPromoRatio)))
+      : null;
 
   return (
     <div className="space-y-4">
@@ -1075,7 +1156,7 @@ export function MenuStudio({
           </div>
         </div>
         <div className="flex rounded-xl border border-border overflow-x-auto max-w-full text-sm font-medium">
-          {VIEWS.map((v) => (
+          {(canEditCost ? VIEWS : VIEWS.filter((v) => v.id !== "listas")).map((v) => (
             <button
               key={v.id}
               type="button"
@@ -1352,6 +1433,16 @@ export function MenuStudio({
         </div>
       )}
 
+      {view === "listas" && (
+        <MarginListsManager
+          offers={offers as any}
+          lists={marginLists}
+          error={marginListsError}
+          onRefresh={refreshMarginLists}
+          onChanged={reload}
+        />
+      )}
+
       <MenuImportModal
         open={showImport}
         onClose={() => setShowImport(false)}
@@ -1572,7 +1663,17 @@ export function MenuStudio({
             {selected.size > 0
               ? `Se aplica a los ${bulkTargets.length} ${itemLabelPlural} seleccionados.`
               : `Sin selección: se aplica a los ${bulkTargets.length} ${itemLabelPlural} filtrados.`}{" "}
-            Los precios promo no se modifican.
+            {isCostBulkOp ? (
+              <>
+                Se calcula con el <strong>último costo</strong> (cost_last); productos y variantes sin costo se saltean
+                y se reportan. Los combos no se tocan.{" "}
+                {bulkIncludePromos
+                  ? "Las promos se recalculan manteniendo el descuento que ya tenían."
+                  : "Las promos no se modifican."}
+              </>
+            ) : (
+              "Los precios promo no se modifican."
+            )}
           </p>
           <div className="flex gap-2">
             <select
@@ -1581,7 +1682,7 @@ export function MenuStudio({
               className="h-10 rounded-md border border-input bg-background px-3 text-sm"
               aria-label="Tipo de cambio"
             >
-              {BULK_OPS.map((o) => (
+              {visibleBulkOps.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.label}
                 </option>
@@ -1592,19 +1693,68 @@ export function MenuStudio({
               min={0}
               step="any"
               inputMode="decimal"
-              placeholder={bulkOp === "pct_up" || bulkOp === "pct_down" ? "10" : "500"}
+              placeholder={
+                bulkOp === "pct_up" || bulkOp === "pct_down"
+                  ? "10"
+                  : bulkOp === "markup_pct"
+                    ? "100"
+                    : bulkOp === "margin_pct"
+                      ? "50"
+                      : "500"
+              }
               value={bulkValue}
               onChange={(e) => setBulkValue(e.target.value)}
               className="flex-1"
             />
           </div>
+          {isCostBulkOp && (
+            <div className="rounded-lg border border-border bg-card px-3 py-2">
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={bulkIncludePromos}
+                  onChange={(e) => setBulkIncludePromos(e.target.checked)}
+                  className="h-4 w-4 accent-lime-500"
+                />
+                Incluir promos (manteniendo el descuento)
+              </label>
+              {bulkIncludePromos && (
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  La promo se recalcula conservando su proporción sobre el precio. Ej.: $10.000 → $8.000 (–20%); al
+                  aplicar el aumento pasa a mantener –20% sobre el nuevo precio.
+                </p>
+              )}
+            </div>
+          )}
           {sample && bulkValue && isFinite(bulkValueNum) && bulkValueNum >= 0 && (
-            <p className="text-sm rounded-lg bg-muted px-3 py-2 tabular-nums">
-              Ej.: {sample.name} ${Number(sample.price).toLocaleString("es-AR")} →{" "}
-              <strong>
-                ${applyOp(Number(sample.price), bulkOp, bulkValueNum).toLocaleString("es-AR")}
-              </strong>
-            </p>
+            isCostBulkOp && bulkOp === "margin_pct" && bulkValueNum >= 100 ? (
+              <p className="text-sm rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                El margen debe ser menor al 100%.
+              </p>
+            ) : isCostBulkOp ? (
+              sampleCost == null ? (
+                <p className="text-sm rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                  Ej.: {sample.name} no tiene costo cargado: se saltearía.
+                </p>
+              ) : (
+                <p className="text-sm rounded-lg bg-muted px-3 py-2 tabular-nums">
+                  Ej.: {sample.name} costo ${sampleCost.toLocaleString("es-AR")} → precio{" "}
+                  <strong>${previewNewPrice.toLocaleString("es-AR")}</strong>
+                  {previewNewPromo != null && previewPromoRatio != null && (
+                    <>
+                      {" "}
+                      · promo <strong>${previewNewPromo.toLocaleString("es-AR")}</strong> (mantiene −
+                      {Math.round((1 - previewPromoRatio) * 100)}%)
+                    </>
+                  )}
+                </p>
+              )
+            ) : (
+              <p className="text-sm rounded-lg bg-muted px-3 py-2 tabular-nums">
+                Ej.: {sample.name} ${Number(sample.price).toLocaleString("es-AR")} →{" "}
+                <strong>${previewNewPrice.toLocaleString("es-AR")}</strong>
+              </p>
+            )
           )}
         </div>
       </Modal>

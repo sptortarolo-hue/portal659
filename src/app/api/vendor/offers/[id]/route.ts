@@ -37,7 +37,7 @@ export async function PATCH(
     "stock_low_threshold", "currency", "neighborhood", "type", "unit",
     "has_variants", "stock_control", "requires_prep", "cash_discount_excluded",
     "pack_size", "size_guide", "promo_only", "sku", "supplier_id", "expires_at",
-    "online_available", "scale_plu",
+    "online_available", "scale_plu", "margin_list_id",
   ] as const;
 
   const safeUpdate: Record<string, unknown> = {};
@@ -215,6 +215,35 @@ export async function PATCH(
       safeUpdate.online_available = safeUpdate.online_available === true;
     } else {
       delete safeUpdate.online_available;
+    }
+  }
+  // Lista de margen (migrate-margin-lists.sql): tolerante a migración sin
+  // aplicar; valida que la lista sea del propio comercio.
+  if ("margin_list_id" in safeUpdate) {
+    const hasMarginList = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'products' AND column_name = 'margin_list_id'
+       ) AS exists`
+    ).catch(() => ({ exists: false }));
+    if (hasMarginList?.exists === true) {
+      const raw = safeUpdate.margin_list_id;
+      const mlid =
+        raw != null && String(raw).trim() !== "" ? String(raw).trim() : null;
+      if (mlid) {
+        const owned = await queryOne<{ id: string }>(
+          `SELECT id FROM margin_lists WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+          [mlid, vendor.id]
+        ).catch(() => null);
+        if (!owned) {
+          return NextResponse.json({ error: "Lista de margen no encontrada" }, { status: 400 });
+        }
+        safeUpdate.margin_list_id = mlid;
+      } else {
+        safeUpdate.margin_list_id = null;
+      }
+    } else {
+      delete safeUpdate.margin_list_id;
     }
   }
   // Costo de compra manual (inventario): tolerante a migración sin aplicar.

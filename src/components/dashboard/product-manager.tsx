@@ -12,6 +12,7 @@ import { QuantityInput } from "@/components/ui/quantity-input";
 import { Badge } from "@/components/ui/badge";
 import { OfferForm, OfferList, CategoryManager, apiJson, useFormDraft } from "@/components/dashboard/shared";
 import { VolumeEditor } from "@/components/dashboard/volume-editor";
+import { MarginListsManager, type MarginList } from "@/components/dashboard/margin-lists-manager";
 import { SupplierSelect } from "@/components/dashboard/supplier-select";
 import { clearDraft } from "@/lib/draft";
 import { toDateOnly } from "@/lib/expiry";
@@ -35,6 +36,9 @@ type OfferRow = {
   category: string | null;
   available: boolean;
   online_available?: boolean | null;
+  is_combo?: boolean | null;
+  /** Lista de margen aplicada (migrate-margin-lists.sql). */
+  margin_list_id?: string | null;
   featured_today: boolean;
   image_url: string | null;
   stock: number | null;
@@ -48,6 +52,8 @@ type OfferRow = {
   sku?: string | null;
   /** Formato de pack del producto (1 = por unidad). */
   pack_size?: number | null;
+  /** Último costo de compra (migrate-inventory.sql). */
+  cost_last?: number | null;
   supplier_id?: string | null;
   expires_at?: string | null;
 };
@@ -106,6 +112,7 @@ const PM_VIEWS: { id: string; icon: string; label: string }[] = [
   { id: "opciones", icon: "⚙️", label: "Opciones" },
   { id: "volumen", icon: "📦", label: "Precios por volumen" },
   { id: "combos", icon: "🧩", label: "Combos" },
+  { id: "listas", icon: "🏷️", label: "Listas" },
 ];
 
 /** Gestión completa de platos/productos (listado + ficha inline + modificadores), sin ir a Configuración. */
@@ -125,12 +132,35 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
-  const [bulkMode, setBulkMode] = useState<"pct" | "amount">("pct");
+  const [bulkMode, setBulkMode] = useState<"pct" | "amount" | "markup" | "margin">("pct");
   const [bulkValue, setBulkValue] = useState("");
-  const [bulkScope, setBulkScope] = useState<"all" | "visible">("all");
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkMsg, setBulkMsg] = useState("");
+  const [bulkIncludePromos, setBulkIncludePromos] = useState(false);
   const isTaller = vendor?.vertical === "taller";
+  // Listas de margen: select del editor + solapa Listas.
+  const [marginLists, setMarginLists] = useState<MarginList[] | null>(null);
+  const [marginListsError, setMarginListsError] = useState<string | null>(null);
+  const [offMarginListId, setOffMarginListId] = useState("");
+  const refreshMarginLists = useCallback(async () => {
+    if (!canEditCost) return;
+    try {
+      const res = await fetch("/api/vendor/margin-lists");
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d.ok) {
+        setMarginLists(d.lists ?? []);
+        setMarginListsError(null);
+        return;
+      }
+      setMarginLists([]);
+      setMarginListsError(d.error || "No se pudieron cargar las listas");
+    } catch {
+      setMarginLists([]);
+      setMarginListsError("No se pudieron cargar las listas");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canEditCost]);
+  useEffect(() => { refreshMarginLists(); }, [refreshMarginLists]);
   // Vista activa del catálogo (solo moda usa el tab-bar).
   const [view, setView] = useState<string>("productos");
   const [offName, setOffName] = useState("");
@@ -233,6 +263,7 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
     setOffCashExcluded(false);
     setOffSku("");
     setOffSupplierId("");
+    setOffMarginListId("");
     setOffExpiresAt("");
     setOffPackSize("");
     setOffHasVariants(false);
@@ -258,6 +289,7 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
     setOffStockControl(!!offer.stock_control);
     setOffPromoPrice(offer.promo_price ? String(offer.promo_price) : "");
     setOffCost((offer as any).cost_last != null ? String((offer as any).cost_last) : "");
+    setOffMarginListId(offer.margin_list_id ? String(offer.margin_list_id) : "");
     setOffStockLowThreshold(offer.stock_low_threshold ?? 5);
     // Sin switch visible (retail): al guardar queda en false, nunca cocina.
     setOffRequiresPrep(showPrep ? offer.requires_prep !== false : false);
@@ -526,6 +558,7 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
           combo_items: offIsCombo && !offHasVariants ? offComboItems.map((c) => ({ product_id: c.product_id, qty: c.qty })) : [],
           cost_last: canEditCost && offCost.trim() !== "" && Number.isFinite(Number(offCost)) ? Math.round(Number(offCost) * 100) / 100 : undefined,
           supplier_id: canEditCost ? offSupplierId || null : undefined,
+          margin_list_id: canEditCost ? offMarginListId || null : undefined,
           expires_at: showExpiry ? offExpiresAt || null : undefined,
         }
       : {
@@ -542,6 +575,7 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
           cash_discount_excluded: offCashExcluded,
           cost_last: canEditCost && offCost.trim() !== "" && Number.isFinite(Number(offCost)) ? Math.round(Number(offCost) * 100) / 100 : undefined,
           supplier_id: canEditCost ? offSupplierId || null : undefined,
+          margin_list_id: canEditCost ? offMarginListId || null : undefined,
           expires_at: showExpiry ? offExpiresAt || null : undefined,
           is_combo: offIsCombo,
           combo_items: offIsCombo ? offComboItems.map((c) => ({ product_id: c.product_id, qty: c.qty })) : [],
@@ -903,6 +937,10 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
         costLabel={showCosts ? "Costo compra ($)" : "Costo ($)"}
         showSupplier={canEditCost}
         offSupplierId={offSupplierId} setOffSupplierId={setOffSupplierId}
+        showMarginLists={canEditCost && !offIsCombo && !marginListsError}
+        marginLists={marginLists ?? []}
+        offMarginListId={offMarginListId}
+        setOffMarginListId={setOffMarginListId}
         showExpiry={showExpiry}
         offExpiresAt={offExpiresAt} setOffExpiresAt={setOffExpiresAt}
         // Combos (estética y resto con OfferForm): picker de componentes.
@@ -937,7 +975,7 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
 
       {catalogViews && (
         <div className="flex rounded-xl border border-border overflow-x-auto max-w-full text-sm font-medium">
-          {PM_VIEWS.map((v) => (
+          {(canEditCost ? PM_VIEWS : PM_VIEWS.filter((v) => v.id !== "listas")).map((v) => (
             <button
               key={v.id}
               type="button"
@@ -1127,6 +1165,16 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
               })()}
             </div>
           )}
+
+          {view === "listas" && (
+            <MarginListsManager
+              offers={offers}
+              lists={marginLists}
+              error={marginListsError}
+              onRefresh={refreshMarginLists}
+              onChanged={() => { load(); onChanged?.(); }}
+            />
+          )}
         </>
       ) : (
         <>
@@ -1153,31 +1201,131 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
       )}
     {bulkOpen && (
       <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50" onClick={() => setBulkOpen(false)}>
-        <div className="bg-card rounded-t-2xl sm:rounded-2xl border border-border w-full sm:max-w-md sm:mx-4 p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+        <div className="bg-card rounded-t-2xl sm:rounded-2xl border border-border w-full sm:max-w-md sm:mx-4 p-5 space-y-3 max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
           <h3 className="font-display text-lg font-semibold">Precios masivos</h3>
-          <p className="text-xs text-muted-foreground">Actualiza el precio de varios productos a la vez.</p>
-          <div className="flex gap-2">
-            <button type="button" onClick={() => setBulkMode("pct")} className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium ${bulkMode === "pct" ? "border-primary bg-primary/10 text-primary" : "border-border bg-card"}`}>
-              Porcentaje (%)
-            </button>
-            <button type="button" onClick={() => setBulkMode("amount")} className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium ${bulkMode === "amount" ? "border-primary bg-primary/10 text-primary" : "border-border bg-card"}`}>
-              Monto fijo ($)
-            </button>
+          <p className="text-xs text-muted-foreground">
+            {(() => {
+              const isCostMode = bulkMode === "markup" || bulkMode === "margin";
+              return isCostMode
+                ? "Se calcula con el último costo (cost_last); productos y variantes sin costo se saltean y se reportan. Los combos no se tocan. " +
+                  (bulkIncludePromos
+                    ? "Las promos se recalculan manteniendo el descuento que ya tenían."
+                    : "Las promos no se modifican.")
+                : "Actualiza el precio de varios productos a la vez. Los precios promo no se modifican.";
+            })()}
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {([
+              { id: "pct", label: "Porcentaje (%)" },
+              { id: "amount", label: "Monto fijo ($)" },
+              ...(canEditCost
+                ? [
+                    { id: "markup" as const, label: "Recargo costo (%)" },
+                    { id: "margin" as const, label: "Margen costo (%)" },
+                  ]
+                : []),
+            ] as { id: "pct" | "amount" | "markup" | "margin"; label: string }[]).map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setBulkMode(m.id)}
+                className={`rounded-lg border px-3 py-2 text-xs font-medium ${bulkMode === m.id ? "border-primary bg-primary/10 text-primary" : "border-border bg-card"}`}
+              >
+                {m.label}
+              </button>
+            ))}
           </div>
           <div>
-            <label className="text-xs text-muted-foreground">{bulkMode === "pct" ? "Porcentaje (ej: 10 = +10%, -5 = -5%)" : "Monto a sumar/restar ($)"}</label>
+            <label className="text-xs text-muted-foreground">
+              {bulkMode === "pct"
+                ? "Porcentaje (ej: 10 = +10%, -5 = -5%)"
+                : bulkMode === "amount"
+                  ? "Monto a sumar/restar ($)"
+                  : bulkMode === "markup"
+                    ? "Recargo sobre el costo (ej: 100 = costo + 100%)"
+                    : "Margen sobre el precio (ej: 50 = margen del 50%, menor al 100%)"}
+            </label>
             <input
               type="number"
+              min={0}
+              step="any"
               value={bulkValue}
               onChange={(e) => setBulkValue(e.target.value)}
               className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-              placeholder={bulkMode === "pct" ? "10" : "500"}
+              placeholder={bulkMode === "pct" ? "10" : bulkMode === "amount" ? "500" : bulkMode === "markup" ? "100" : "50"}
             />
           </div>
-          <p className="text-xs text-muted-foreground">Se aplicara a los {offers.length} productos del catalogo.</p>
+          {(bulkMode === "markup" || bulkMode === "margin") && (
+            <div className="rounded-lg border border-border bg-background px-3 py-2">
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={bulkIncludePromos}
+                  onChange={(e) => setBulkIncludePromos(e.target.checked)}
+                  className="h-4 w-4 accent-lime-500"
+                />
+                Incluir promos (manteniendo el descuento)
+              </label>
+              {bulkIncludePromos && (
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  La promo se recalcula conservando su proporción sobre el precio. Ej.: $10.000 → $8.000 (–20%); al
+                  aplicar el aumento pasa a mantener –20% sobre el nuevo precio.
+                </p>
+              )}
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Se aplicará a los {offers.length} productos del catálogo. Los precios promo no se tocan salvo que tildés
+            “Incluir promos”.
+          </p>
+          {(() => {
+            const val = Number(bulkValue);
+            if (!bulkValue.trim() || !Number.isFinite(val)) return null;
+            const isCostMode = bulkMode === "markup" || bulkMode === "margin";
+            const costSample = offers.find((o) => o.cost_last != null && isFinite(Number(o.cost_last)) && Number(o.cost_last) >= 0);
+            const sample = isCostMode ? costSample : offers[0];
+            if (!sample) return null;
+            if (isCostMode && !costSample) {
+              return (
+                <p className="text-xs rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                  Ningún producto del catálogo tiene costo cargado: no hay nada que recalcular.
+                </p>
+              );
+            }
+            if (isCostMode && bulkMode === "margin" && val >= 100) {
+              return (
+                <p className="text-xs rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                  El margen debe ser menor al 100%.
+                </p>
+              );
+            }
+            const oldPrice = Number(sample.price);
+            const cost = isCostMode && sample.cost_last != null ? Number(sample.cost_last) : null;
+            const newPrice = isCostMode
+              ? bulkMode === "markup"
+                ? Math.round((cost as number) * (1 + val / 100))
+                : Math.round((cost as number) / (1 - val / 100))
+              : bulkMode === "pct"
+                ? Math.max(0, Math.round(oldPrice * (1 + val / 100)))
+                : Math.max(0, Math.round(oldPrice + val));
+            let promoLine: string | null = null;
+            if (isCostMode && bulkIncludePromos && sample.promo_price != null && oldPrice > 0) {
+              const ratio = Math.min(Math.max(Number(sample.promo_price), 0), oldPrice) / oldPrice;
+              promoLine = ` · promo $${Math.min(newPrice, Math.round(newPrice * ratio)).toLocaleString("es-AR")} (mantiene −${Math.round((1 - ratio) * 100)}%)`;
+            }
+            return (
+              <p className="text-xs rounded-lg bg-muted px-3 py-2 tabular-nums">
+                Ej.: {sample.name}{" "}
+                {isCostMode
+                  ? `costo $${(cost as number).toLocaleString("es-AR")} → precio $${newPrice.toLocaleString("es-AR")}`
+                  : `$${oldPrice.toLocaleString("es-AR")} → $${newPrice.toLocaleString("es-AR")}`}
+                {promoLine}
+              </p>
+            );
+          })()}
           {bulkMsg && <p className="text-xs text-muted-foreground">{bulkMsg}</p>}
           <div className="flex gap-2 pt-1">
-            <Button variant="outline" className="flex-1" onClick={() => { setBulkOpen(false); setBulkMsg(""); }}>
+            <Button variant="outline" className="flex-1" onClick={() => { setBulkOpen(false); setBulkMsg(""); setBulkIncludePromos(false); }}>
               Cancelar
             </Button>
             <Button
@@ -1185,27 +1333,49 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
               disabled={bulkBusy || !bulkValue.trim()}
               onClick={async () => {
                 const val = Number(bulkValue);
-                if (!Number.isFinite(val)) { setBulkMsg("Valor invalido"); return; }
+                if (!Number.isFinite(val)) { setBulkMsg("Valor inválido"); return; }
+                const isCostMode = bulkMode === "markup" || bulkMode === "margin";
+                if (isCostMode && bulkMode === "margin" && val >= 100) { setBulkMsg("El margen debe ser menor al 100%"); return; }
+                if (isCostMode && val < 0) { setBulkMsg("El valor no puede ser negativo"); return; }
+                if (bulkMode === "markup" && val > 1000) { setBulkMsg("El recargo no puede superar el 1000%"); return; }
+                if (bulkMode === "pct" && Math.abs(val) > 500) { setBulkMsg("El porcentaje está fuera de rango (±500)"); return; }
                 const targets = offers;
                 if (targets.length === 0) { setBulkMsg("No hay productos"); return; }
+                let op: "pct_up" | "pct_down" | "add" | "markup_pct" | "margin_pct";
+                let value = val;
+                if (bulkMode === "pct") { op = val < 0 ? "pct_down" : "pct_up"; value = Math.abs(val); }
+                else if (bulkMode === "amount") { op = "add"; value = val; }
+                else if (bulkMode === "markup") { op = "markup_pct"; }
+                else { op = "margin_pct"; }
                 setBulkBusy(true);
                 setBulkMsg(`Actualizando ${targets.length} productos...`);
-                let ok = 0, fail = 0;
-                for (const o of targets) {
-                  const newPrice = bulkMode === "pct"
-                    ? Math.round(Number(o.price) * (1 + val / 100))
-                    : Math.max(0, Math.round((Number(o.price) + val) * 100) / 100);
-                  try {
-                    const r = await fetch(`/api/vendor/offers/${o.id}`, {
-                      method: "PATCH",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ price: newPrice }),
-                    });
-                    if (r.ok) ok++; else fail++;
-                  } catch { fail++; }
+                try {
+                  const r = await fetch("/api/vendor/offers/bulk-price", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      ids: targets.map((o) => o.id),
+                      op,
+                      value,
+                      includePromos: isCostMode && bulkIncludePromos,
+                    }),
+                  });
+                  const data = await r.json().catch(() => ({}));
+                  if (!r.ok || !data.ok) {
+                    setBulkMsg(data.error || "No se pudieron actualizar los precios");
+                  } else {
+                    const parts = [`${data.updated ?? 0} productos`];
+                    if (data.variantsUpdated > 0) parts.push(`${data.variantsUpdated} variantes`);
+                    if (data.promosUpdated > 0) parts.push(`${data.promosUpdated} promos`);
+                    const tail = data.skippedNoCost > 0 ? ` · ${data.skippedNoCost} sin costo omitidos` : "";
+                    setBulkMsg(`Listo: ${parts.join(" + ")}${tail}.`);
+                    setBulkIncludePromos(false);
+                  }
+                } catch {
+                  setBulkMsg("No se pudieron actualizar los precios");
+                } finally {
+                  setBulkBusy(false);
                 }
-                setBulkBusy(false);
-                setBulkMsg(`Listo: ${ok} actualizados${fail ? `, ${fail} con error` : ""}.`);
                 load(); onChanged?.();
               }}
             >

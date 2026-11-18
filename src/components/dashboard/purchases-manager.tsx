@@ -38,6 +38,16 @@ type CreatedItem =
   | { kind: "prod"; item: { id: string; name: string; cost_last?: number | null; stock?: number | null } }
   | { kind: "var"; item: { id: string; product_id: string; color: string; talle: string; price: number; stock: number; cost_last?: number | null } };
 
+/** Aviso post-compra: productos/variantes con lista de margen cuyo costo cambió. */
+type CostProposalList = {
+  listId: string;
+  listName: string;
+  rule: string;
+  pct: number;
+  count: number;
+  items: { id: string; kind: "product" | "variant"; name: string; oldCost: number | null; newCost: number }[];
+};
+
 // ---------------------------------------------------------------------------
 // Crear insumo / producto / variante SIN salir de la compra (estilo proveedor).
 // Un sheet con los campos mínimos: al guardar, el ítem queda seleccionado
@@ -342,6 +352,10 @@ function PurchaseForm({
   const [uploading, setUploading] = useState(false);
   // Línea creando ítem nuevo sin salir de la compra (sheet abierto).
   const [creating, setCreating] = useState<{ lineKey: number; kind: BuyLine["kind"] } | null>(null);
+  // Aviso post-compra: listas de margen con costo cambiado.
+  const [costProposal, setCostProposal] = useState<CostProposalList[] | null>(null);
+  const [proposalIncludePromos, setProposalIncludePromos] = useState(false);
+  const [proposalPreview, setProposalPreview] = useState<Record<string, { loading?: boolean; error?: string; items?: any[]; skippedNoCost?: number; skippedCombo?: number; applied?: { updated: number; variantsUpdated: number; promosUpdated: number } | null }>>({});
 
   const ingMap = useMemo(() => new Map(ingredients.map((i) => [i.id, i])), [ingredients]);
 
@@ -438,6 +452,12 @@ function PurchaseForm({
     });
     setSaving(false);
     if (!r.ok) return setError(r.error || "No se pudo guardar");
+    const changed = (r as { cost_changed_lists?: CostProposalList[] }).cost_changed_lists;
+    if (Array.isArray(changed) && changed.length > 0) {
+      setProposalIncludePromos(false);
+      setProposalPreview({});
+      setCostProposal(changed);
+    }
     onDone();
   }
 
@@ -766,6 +786,149 @@ function PurchaseForm({
           </Button>
         </div>
       </form>
+
+      {/* Aviso post-compra: productos con lista de margen cuyo costo cambió. */}
+      <Modal
+        open={!!costProposal}
+        onClose={() => setCostProposal(null)}
+        title="El costo cambió"
+        footer={
+          <Button type="button" className="w-full" onClick={() => setCostProposal(null)}>
+            Entendido
+          </Button>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Compra guardada. Estos productos pertenecen a una lista de margen y su costo cambió — ¿recalculás los
+            precios?
+          </p>
+          <label className="flex items-center gap-2 text-sm cursor-pointer select-none rounded-lg border border-border px-3 py-2">
+            <input
+              type="checkbox"
+              checked={proposalIncludePromos}
+              onChange={(e) => {
+                setProposalIncludePromos(e.target.checked);
+                setProposalPreview({});
+              }}
+              className="h-4 w-4 accent-lime-500"
+            />
+            Incluir promos (manteniendo el descuento)
+          </label>
+          {costProposal?.map((list) => {
+            const p = proposalPreview[list.listId];
+            const ruleLabel = list.rule === "markup" ? `Recargo +${list.pct}%` : `Margen ${list.pct}%`;
+            return (
+              <div key={list.listId} className="rounded-xl border border-border p-3 space-y-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-medium">🏷️ {list.listName}</span>
+                  <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
+                    {ruleLabel} · {list.count} {list.count === 1 ? "producto" : "productos"}
+                  </span>
+                  <span className="flex-1" />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    type="button"
+                    disabled={!!p?.loading || !!p?.applied}
+                    onClick={async () => {
+                      setProposalPreview((prev) => ({ ...prev, [list.listId]: { loading: true } }));
+                      try {
+                        const res = await fetch(`/api/vendor/margin-lists/${list.listId}/reprice`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ dryRun: true, includePromos: proposalIncludePromos }),
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok || !data.ok) {
+                          setProposalPreview((prev) => ({ ...prev, [list.listId]: { error: data.error || "No se pudo calcular" } }));
+                          return;
+                        }
+                        setProposalPreview((prev) => ({
+                          ...prev,
+                          [list.listId]: { items: data.items ?? [], skippedNoCost: data.skippedNoCost ?? 0, skippedCombo: data.skippedCombo ?? 0 },
+                        }));
+                      } catch {
+                        setProposalPreview((prev) => ({ ...prev, [list.listId]: { error: "No se pudo calcular" } }));
+                      }
+                    }}
+                  >
+                    {p?.loading ? "Calculando…" : "Vista previa"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    type="button"
+                    disabled={!!p?.loading || !!p?.applied}
+                    onClick={async () => {
+                      setProposalPreview((prev) => ({ ...prev, [list.listId]: { ...prev[list.listId], loading: true } }));
+                      try {
+                        const res = await fetch(`/api/vendor/margin-lists/${list.listId}/reprice`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ includePromos: proposalIncludePromos }),
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok || !data.ok) {
+                          setProposalPreview((prev) => ({ ...prev, [list.listId]: { ...prev[list.listId], loading: false, error: data.error || "No se pudo aplicar" } }));
+                          return;
+                        }
+                        setProposalPreview((prev) => ({
+                          ...prev,
+                          [list.listId]: {
+                            ...prev[list.listId],
+                            loading: false,
+                            applied: { updated: data.updated ?? 0, variantsUpdated: data.variantsUpdated ?? 0, promosUpdated: data.promosUpdated ?? 0 },
+                          },
+                        }));
+                      } catch {
+                        setProposalPreview((prev) => ({ ...prev, [list.listId]: { ...prev[list.listId], loading: false, error: "No se pudo aplicar" } }));
+                      }
+                    }}
+                  >
+                    {p?.applied ? "✓ Recalculada" : "Recalcular"}
+                  </Button>
+                </div>
+                <ul className="text-xs text-muted-foreground space-y-0.5">
+                  {list.items.slice(0, 6).map((i) => (
+                    <li key={`${i.kind}-${i.id}`} className="flex justify-between gap-2">
+                      <span className="min-w-0 truncate">{i.name}</span>
+                      <span className="tabular-nums whitespace-nowrap">
+                        {i.oldCost != null ? `$${Number(i.oldCost).toLocaleString("es-AR")} → ` : ""}${Number(i.newCost).toLocaleString("es-AR")}
+                      </span>
+                    </li>
+                  ))}
+                  {list.count > 6 && <li>…y {list.count - 6} más</li>}
+                </ul>
+                {p?.error && <p className="text-xs text-destructive">{p.error}</p>}
+                {p?.applied && (
+                  <p className="text-xs text-green-700 dark:text-green-400">
+                    ✓ Recalculada: {p.applied.updated} productos
+                    {p.applied.variantsUpdated > 0 ? ` + ${p.applied.variantsUpdated} variantes` : ""}
+                    {p.applied.promosUpdated > 0 ? ` · ${p.applied.promosUpdated} promos` : ""}.
+                  </p>
+                )}
+                {p?.items && !p.applied && !p.error && (
+                  <div className="rounded-lg border border-border max-h-40 overflow-y-auto">
+                    <table className="w-full text-[11px]">
+                      <tbody>
+                        {p.items.slice(0, 20).map((i: any) => (
+                          <tr key={`${i.kind}-${i.id}`} className={i.skip ? "opacity-50" : ""}>
+                            <td className="p-1.5">{i.name}{i.skip === "no_cost" ? " ⚠️" : i.skip === "combo" ? " 🧩" : ""}</td>
+                            <td className="p-1.5 text-right tabular-nums">{Number(i.oldPrice).toLocaleString("es-AR")} → <strong>{i.newPrice != null ? Number(i.newPrice).toLocaleString("es-AR") : "—"}</strong></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <p className="p-1.5 text-[10px] text-muted-foreground border-t border-border">
+                      Omite {p.skippedNoCost ?? 0} sin costo · {p.skippedCombo ?? 0} combos
+                    </p>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </Modal>
     </Card>
   );
 }

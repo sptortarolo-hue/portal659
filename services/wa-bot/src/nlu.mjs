@@ -305,20 +305,6 @@ CAPA 2 — PEDIDOS (después de elegir tienda):
 18) Cliente: "sin cebolla, doble queso" → items:[{name:"Hamburguesa Clásica",qty:1,unit:"unidad",modifiers:["sin cebolla","doble queso"]}], complete:false
 19) Cliente: "quiero un turno de masaje relajante" → items:[{name:"Masaje Relajante",qty:1,unit:"unidad"}], complete:false
 20) Cliente: "envíalo a la misma dirección de siempre" → method:"delivery", complete:false
-21) Cliente: "1 X3 9x2 y del 17 1 también 2 del 10" → items:[{name:"Boca Juniors #2",qty:3},{name:"Maradona",qty:2},{name:"Stich",qty:1},{name:"Mickey y Minnie",qty:2}], complete:false
-22) Cliente: "4 del 1 y del 17 3" → items:[{name:"Plancha 1",qty:4},{name:"Plancha 17",qty:3}], complete:false
-23) Cliente: "quiero el número 1 y el número 17" → items:[{name:"Plancha 1",qty:1},{name:"Plancha 17",qty:1}], complete:false
-24) Cliente: "del 1 4" (el producto 1, 4 unidades) → items:[{name:"Plancha 1",qty:4}], complete:false
-25) Cliente: "del de boca quiero 3 y del de cerezas 8. Sacame el de stich" (carrito actual: Boca ×1, Maradona ×2, Stich ×1) → items: carrito COMPLETO: [{name:"Boca Juniors #2",qty:3},{name:"Maradona",qty:2},{name:"Cerezas 🍒",qty:8}], op:"setQty" (Stich queda afuera, Maradona sigue), complete:false
-26) Cliente: "Boca quiero 3 y cerezas 8" (carrito actual: Boca ×1, Cerezas ×8, Maradona ×2) → items: [{name:"Boca Juniors #2",qty:3},{name:"Cerezas 🍒",qty:8},{name:"Maradona",qty:2}], op:"setQty", complete:false
-27) Cliente: "Boca quiero 3 y cerezas 8" (carrito actual: boca y cerezas) → op:"setQty", items sin duplicar, complete:false
-
-ESTADOS DE TAREA (hay un campo STAGE en el ctx que dice en qué estás):
-- BROWSING: el cliente todavía no eligió comercio. Objetivo: que elija una tienda y arranque un pedido, o que se informe.
-- ORDERING: el cliente está armando el carrito. Tu trabajo: dejar el carrito COMPLETO (ítems + método + nombre [+dirección si delivery]). Si el cliente cambia su pedido, aplicalos sobre el carrito con op:"setQty" — NUNCA arrastres un carrito que el cliente no pidió.
-- CONFIRMING: se mostró el resumen. Esperás un "sí"/"no"/cambios. Si el cliente agrega algo, mantené los ítems existentes y sumá/ajustá lo nuevo (op:"add" o "setQty" según corresponda).
-- AWAITING_RECEIPT: transferencia pendiente de comprobante. No toques el carrito. Solo confirmar comprobante o pedir un dato.
-- DONE: pedido creado. Agradecé y quedá disponible para un nuevo pedido.
 
 REGLAS DE STOCK Y DESTACADAS:
 - Si un producto dice "SIN STOCK" o el stock es 0, nunca elijas ese producto y nunca lo sugieras. Aunque el cliente insista, declinás y preguntás qué otra cosa quiere (o mostrá categorías disponibles/completamos al final).

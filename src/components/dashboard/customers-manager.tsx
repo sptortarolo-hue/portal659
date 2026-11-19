@@ -572,14 +572,12 @@ export function CustomersManager({ serviceMode = false, vendorId = null, loyalty
           </p>
         </div>
         <div className="flex gap-2 flex-shrink-0">
-          {serviceMode && (
-            <button
-              onClick={() => setShowNew((v) => !v)}
-              className="rounded-xl border border-border bg-background text-sm font-medium py-2 px-3 hover:bg-muted transition-colors"
-            >
-              ＋ Nuevo
-            </button>
-          )}
+          <button
+            onClick={() => setShowNew((v) => !v)}
+            className="rounded-xl border border-border bg-background text-sm font-medium py-2 px-3 hover:bg-muted transition-colors"
+          >
+            ＋ Nuevo
+          </button>
           <a
             href={`/api/vendor/customers?format=csv`}
             className="rounded-xl border border-border bg-background text-sm font-medium py-2 px-3 hover:bg-muted transition-colors flex-shrink-0"
@@ -589,7 +587,7 @@ export function CustomersManager({ serviceMode = false, vendorId = null, loyalty
         </div>
       </div>
 
-      {serviceMode && showNew && (
+      {showNew && (
         <div className="rounded-xl border border-border bg-card p-3 space-y-2">
           <div className="grid sm:grid-cols-3 gap-2">
             <input

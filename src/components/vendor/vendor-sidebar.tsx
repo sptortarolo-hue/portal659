@@ -113,7 +113,8 @@ const OPERACION_ITEMS: { tab: Tab; label: string; short: string; icon: typeof Pa
 const GESTION_ITEMS: { tab: Tab; label: string; short: string; icon: typeof UtensilsCrossed; show: (g: boolean, m: boolean, c: boolean, screens?: boolean) => boolean; suffix?: (count: number) => string }[] = [
   { tab: "menu", label: "Menú", short: "Menú", icon: UtensilsCrossed, show: () => true, suffix: (c) => `${c}` },
   { tab: "promos", label: "Promos", short: "Promos", icon: Share, show: () => true },
-  { tab: "recetas", label: "Preparación y Costo", short: "Costo", icon: Calculator, show: (g) => g },
+  // Preparación y Costo + Envasado (granel → paquetes): gastro y comercio.
+  { tab: "recetas", label: "Preparación y Costo", short: "Costo", icon: Calculator, show: (g, _m, c) => g || c },
   { tab: "clientes", label: "Clientes", short: "Clientes", icon: Users, show: (g, m, c) => g || c || m },
   { tab: "gastos", label: "Gastos", short: "Gastos", icon: Receipt, show: (g, m, c) => g || c || m },
   { tab: "tarjetas", label: "Tarjetas", short: "Tarjetas", icon: Gift, show: (g, m, c) => c || m },
@@ -367,7 +368,7 @@ export default function VendorSidebar({
         tab: "menu",
         label: isComercio || isModa ? "Catalogo" : "Menu",
         title: isComercio || isModa ? "Catalogo" : "Menu",
-        icon: UtensilsCrossed,
+        icon: isComercio || isModa ? ShoppingBag : UtensilsCrossed,
       });
     }
     railItems.push({ tab: "config", label: "Config", title: "Configuracion", icon: Settings });
@@ -547,8 +548,8 @@ export default function VendorSidebar({
               key={item.tab}
               active={currentTab === item.tab}
               onClick={() => handleTab(item.tab)}
-              icon={item.icon}
-              label={item.label}
+              icon={item.tab === "menu" && (isComercio || isModa) ? ShoppingBag : item.icon}
+              label={item.tab === "menu" && (isComercio || isModa) ? "Catalogo" : item.label}
               suffix={item.tab === "menu" ? item.suffix?.(menuCount) : undefined}
             />
           ))

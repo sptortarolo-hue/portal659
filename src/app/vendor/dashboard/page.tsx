@@ -2433,7 +2433,7 @@ function VendorDashboardInner() {
               )}
               {mountedTabs.has("recetas") && (
                 <div className={tab === "recetas" ? "" : "hidden"}>
-                  {isGastro && effectivePlan.can("recipes") ? (
+                  {(isGastro || isComercio) && effectivePlan.can("recipes") ? (
                     <MemoRecipeManager />
                   ) : (
                     <PlanLock
@@ -2698,7 +2698,7 @@ function VendorDashboardInner() {
                   <Image className="h-5 w-5" />Galería
                 </button>
               )}
-              {isGastro && !isEmployee && (
+              {(isGastro || isComercio) && !isEmployee && (
                 <button onClick={() => { setTab("recetas"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "recetas" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                   <FileText className="h-5 w-5" />Preparación y Costo
                 </button>

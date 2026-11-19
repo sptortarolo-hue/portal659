@@ -38,6 +38,7 @@ export async function PATCH(
     "has_variants", "stock_control", "requires_prep", "cash_discount_excluded",
     "pack_size", "size_guide", "promo_only", "sku", "supplier_id", "expires_at",
     "online_available", "scale_plu", "margin_list_id",
+    "count_pack", "package_price",
   ] as const;
 
   const safeUpdate: Record<string, unknown> = {};
@@ -90,6 +91,52 @@ export async function PATCH(
       safeUpdate.unit = safeUpdate.unit === "kg" ? "kg" : "unidad";
     } else {
       delete safeUpdate.unit;
+    }
+  }
+  // Envasado (migrate-elaboration.sql): count_pack + package_price.
+  if ("count_pack" in safeUpdate || "package_price" in safeUpdate) {
+    const hasElab = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'products' AND column_name = 'count_pack'
+       ) AS exists`
+    ).catch(() => ({ exists: false }));
+    const wantsCountPack = safeUpdate.count_pack === true;
+    const pp = safeUpdate.package_price;
+    const wantsPackagePrice = pp !== undefined && pp !== null && String(pp).trim() !== "";
+    if (hasElab?.exists !== true) {
+      // Sin migración: se ignora en silencio, salvo que se intente guardar envasado.
+      if (wantsCountPack || wantsPackagePrice) {
+        return NextResponse.json({ error: "Falta aplicar migrate-elaboration.sql para guardar productos envasados" }, { status: 503 });
+      }
+      delete safeUpdate.count_pack;
+      delete safeUpdate.package_price;
+    } else {
+      if ("count_pack" in safeUpdate) {
+        safeUpdate.count_pack = safeUpdate.count_pack === true;
+      }
+      if ("package_price" in safeUpdate) {
+        const v = safeUpdate.package_price;
+        if (v === null || v === "" || v === undefined) {
+          safeUpdate.package_price = null;
+        } else {
+          const n = Number(v);
+          if (!isFinite(n) || n < 0) {
+            return NextResponse.json({ error: "El precio del paquete debe ser un número mayor o igual a 0" }, { status: 400 });
+          }
+          safeUpdate.package_price = Math.round(n * 100) / 100;
+        }
+      }
+      if (safeUpdate.count_pack === true) {
+        const urow = await queryOne<{ unit: string | null }>(
+          `SELECT unit FROM products WHERE id = $1 AND vendor_id = $2`,
+          [params.id, vendor.id]
+        );
+        const effUnit = "unit" in safeUpdate ? String(safeUpdate.unit || "") : String(urow?.unit || "");
+        if (effUnit !== "kg") {
+          return NextResponse.json({ error: "Un producto envasado debe ser por kilo (unidad kg)" }, { status: 400 });
+        }
+      }
     }
   }
   // SKU: tolerante a migración sin aplicar; vacío limpia.

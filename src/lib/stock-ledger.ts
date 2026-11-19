@@ -15,7 +15,8 @@ export type StockMoveReason =
   | "devolucion"
   | "manual"
   | "apartado"
-  | "orden";
+  | "orden"
+  | "envasado";
 
 export async function logStockMovement(
   tx: Tx,

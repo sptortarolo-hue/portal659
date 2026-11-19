@@ -17,6 +17,24 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const { id } = await params;
   const body = await request.json();
 
+  const hasStockCol = await (async () => {
+    try {
+      const chk = await queryOne<{ exists: boolean }>(
+        `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'ingredients' AND column_name = 'stock') AS exists`
+      );
+      return chk?.exists === true;
+    } catch {
+      return false;
+    }
+  })();
+  const wantsStock = body?.track_stock !== undefined || body?.stock !== undefined;
+  if (wantsStock && !hasStockCol) {
+    return NextResponse.json(
+      { error: "Falta aplicar migrate-elaboration.sql (columna ingredients.stock)." },
+      { status: 503 }
+    );
+  }
+
   const current = await queryOne<Record<string, unknown>>(
     `SELECT * FROM ingredients WHERE id = $1 AND vendor_id = $2`,
     [id, gate.vendor.id]
@@ -46,6 +64,28 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!isFinite(waste_pct) || waste_pct < 0 || waste_pct >= 100) {
     return NextResponse.json({ error: "La merma debe estar entre 0 y 99,99%" }, { status: 400 });
   }
+  // Control de stock (migrate-elaboration.sql): track_stock false => stock NULL
+  // (sin control, como siempre); true => COALESCE(nuevo, actual, 0); un valor
+  // absoluto de `stock` implica tracking activo.
+  let stockVal: number | null =
+    (current as any).stock != null ? Number((current as any).stock) : null;
+  let stockDirty = false;
+  if (body?.track_stock !== undefined && body.track_stock !== true) {
+    stockVal = null;
+    stockDirty = true;
+  }
+  if (body?.stock !== undefined) {
+    const s = Number(body.stock);
+    if (!isFinite(s) || s < 0) {
+      return NextResponse.json({ error: "El stock debe ser un número mayor o igual a 0" }, { status: 400 });
+    }
+    stockVal = s;
+    stockDirty = true;
+  } else if (body?.track_stock === true && stockVal === null) {
+    stockVal = 0;
+    stockDirty = true;
+  }
+
   // Si cambia la unidad base, las líneas existentes podrían quedar
   // incompatibles: se bloquea y se pide revisar recetas primero.
   if (base_unit !== current.base_unit) {
@@ -63,13 +103,22 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
   }
 
-  const row = await queryOne<Record<string, unknown>>(
-    `UPDATE ingredients
-     SET name = $1, base_unit = $2, cost_per_unit = $3, waste_pct = $4,
-         is_elaborated = $5, notes = $6, active = $7, updated_at = now()
-     WHERE id = $8 AND vendor_id = $9 RETURNING *`,
-    [name, base_unit, cost_per_unit, waste_pct, is_elaborated, notes, active, id, gate.vendor.id]
-  );
+  const row = hasStockCol
+    ? await queryOne<Record<string, unknown>>(
+        `UPDATE ingredients
+         SET name = $1, base_unit = $2, cost_per_unit = $3, waste_pct = $4,
+             is_elaborated = $5, notes = $6, active = $7, updated_at = now(),
+             stock = $10
+         WHERE id = $8 AND vendor_id = $9 RETURNING *`,
+        [name, base_unit, cost_per_unit, waste_pct, is_elaborated, notes, active, id, gate.vendor.id, stockDirty ? stockVal : (current as any).stock]
+      )
+    : await queryOne<Record<string, unknown>>(
+        `UPDATE ingredients
+         SET name = $1, base_unit = $2, cost_per_unit = $3, waste_pct = $4,
+             is_elaborated = $5, notes = $6, active = $7, updated_at = now()
+         WHERE id = $8 AND vendor_id = $9 RETURNING *`,
+        [name, base_unit, cost_per_unit, waste_pct, is_elaborated, notes, active, id, gate.vendor.id]
+      );
   return NextResponse.json({ ingredient: row });
 }
 

@@ -42,6 +42,8 @@ export type CartItem = {
   isGift?: boolean;
   /** Unidad de venta: "kg" = fraccionado por peso (qty decimal). */
   unit?: string;
+  /** true = línea de paquete online (precio fijo package_price). */
+  package?: boolean;
   /**
    * Precio del PAQUETE completo (sin mods). Con pack, es la fuente del dinero:
    * línea = packPrice × (qty/packSize) + mods×qty. Nunca sumar unidades

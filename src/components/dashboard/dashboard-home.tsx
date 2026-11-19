@@ -267,9 +267,9 @@ export function DashboardHome({
     {
       tab: "recetas",
       label: "Preparación y Costo",
-      desc: "Costos y food cost de tus platos",
+      desc: "Costos, food cost y envasado de tus productos",
       icon: Calculator,
-      show: isGastro && can("recipes"),
+      show: (isGastro || isComercio) && can("recipes"),
     },
     {
       tab: "inventario",

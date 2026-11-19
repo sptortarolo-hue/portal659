@@ -123,6 +123,7 @@ export async function POST(request: Request) {
             name: i.name,
             unit: i.unit === "kg" ? "kg" : undefined,
             combo_members: Array.isArray(i.combo_members) && i.combo_members.length > 0 ? i.combo_members : undefined,
+            package: i.package === true ? true : undefined,
           }))
         ),
       },

@@ -57,6 +57,40 @@ async function resolveComboMembersFromDb(
   }
 }
 
+/**
+ * Prepara los ítems para el movimiento de stock (venta o reposición).
+ * - Excluye líneas por kilo (pesan y no descuentan por kg) y manuales.
+ * - EXCEPCIÓN: líneas por kilo de productos "cuento paquetes" (envasado)
+ *   entran como 1 PAQUETE por línea (cada etiqueta es una bolsa física).
+ * Tolerante a la migración sin aplicar: sin la columna count_pack, kg no
+ * descuenta stock, como siempre.
+ */
+export async function stockItemsForMovement(
+  tx: Tx,
+  vendorId: string,
+  items: OrderItem[] | null | undefined
+): Promise<OrderItem[]> {
+  const arr = items || [];
+  const normal = arr.filter((i) => (i as any)?.unit !== "kg");
+  const kgLines = arr.filter((i) => (i as any)?.unit === "kg" && !(i as any)?.manual && (i as any)?.product_id);
+  if (kgLines.length === 0) return normal as OrderItem[];
+  try {
+    const rows = await tx.query<{ id: string }>(
+      `SELECT id FROM products WHERE vendor_id = $1 AND count_pack = true AND id = ANY($2)`,
+      [vendorId, [...new Set(kgLines.map((i) => String((i as any).product_id)))]]
+    );
+    const packIds = new Set((rows || []).map((r) => String(r.id)));
+    return [
+      ...(normal as OrderItem[]),
+      ...kgLines
+        .filter((i) => packIds.has(String((i as any).product_id)))
+        .map((i) => ({ ...(i as any), qty: 1 }) as OrderItem),
+    ];
+  } catch {
+    return normal as OrderItem[];
+  }
+}
+
 export type AdjustStockOptions = {
   /**
    * Permite dejar el stock en negativo al descontar. Se usa SOLO en ventas

@@ -347,6 +347,23 @@ export async function POST(request: Request) {
         `UPDATE ingredients SET cost_per_unit = $1, updated_at = now() WHERE id = $2`,
         [it.unit_cost_net, it.ingredient_id]
       );
+      // Envasado: si el insumo controla stock (columna presente y no NULL),
+      // la compra entra stock + kardex, como la mercadería. Sin migración o
+      // sin control activo: solo costo, como siempre.
+      const currIng = ingMap.get(it.ingredient_id) as any;
+      if (currIng && currIng.stock !== undefined && currIng.stock !== null) {
+        await tx.queryVoid(
+          `UPDATE ingredients SET stock = stock + $2, updated_at = now() WHERE id = $1`,
+          [it.ingredient_id, it.qty_base]
+        );
+        await logStockMovement(tx, {
+          vendorId: gate.vendor.id,
+          ingredient_id: it.ingredient_id,
+          qty_delta: it.qty_base,
+          reason: "compra",
+          ref_purchase: p.id,
+        });
+      }
       // Precio del proveedor (para comparar y cotizar).
       if (supplier_id) {
         const existing = await tx.queryOne<{ id: string }>(

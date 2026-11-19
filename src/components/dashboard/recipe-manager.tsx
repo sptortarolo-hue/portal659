@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { apiJson, getJson } from "@/components/dashboard/shared";
 import { RecipeEditor, type RecipeLinkInfo } from "@/components/dashboard/recipe-editor";
 import { PurchasesManager } from "@/components/dashboard/purchases-manager";
+import { PackEnvasado } from "@/components/dashboard/pack-envasado";
 import { IngredientForm } from "@/components/dashboard/ingredient-form";
 import type { Ingredient, Recipe, RecipeItem } from "@/types/database";
 import {
@@ -101,7 +102,7 @@ function ThresholdSettings({
 // Tab Preparación y Costo: carta con semáforo + editor | biblioteca de insumos | compras.
 // ---------------------------------------------------------------------------
 export function RecipeManager() {
-  const [view, setView] = useState<"platos" | "insumos" | "compras">("platos");
+  const [view, setView] = useState<"platos" | "insumos" | "compras" | "envasado">("platos");
   const [products, setProducts] = useState<Product[]>([]);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
@@ -194,19 +195,30 @@ export function RecipeManager() {
           >
             🧾 Compras
           </button>
+          <button
+            onClick={() => setView("envasado")}
+            className={`px-4 py-2 flex-1 sm:flex-none ${view === "envasado" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+            title="Envasar granel en paquetes con la balanza"
+          >
+            🫙 Envasado
+          </button>
         </div>
       </div>
 
-      <Input
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder={view === "platos" ? "Buscar plato…" : view === "insumos" ? "Buscar insumo…" : "Buscar por proveedor o comprobante…"}
-        className="max-w-sm"
-      />
+      {view !== "envasado" && (
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={view === "platos" ? "Buscar plato…" : view === "insumos" ? "Buscar insumo…" : "Buscar por proveedor o comprobante…"}
+          className="max-w-sm"
+        />
+      )}
 
-      <ThresholdSettings thresholds={thresholds} onSaved={refreshAfterSave} />
+      {view === "platos" && <ThresholdSettings thresholds={thresholds} onSaved={refreshAfterSave} />}
 
-      {view === "compras" ? (
+      {view === "envasado" ? (
+        <PackEnvasado />
+      ) : view === "compras" ? (
         <PurchasesManager
           ingredients={ingredients.filter((i) => i.active !== false)}
           search={search}

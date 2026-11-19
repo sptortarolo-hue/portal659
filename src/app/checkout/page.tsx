@@ -624,14 +624,20 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
         : i.price + modTotal;
       // Por peso: MP exige quantity entero → 1 × total de la línea.
       const isKg = (i as any).unit === "kg";
+      const isPackage = (i as any).package === true;
       return {
         offerId: i.offerId,
         variantId: i.variantId,
-        name: isKg ? `${i.name} (${Number(i.qty).toLocaleString("es-AR", { maximumFractionDigits: 3 })}kg)` : i.name,
+        name: isPackage
+          ? `${i.name} (paquete)`
+          : isKg
+            ? `${i.name} (${Number(i.qty).toLocaleString("es-AR", { maximumFractionDigits: 3 })}kg)`
+            : i.name,
         price: isKg ? Math.round(lineNet * 100) / 100 : unit,
         qty: isKg ? 1 : i.qty,
         unit: isKg ? "kg" : undefined,
         combo_members: (i as any).comboMembers,
+        package: (i as any).package,
       };
     });
     const mpTotal = mpItems.reduce((s, it) => s + it.price * it.qty, 0) + deliveryFee;
@@ -786,6 +792,7 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
             qty: i.qty,
             modifiers: (i.modifiers || []).map((m) => ({ label: m.label, group: m.group })),
             unit: (i as any).unit,
+            package: (i as any).package,
             combo_members: (i as any).comboMembers,
           })),
           total: displayTotal,

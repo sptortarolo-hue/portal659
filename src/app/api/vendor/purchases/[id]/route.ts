@@ -1,6 +1,7 @@
 ﻿import { gateRequest, gateError } from "@/lib/subscription-gate";
 import { queryMany, queryOne, withTransaction } from "@/lib/db";
 import { toDateOnly } from "@/lib/expiry";
+import { unitFactor } from "@/lib/costing";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -65,6 +66,19 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     `SELECT DISTINCT ingredient_id FROM purchase_items WHERE purchase_id = $1 AND ingredient_id IS NOT NULL`,
     [id]
   ).then((r) => (r || []).map((x) => x.ingredient_id));
+  // Insumos de la compra con datos para revertir el stock que entró
+  // (qty en unidad base). Tolerante: sin la columna stock, no hay nada que revertir.
+  let ingLines: Record<string, any>[] = [];
+  try {
+    ingLines = await queryMany<Record<string, any>>(
+      `SELECT i.ingredient_id, i.qty, i.unit, g.base_unit, g.stock
+       FROM purchase_items i JOIN ingredients g ON g.id = i.ingredient_id
+       WHERE i.purchase_id = $1 AND i.ingredient_id IS NOT NULL`,
+      [id]
+    ).then((r) => r || []);
+  } catch {
+    ingLines = [];
+  }
   // Mercadería de la compra (para restar el stock que entró + revertir costo).
   let merchLines: Record<string, any>[] = [];
   let hasItemExpiry = false;
@@ -104,6 +118,25 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
       } else {
         result.push({ ingredient_id: iid, cost_per_unit: null });
       }
+    }
+    // Insumos con control de stock: resta lo que entró la compra (misma
+    // conversión a unidad base que al crearla). Kardex con razón compra.
+    for (const l of ingLines) {
+      if (l.stock === undefined || l.stock === null) continue;
+      const f = unitFactor(String(l.unit), String(l.base_unit));
+      if (f === null) continue;
+      const qb = Number(l.qty) * f;
+      if (!(qb > 0)) continue;
+      await tx.queryVoid(
+        `UPDATE ingredients SET stock = GREATEST(0, stock - $2), updated_at = now() WHERE id = $1`,
+        [l.ingredient_id, qb]
+      );
+      await logStockMovement(tx, {
+        vendorId: gate.vendor.id,
+        ingredient_id: String(l.ingredient_id),
+        qty_delta: -qb,
+        reason: "compra",
+      });
     }
     // Mercadería: resta el stock que entró, revierte cost_last/cost_avg a la
     // compra anterior (o NULL) y deja rastro en kardex (razón compra negativa).

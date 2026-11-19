@@ -467,6 +467,32 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
     setQty(pack);
   }
 
+  // Envasado online: "🛒 Llevar el paquete" a precio fijo (solo si el
+  // producto está marcado como envasado y tiene precio de paquete).
+  const packagePrice =
+    (product as any).package_price != null ? Number((product as any).package_price) : null;
+  const showPackage =
+    isKg && packagePrice != null && Number.isFinite(packagePrice) && packagePrice > 0 && acceptsCart &&
+    (product as any).count_pack === true;
+  function handleAddPackage() {
+    if (!showPackage || packagePrice == null) return;
+    const switched = addItem(vendor, {
+      offerId: product.id,
+      name: product.name,
+      price: packagePrice,
+      qty: 1,
+      origPrice: packagePrice,
+      hasPromo: false,
+      package: true,
+    } as any);
+    addToast(
+      switched
+        ? "Se limpió el carrito anterior (solo podés pedir de un local a la vez)"
+        : `${product.name} (paquete) agregado al carrito`
+    );
+    close();
+  }
+
   // Desktop: fila compacta con botón directo (comportamiento actual).
   const desktopRow = (
     <div
@@ -545,17 +571,24 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
         {!outStock &&
           (acceptsCart ? (
             isKg ? (
-              <WeightPicker
-                value={kg}
-                onChange={setKg}
-                rules={weightRules}
-                productName={product.name}
-                variant="row"
-                error={kgErr}
-                onAdd={handleAdd}
-                addLabel={`Agregar · ${displayTotal.toLocaleString("es-AR")}`}
-                addDisabled={!kgOk}
-              />
+              <span className="flex flex-col items-end gap-0.5">
+                <WeightPicker
+                  value={kg}
+                  onChange={setKg}
+                  rules={weightRules}
+                  productName={product.name}
+                  variant="row"
+                  error={kgErr}
+                  onAdd={handleAdd}
+                  addLabel={`Agregar · ${displayTotal.toLocaleString("es-AR")}`}
+                  addDisabled={!kgOk}
+                />
+                {showPackage && (
+                  <button type="button" onClick={handleAddPackage} className="text-[11px] underline underline-offset-2 text-primary whitespace-nowrap">
+                    o 🛒 paquete — ${Number(packagePrice).toLocaleString("es-AR")}
+                  </button>
+                )}
+              </span>
             ) : (
               <AddToCartButton offerId={product.id} name={product.name} price={baseUnit} vendor={vendor} modifiers={modifiers} cashExcluded={cashExcluded} origPrice={pack > 1 ? Number(product.price) : listBaseUnit} hasPromo={hasPromo} packSize={pack > 1 ? pack : undefined} packPrice={pack > 1 ? basePrice : undefined} />
             )
@@ -951,6 +984,15 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
                     </div>
                   )}
 
+                  {showPackage && (
+                    <button
+                      type="button"
+                      onClick={handleAddPackage}
+                      className="w-full rounded-xl border border-primary/40 text-primary text-sm font-semibold py-2.5 hover:bg-primary/5 transition-colors"
+                    >
+                      🛒 Llevar el paquete — ${Number(packagePrice).toLocaleString("es-AR")}
+                    </button>
+                  )}
                   {/* Total + Agregar */}
                   <button
                     type="button"

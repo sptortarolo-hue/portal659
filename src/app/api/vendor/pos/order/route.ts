@@ -19,7 +19,7 @@ import {
   type ResolvedPricing,
 } from "@/lib/pricing";
 import type { OrderItem } from "@/types/database";
-import { adjustStockForItems, OutOfStockError, type StockMove } from "@/lib/stock";
+import { adjustStockForItems, stockItemsForMovement, OutOfStockError, type StockMove } from "@/lib/stock";
 import { logStockMovement } from "@/lib/stock-ledger";
 import { upsertCustomerFromOrder, isRealCustomerPhone } from "@/lib/customers";
 import { getOpenShift } from "@/lib/cash-closing";
@@ -531,14 +531,25 @@ export async function POST(request: Request) {
     // Pedidos de prueba (preview) no tocan el stock real.
     let movedStock: StockMove[] = [];
     if (!previewOrder) {
+      // Envasado: líneas kg de productos "cuento paquetes" viajan como 1
+      // paquete por línea (ver stockItemsForMovement). No se bloquea la
+      // venta por stock: la bolsa ya salió físicamente.
+      const packItems = await stockItemsForMovement(tx, gate.vendor.id, finalItems);
       movedStock = await adjustStockForItems(
         tx,
-        finalItems.filter((i) => i.unit !== "kg" && !i.manual && (i.product_id || i.variant_id)),
+        packItems.filter((i) => (i as any)?.unit !== "kg"),
         "decrement",
         // Venta retrospectiva (ajuste post-cierre): el producto ya salió, así
         // que se permite dejar el stock en negativo en vez de bloquear.
         { allowNegative: adjustClosing != null }
       );
+      const packMoves = await adjustStockForItems(
+        tx,
+        packItems.filter((i) => (i as any)?.unit === "kg"),
+        "decrement",
+        { allowNegative: true }
+      );
+      movedStock = [...movedStock, ...packMoves];
     }
 
     // Canje de giftcard en mostrador: DENTRO de la tx y ANTES del INSERT,

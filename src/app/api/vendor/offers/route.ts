@@ -303,6 +303,53 @@ export async function POST(request: Request) {
   if (unit != null) { extraCols.push("unit"); extraVals.push(unit); }
   if (sku != null) { extraCols.push("sku"); extraVals.push(sku); }
   if (scalePlu != null) { extraCols.push("scale_plu"); extraVals.push(scalePlu); }
+  // Envasado (migrate-elaboration.sql): producto "cuento paquetes" + precio online del paquete.
+  const hasElaborationCol = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'products' AND column_name = 'count_pack'
+     ) AS exists`
+  ).catch(() => ({ exists: false }));
+  if (body?.count_pack !== undefined || body?.package_price !== undefined) {
+    const wantsCountPack = body.count_pack === true;
+    const wantsPackagePrice =
+      body.package_price !== undefined &&
+      body.package_price !== null &&
+      String(body.package_price).trim() !== "";
+    if (hasElaborationCol?.exists !== true) {
+      // Sin migración: se ignora en silencio, salvo que se intente guardar envasado.
+      if (wantsCountPack || wantsPackagePrice) {
+        return NextResponse.json(
+          { error: "Falta aplicar migrate-elaboration.sql para guardar productos envasados" },
+          { status: 503 }
+        );
+      }
+    } else {
+      if (wantsCountPack && unit !== "kg") {
+        return NextResponse.json(
+          { error: "Un producto envasado debe ser por kilo (unidad kg)" },
+          { status: 400 }
+        );
+      }
+      if (body.count_pack !== undefined) {
+        extraCols.push("count_pack");
+        extraVals.push(body.count_pack === true);
+      }
+      if (body.package_price !== undefined) {
+        if (body.package_price === null || body.package_price === "") {
+          extraCols.push("package_price");
+          extraVals.push(null);
+        } else {
+          const n = Number(body.package_price);
+          if (!isFinite(n) || n < 0) {
+            return NextResponse.json({ error: "El precio del paquete debe ser un número mayor o igual a 0" }, { status: 400 });
+          }
+          extraCols.push("package_price");
+          extraVals.push(Math.round(n * 100) / 100);
+        }
+      }
+    }
+  }
   // Lista de margen (tolerante a migración sin aplicar): valida que la lista sea del comercio.
   const hasMarginListCol = await queryOne<{ exists: boolean }>(
     `SELECT EXISTS (

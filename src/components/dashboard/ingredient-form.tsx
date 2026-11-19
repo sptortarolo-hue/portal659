@@ -33,6 +33,9 @@ export function IngredientForm({
   const [isElaborated, setIsElaborated] = useState(!!initial?.is_elaborated);
   const [notes, setNotes] = useState(initial?.notes || "");
   const [active, setActive] = useState(initial ? !!initial.active : true);
+  const hasStockCol = initial == null || (initial as any).stock !== undefined;
+  const [trackStock, setTrackStock] = useState(() => initial ? (initial as any).stock != null : false);
+  const [stock, setStock] = useState(() => initial && (initial as any).stock != null ? String((initial as any).stock) : "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -57,6 +60,8 @@ export function IngredientForm({
       is_elaborated: isElaborated,
       notes: notes.trim() || null,
       active,
+      track_stock: trackStock,
+      stock: trackStock ? Number(stock || 0) : null,
     };
     const r = initial
       ? await apiJson(`/api/vendor/ingredients/${initial.id}`, {
@@ -146,6 +151,34 @@ export function IngredientForm({
             <Switch checked={isElaborated} onCheckedChange={setIsElaborated} />
             <Label className="text-xs">Es elaborado 🧪<br /><span className="text-muted-foreground">(lleva sub-preparación)</span></Label>
           </div>
+        </div>
+        <div className="rounded-xl border border-border p-2.5 space-y-2">
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={trackStock}
+              disabled={!hasStockCol}
+              onCheckedChange={(v) => {
+                if (!v && initial && (initial as any).stock != null) {
+                  if (!window.confirm("Al apagar el control de stock el insumo deja de descontar existencias (el kardex se conserva). ¿Seguir?")) return;
+                }
+                setTrackStock(v);
+                if (v && stock === "") setStock("0");
+              }}
+            />
+            <Label className="text-xs">Controlar stock
+              <br /><span className="text-muted-foreground">granel y packaging: se descuentan al envasar</span>
+            </Label>
+          </div>
+          {trackStock && (
+            <div className="flex items-center gap-2">
+              <Label className="text-xs whitespace-nowrap">Stock actual</Label>
+              <Input type="number" min={0} step="any" value={stock} onChange={(e) => setStock(e.target.value)} placeholder={`0 (${baseUnit})`} className="w-32" />
+              <span className="text-xs text-muted-foreground">en {baseUnit}</span>
+            </div>
+          )}
+          {!hasStockCol && (
+            <p className="text-[11px] text-amber-600">Falta aplicar migrate-elaboration.sql para guardar el stock.</p>
+          )}
         </div>
         <p className="text-xs text-muted-foreground -mt-1">
           La merma real depende de tu proveedor y tu cocina: pesá bruto vs. neto alguna vez y ajustala.

@@ -227,6 +227,8 @@ export type Ingredient = {
   is_elaborated: boolean;
   notes: string | null;
   active: boolean;
+  /** Stock en unidad base (g/ml/u). undefined = migración sin aplicar; null = sin control. */
+  stock?: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -912,6 +914,8 @@ export type OrderItem = {
   unit?: string;
   /** Línea manual de mostrador ("Varios"): sin producto, sin stock, fuera de estadísticas. */
   manual?: boolean;
+  /** Línea de PAQUETE online (envasado): precio fijo package_price; stock cuenta 1 paquete. */
+  package?: boolean;
   /**
    * Componentes si el ítem es un combo (snapshot al pedir, para stock/kardex).
    * Con armado por unidad cada entrada lleva su variante (color/talle).

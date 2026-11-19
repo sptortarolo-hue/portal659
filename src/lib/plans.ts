@@ -141,7 +141,8 @@ export const MODA_FREE_ORDERS_MONTH = 5;
 // gratuito = vidriera + contacto; el carrito (retiro/delivery) y el mostrador
 // arrancan con plan pago. Usa los MISMOS planes pagos que gastronomía, pero
 // NUNCA las features de cocina/salón aunque el plan gestión las traiga en su
-// JSONB (kds/mesas/recipes quedan enmascaradas).
+// JSONB (kds/mesas quedan enmascaradas; recipes NO: el comercio usa
+// Preparación y Costo para el envasado granel → paquetes).
 const COMERCIO_FREE_FEATURES: PlanFeatures = {
   ...GRATUITO_FEATURES,
 };
@@ -236,11 +237,12 @@ const MODA_FEATURE_MASK: Partial<Record<FeatureKey, false>> = {
 };
 
 // Features del plan que no aplican al vertical comercio (forzadas a false).
-// pos/printer/caja/crm/analytics/reviews SÍ aplican con el plan pago.
+// pos/printer/caja/crm/analytics/reviews sí aplican con el plan pago.
+// recipes NO se enmascara desde migrate-elaboration: el comercio puede
+// usar Preparación y Costo + Envasado (granel → paquetes) con Gestión.
 const COMERCIO_FEATURE_MASK: Partial<Record<FeatureKey, false>> = {
   kds: false,
   mesas: false,
-  recipes: false,
 };
 
 export function featureOf(plan: Plan | null | undefined, feature: FeatureKey): boolean {

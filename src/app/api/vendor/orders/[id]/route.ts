@@ -5,7 +5,7 @@ import { sendPushToUser } from "@/lib/push";
 import { getSiteUrl } from "@/lib/site-url";
 import { NextResponse } from "next/server";
 import { canTransition } from "@/lib/order-utils";
-import { adjustStockForItems, OutOfStockError, type StockMove } from "@/lib/stock";
+import { adjustStockForItems, stockItemsForMovement, OutOfStockError, type StockMove } from "@/lib/stock";
 import { logStockMovement } from "@/lib/stock-ledger";
 import { isRetailVendor } from "@/lib/plans";
 import { PricingError, resolveOrderPricing } from "@/lib/pricing";
@@ -571,10 +571,12 @@ export async function PATCH(
         // stock al crear: app y mostrador; mesa nunca reserva).
         // Por peso (kg) nunca toca stock (evita 22P02 con decimales).
         if (currentOrder.channel === "app" || currentOrder.channel === "mostrador") {
-          const noKg = (items: OrderItem[] | null | undefined) =>
-            (items || []).filter((i) => (i as OrderItem)?.unit !== "kg");
-          const returnedStock: StockMove[] = await adjustStockForItems(tx, noKg(currentOrder.items as OrderItem[]), "increment");
-          const reservedStock: StockMove[] = await adjustStockForItems(tx, noKg(pricing.items as OrderItem[]), "decrement");
+          // Por peso (kg) nunca toca stock — EXCEPTO productos "cuento
+          // paquetes" (envasado): 1 paquete por línea, como en la venta.
+          const restock = await stockItemsForMovement(tx, vendor.id, currentOrder.items as OrderItem[]);
+          const reserve = await stockItemsForMovement(tx, vendor.id, pricing.items as OrderItem[]);
+          const returnedStock: StockMove[] = await adjustStockForItems(tx, restock, "increment");
+          const reservedStock: StockMove[] = await adjustStockForItems(tx, reserve, "decrement");
           for (const m of returnedStock) {
             await logStockMovement(tx, { vendorId: vendor.id, product_id: m.product_id, variant_id: m.variant_id, qty_delta: m.qty, reason: "devolucion", ref_order: params.id });
           }
@@ -647,7 +649,7 @@ export async function PATCH(
       if (status === "cancelled" && (currentOrder.channel === "app" || currentOrder.channel === "mostrador") && currentOrder.is_preview !== true) {
         const updatedItems = ((orderRows[0].items as OrderItem[] | null) ?? currentOrder.items) || [];
         // Por peso (kg) nunca tocó stock → no se repone (evita 22P02).
-        const returnedStock: StockMove[] = await adjustStockForItems(tx, updatedItems.filter((i) => (i as OrderItem)?.unit !== "kg"), "increment");
+        const returnedStock: StockMove[] = await adjustStockForItems(tx, await stockItemsForMovement(tx, vendor.id, updatedItems), "increment");
         for (const m of returnedStock) {
           await logStockMovement(tx, { vendorId: vendor.id, product_id: m.product_id, variant_id: m.variant_id, qty_delta: m.qty, reason: "devolucion", ref_order: params.id });
         }
@@ -910,7 +912,7 @@ export async function DELETE(
       order.items.length > 0
     ) {
       // Por peso (kg) nunca tocó stock → no se repone (evita 22P02).
-      const returnedStock: StockMove[] = await adjustStockForItems(tx, (order.items || []).filter((i) => (i as OrderItem)?.unit !== "kg"), "increment");
+      const returnedStock: StockMove[] = await adjustStockForItems(tx, await stockItemsForMovement(tx, vendor.id, (order.items || []) as OrderItem[]), "increment");
       for (const m of returnedStock) {
         await logStockMovement(tx, { vendorId: vendor.id, product_id: m.product_id, variant_id: m.variant_id, qty_delta: m.qty, reason: "devolucion", ref_order: params.id });
       }

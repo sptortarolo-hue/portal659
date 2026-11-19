@@ -3,7 +3,7 @@ import { queryMany, queryOne, withTransaction } from "@/lib/db";
 import { sendEmail, newOrderVendorEmail } from "@/lib/email";
 import { sendPushToUser } from "@/lib/push";
 import { resolveVendorPlan } from "@/lib/plans";
-import { adjustStockForItems, OutOfStockError, type StockMove } from "@/lib/stock";
+import { adjustStockForItems, stockItemsForMovement, OutOfStockError, type StockMove } from "@/lib/stock";
 import { logStockMovement } from "@/lib/stock-ledger";
 import { isStoreOpen } from "@/lib/open-hours";
 import { PricingError, resolveOrderPricing, IncomingOrderItem } from "@/lib/pricing";
@@ -670,7 +670,11 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
 
       const movedStock: StockMove[] = isPreview
         ? []
-        : await adjustStockForItems(tx, resolvedItems.filter((i) => (i as any).unit !== "kg"), "decrement");
+        : await adjustStockForItems(
+            tx,
+            await stockItemsForMovement(tx, vendorId, resolvedItems as OrderItem[]),
+            "decrement"
+          );
       pickupNumber = await nextOrderNumber(tx, vendorId);
 
       // $16 = track_token; después van las columnas opcionales con

@@ -933,6 +933,7 @@ export async function POST(request: Request) {
         // orden que additional_info.items). Se cuelga al ítem para que el
         // pedido persista el armado (desglose y stock por variante).
         let mpComboByIndex: (({ product_id: string; name?: string; qty: number; variant_id?: string; color?: string; talle?: string }[] | null)[]) | null = null;
+        let mpPackageByIndex: (boolean[] | null) = null;
         try {
           const rawStock = (metadata as Record<string, unknown>).stock_items;
           const parsed = typeof rawStock === "string" ? JSON.parse(rawStock) : null;
@@ -941,15 +942,19 @@ export async function POST(request: Request) {
               Array.isArray(s?.combo_members) ? (s.combo_members as any[]).filter(Boolean) : null
             );
             if (combos.some(Boolean)) mpComboByIndex = combos;
+            const packs = parsed.map((s: any) => s?.package === true);
+            if (packs.some(Boolean)) mpPackageByIndex = packs;
           }
         } catch {
           mpComboByIndex = null;
+          mpPackageByIndex = null;
         }
         const orderItems = items.map((i: any, idx: number) => ({
           name: i.title,
           price: Number(i.unit_price),
           qty: Number(i.quantity),
           ...(mpComboByIndex?.[idx] ? { combo_members: mpComboByIndex[idx] } : {}),
+          ...(mpPackageByIndex?.[idx] ? { package: true } : {}),
         }));
         // Zona de envío (metadata del checkout): se valida contra el comercio.
         // Zona inexistente/inactiva → fuera de zona (entra a convenir).
@@ -1191,10 +1196,12 @@ export async function POST(request: Request) {
                  ]);
                }
              }
-            // Por peso no descuenta stock (igual que app/mostrador).
+            // Por peso no descuenta stock (igual que app/mostrador),
+            // EXCEPTO paquetes envasados (count_pack): 1 paquete por línea.
+            const { stockItemsForMovement } = await import("@/lib/stock");
             const stockable = Array.isArray(stockItems)
-              ? stockItems.filter((s: any) => s?.unit !== "kg")
-              : stockItems;
+              ? await stockItemsForMovement(tx, vendorId, stockItems as any[])
+              : [];
             const moved = await adjustStockForItems(tx, stockable, "decrement");
             // Kardex: la venta MP también deja rastro (antes era invisible).
             const { logStockMovement } = await import("@/lib/stock-ledger");

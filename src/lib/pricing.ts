@@ -34,6 +34,8 @@ export type IncomingOrderItem = {
    * La validación server-side corre en el staged (PricingError).
    */
   combo_members?: unknown;
+  /** true = línea de PAQUETE online (envasado): se cobra package_price fijo. */
+  package?: boolean | null;
 };
 
 /** Error de negocio al recomputar pedido (producto deshabilitado, modificador inválido, carrito vacío). */
@@ -55,6 +57,8 @@ type ProductRow = {
   pack_size: number | null;
   /** Unidad de venta: "kg" = precio por kilo, cantidad decimal. */
   unit?: string | null;
+  /** Precio fijo del PAQUETE para venta online (envasado). NULL = sin venta por paquete. */
+  package_price?: number | null;
 };
 
 type VariantRow = {
@@ -164,13 +168,24 @@ export async function resolveOrderPricing(opts: {
   // IDs de producto = los directos + los asociados a variantes.
   for (const v of variants) productIds.add(v.product_id);
 
-  const products: ProductRow[] = productIds.size
-    ? await tx.query<ProductRow>(
+  // Select del catálogo: tolerante a la migración sin aplicar (package_price
+  // no existe todavía): si falla por la columna, se repite sin ella.
+  let products: ProductRow[] = [];
+  if (productIds.size) {
+    try {
+      products = await tx.query<ProductRow>(
+        `SELECT id, name, price, promo_price, available, cash_discount_excluded, pack_size, unit, package_price FROM products
+         WHERE vendor_id = $1 AND id = ANY($2)`,
+        [[...productIds], vendorId]
+      );
+    } catch {
+      products = await tx.query<ProductRow>(
         `SELECT id, name, price, promo_price, available, cash_discount_excluded, pack_size, unit FROM products
          WHERE vendor_id = $1 AND id = ANY($2)`,
-        [vendorId, [...productIds]]
-      )
-    : [];
+        [[...productIds], vendorId]
+      );
+    }
+  }
 
   // Componentes de combos: se adjuntan al ProductRow como snapshot (para
   // stock/kardex y desglose del ticket). Guard con to_regclass (nunca lanza):
@@ -365,7 +380,10 @@ export async function resolveOrderPricing(opts: {
 
     const qty = Number(it.qty);
     // Por peso: kilos decimales (0 < kg <= 99), sin piso entero ni pack.
-    const isKg = !it.variantId && (productById.get(String(it.offerId)) as any)?.unit === "kg";
+    // Paquete online (envasado): cantidad entera como unidad, precio package_price.
+    const isPackage = !it.variantId && (it as any)?.package === true;
+    const isKg =
+      !isPackage && !it.variantId && (productById.get(String(it.offerId)) as any)?.unit === "kg";
     const kgName = (productById.get(String(it.offerId)) as any)?.name || "el producto";
     const qtySafe = isKg
       ? Number.isFinite(qty) && qty > 0 && qty <= 99
@@ -401,6 +419,16 @@ export async function resolveOrderPricing(opts: {
     let unitPrice: number;
     if (variant) {
       unitPrice = variant.promo != null ? Number(variant.promo) : Number(variant.price);
+    } else if (isPackage) {
+      // Envasado online: el paquete tiene precio fijo propio (package_price).
+      const pp = (product as any)?.package_price;
+      if (String((product as any)?.unit || "") !== "kg") {
+        throw new PricingError(`"${product.name}" no se vende por paquete.`);
+      }
+      if (pp == null || !Number.isFinite(Number(pp))) {
+        throw new PricingError(`"${product.name}" no tiene precio de paquete online.`);
+      }
+      unitPrice = Number(pp);
     } else {
       unitPrice = product.promo_price != null ? Number(product.promo_price) : Number(product.price);
     }
@@ -575,6 +603,7 @@ export async function resolveOrderPricing(opts: {
       // combo en sí no tiene stock propio: los componentes sí. Con armado
       // por unidad cada entrada lleva su variante (color/talle incluidos).
       combo_members: comboMembersOut,
+      package: isPackage ? true : undefined,
     });
   }
 

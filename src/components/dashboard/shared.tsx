@@ -346,6 +346,12 @@ type OfferFormProps = {
   /** PLU de balanza (etiquetas de medida variable). Visible con "Por peso". */
   offScalePlu?: string;
   setOffScalePlu?: (v: string) => void;
+  /** Envasado (migrate-elaboration.sql): el stock cuenta paquetes. */
+  showEnvasado?: boolean;
+  offCountPack?: boolean;
+  setOffCountPack?: (v: boolean) => void;
+  offPackagePrice?: string;
+  setOffPackagePrice?: (v: string) => void;
   /** Foto remota sugerida por lookup (se descarga al guardar). */
   remotePhoto?: string | null;
   onRemotePhoto?: (url: string | null) => void;
@@ -390,6 +396,9 @@ export function OfferForm({
   showSku = false,
   offSku = "", setOffSku,
   offScalePlu = "", setOffScalePlu,
+  showEnvasado = false,
+  offCountPack = false, setOffCountPack,
+  offPackagePrice = "", setOffPackagePrice,
   remotePhoto = null, onRemotePhoto,
   offIsCombo = false, setOffIsCombo,
   offComboItems = [], setOffComboItems,
@@ -666,6 +675,32 @@ export function OfferForm({
               Código con el que la balanza imprime la etiqueta de este producto. Se escanea en el
               Mostrador y entra con el peso ya cargado.
             </p>
+          </div>
+        )}
+        {showEnvasado && offUnit === "kg" && setOffCountPack && (
+          <div className="rounded-xl border border-border p-2.5 space-y-2">
+            <div className="flex items-center gap-2">
+              <Switch checked={offCountPack} onCheckedChange={setOffCountPack} />
+              <Label className="text-xs">Cuento paquetes (envasado)
+                <br /><span className="text-muted-foreground">el stock se lleva por bolsas; la etiqueta descuenta 1 paquete</span>
+              </Label>
+            </div>
+            {offCountPack && setOffPackagePrice && (
+              <div>
+                <Label className="text-xs">Precio del paquete online (opcional)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={offPackagePrice}
+                  onChange={(e) => setOffPackagePrice(e.target.value)}
+                  placeholder="Vacío = sin venta online por paquete"
+                />
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  En el micrositio el paquete se vende a este precio fijo (1 paquete = 1 línea). En el local la etiqueta sigue cobrando el peso real.
+                </p>
+              </div>
+            )}
           </div>
         )}
         {showSku && setOffSku && (

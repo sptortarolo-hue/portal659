@@ -43,6 +43,10 @@ const MAX_PARSE_MISSES = 2;
 
 // Regexes
 const RE_CANCEL   = /^(cancelar|no gracias|basta)\b/i;
+// Palabras de flujo: método de entrega / pago / saludo / navegación.
+// Sirven para reconocer que el cliente no está respondiendo a una
+// desambiguación de producto, sino avanzando al siguiente paso.
+const FLOW_WORDS = /\b(retiro|retirar|envío|envio|delivery|domicilio|despachen|efectivo|cash|transferencia|transferir|cbu|alias|mercadopago|mercado\s*pago|tarjeta|hola|buenas|buen\s*d[ií]a|buenas\s*tardes|buenas\s*noches|chau|gracias|volver|atr[aá]s|inicio|menú|menu|comercios|tiendas|cat[aá]logo|opci[oó]n|detalles|confirmo|dale|listo|ok|bueno|perfecto)\b/i;
 const RE_CONFIRM  = /^(sí|si|dale|ok|okey|bueno|perfecto|confirmo|confirmar|listo)(?=[\s.,!¡]|$)/i;
 const RE_NO       = /^(no|nop|cancelar todo)\s*[.!?]*$/i;
 const RE_HUMAN    = /hablar con (una )?persona|hablar con alguien|humano|dueño|dueña|atención humana/i;
@@ -1401,16 +1405,28 @@ async function handleStep({ vendor, text, state, replies, waId }) {
         if (m) { chosen = m; chosenQty = Number(pp.qty) || 1; }
       }
     }
+    // Si no matchea ningún producto, NO es un strike: el cliente está diciendo
+    // otra cosa (retiro, nombre, efectivo, etc.). Dejamos la desambiguación
+    // pendiente y seguimos el flujo normal; advanceAndAsk la re-emite al final.
+    // OJO: no incrementamos handoffCount acá — los strikes cuentan sólo cuando
+    // el bot entiende que el cliente intentó aclarar el producto y falló.
+    // (Un mensaje con palabras de método de entrega o pago ⇒ lo procesa abajo.)
+    const isFlowish = FLOW_WORDS.test(t);
     if (!chosen) {
-      state.handoffCount = (state.handoffCount || 0) + 1;
-      if (state.handoffCount >= MAX_PARSE_MISSES) {
-        state.pendingProduct = null;
-        const r = await handoffHuman(vendor, waId, text, state);
-        replies.push(...(r.replies || []));
+      if (isFlowish) {
+        // Pasar al flujo normal: método/pago/nombre se procesan abajo.
+        // pendingProduct sigue activo; advanceAndAsk lo re-pregunta.
+      } else {
+        state.handoffCount = (state.handoffCount || 0) + 1;
+        if (state.handoffCount >= MAX_PARSE_MISSES) {
+          state.pendingProduct = null;
+          const r = await handoffHuman(vendor, waId, text, state);
+          replies.push(...(r.replies || []));
+          return;
+        }
+        replies.push(pendingProductAsk(state));
         return;
       }
-      replies.push(pendingProductAsk(state));
-      return;
     }
     // Attach: si el producto ya está en el carrito → SET (corrigió la cantidad);
     // si es re-declaración ("solo") → reemplaza todo; si no → agrega.
@@ -1860,6 +1876,14 @@ function parseCatalogQtyPicks(text, catalogLen) {
 
 function advanceAndAsk(state, vendor, replies) {
   const missing = missingFields(state, vendor);
+
+  // Si quedó un producto pendiente de aclarar, esa es la única pregunta que falta.
+  if (state.pendingProduct) {
+    state.step = "flow";
+    state.pendingFields = missing;
+    replies.push(pendingProductAsk(state));
+    return;
+  }
 
   if (missing.length === 0) {
     // Todo completo: resumen (con total estimado) + confirmación.

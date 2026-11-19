@@ -182,7 +182,7 @@ export async function resolveOrderPricing(opts: {
            WHERE vendor_id = $1 AND id = ANY($2)`
         : `SELECT id, name, price, promo_price, available, cash_discount_excluded, pack_size, unit FROM products
            WHERE vendor_id = $1 AND id = ANY($2)`,
-      [[...productIds], vendorId]
+      [vendorId, [...productIds]]
     );
   }
 

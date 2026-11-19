@@ -251,6 +251,18 @@ export function LabelPrinterCard({ vendor, saveVendor }: Props) {
           Medilo con regla del borde de una etiqueta al borde de la siguiente. Si la impresora
           imprime en el medio o no reconoce la etiqueta, ajustá este valor (típico 2–4 mm).
         </p>
+        <div className="flex items-center justify-between gap-2 pt-1">
+          <Label htmlFor="lp-invert" className="text-sm">Negativo (invertir colores)</Label>
+          <Switch
+            id="lp-invert"
+            checked={cfg.invert}
+            disabled={!columnReady}
+            onCheckedChange={(v) => persist({ ...cfg, invert: v })}
+          />
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          Activá si la etiqueta sale invertida (más negro que blanco).
+        </p>
       </div>
       <div className="rounded-md border border-border bg-muted/30 p-3 space-y-2">
         <p className="flex items-center gap-2 font-medium">

@@ -28,7 +28,7 @@ export function stickerLanguageLabel(lang: string | null | undefined): string {
 }
 
 /** PNG b/n → bits MSB-first (1 = punto negro). Devuelve también el ancho en bytes. */
-export async function pngToMono(png: Buffer): Promise<{ data: Buffer; widthBytes: number; widthPx: number; heightPx: number }> {
+export async function pngToMono(png: Buffer, invert = false): Promise<{ data: Buffer; widthBytes: number; widthPx: number; heightPx: number }> {
   const { data, info } = await sharp(png)
     .grayscale()
     .raw()
@@ -40,7 +40,8 @@ export async function pngToMono(png: Buffer): Promise<{ data: Buffer; widthBytes
   for (let y = 0; y < heightPx; y++) {
     for (let x = 0; x < widthPx; x++) {
       const v = data[y * widthPx + x];
-      if (v < 160) {
+      const isBlack = invert ? v >= 160 : v < 160;
+      if (isBlack) {
         out[y * widthBytes + (x >> 3)] |= 0x80 >> (x & 7);
       }
     }
@@ -54,8 +55,8 @@ function mm(v: number): string {
 }
 
 /** TSPL/TSPL2 (Elitronic, Xprinter, Zebra GC/GK, TSC). */
-export function buildTsplJob(png: Buffer, opts: { widthMm: number; heightMm: number; copies: number; gapMm?: number }): Promise<Buffer> {
-  return pngToMono(png).then(({ data, widthBytes, heightPx }) => {
+export function buildTsplJob(png: Buffer, opts: { widthMm: number; heightMm: number; copies: number; gapMm?: number; invert?: boolean }): Promise<Buffer> {
+  return pngToMono(png, opts.invert === true).then(({ data, widthBytes, heightPx }) => {
     const gap = Math.max(1, Math.min(10, Number(opts.gapMm) || 2));
     const header =
       `SIZE ${mm(opts.widthMm)} mm,${mm(opts.heightMm)} mm\r\n` +
@@ -70,8 +71,8 @@ export function buildTsplJob(png: Buffer, opts: { widthMm: number; heightMm: num
 }
 
 /** ZPL II (Zebra y compatibles). */
-export function buildZplJob(png: Buffer, opts: { widthMm: number; heightMm: number; copies: number }): Promise<Buffer> {
-  return pngToMono(png).then(({ data, widthBytes, widthPx, heightPx }) => {
+export function buildZplJob(png: Buffer, opts: { widthMm: number; heightMm: number; copies: number; invert?: boolean }): Promise<Buffer> {
+  return pngToMono(png, opts.invert === true).then(({ data, widthBytes, widthPx, heightPx }) => {
     const widthDots = Math.round(opts.widthMm * PX_PER_MM);
     const heightDots = Math.round(opts.heightMm * PX_PER_MM);
     const totalBytes = data.length;
@@ -89,8 +90,8 @@ export function buildZplJob(png: Buffer, opts: { widthMm: number; heightMm: numb
 }
 
 /** ESC/POS (GS v 0 raster). Sin corte: la etiqueta la avanza el sensor. */
-export function buildEscPosJob(png: Buffer, opts: { copies: number }): Promise<Buffer> {
-  return pngToMono(png).then(({ data, widthBytes, heightPx }) => {
+export function buildEscPosJob(png: Buffer, opts: { copies: number; invert?: boolean }): Promise<Buffer> {
+  return pngToMono(png, opts.invert === true).then(({ data, widthBytes, heightPx }) => {
     const copies = Math.max(1, Math.floor(opts.copies));
     const chunks: Buffer[] = [];
     for (let i = 0; i < copies; i++) {
@@ -114,18 +115,20 @@ export async function buildStickerBuffer(params: {
   copies: number;
   language: StickerLanguage;
   gapMm?: number;
+  invert?: boolean;
 }): Promise<{ ok: true; buffer: Buffer; languageUsed: StickerLanguage } | { ok: false; error: string }> {
   try {
     const { png } = params;
     const copies = Math.min(50, Math.max(1, Math.floor(params.copies) || 1));
     const gapMm = params.gapMm;
+    const invert = params.invert === true;
     if (params.language === "zpl") {
-      return { ok: true, buffer: await buildZplJob(png, { ...params, copies }), languageUsed: "zpl" };
+      return { ok: true, buffer: await buildZplJob(png, { ...params, copies, invert }), languageUsed: "zpl" };
     }
     if (params.language === "escpos") {
-      return { ok: true, buffer: await buildEscPosJob(png, { copies }), languageUsed: "escpos" };
+      return { ok: true, buffer: await buildEscPosJob(png, { copies, invert }), languageUsed: "escpos" };
     }
-    return { ok: true, buffer: await buildTsplJob(png, { widthMm: params.widthMm, heightMm: params.heightMm, copies, gapMm }), languageUsed: "tspl" };
+    return { ok: true, buffer: await buildTsplJob(png, { widthMm: params.widthMm, heightMm: params.heightMm, copies, gapMm, invert }), languageUsed: "tspl" };
   } catch (e: any) {
     return { ok: false, error: e?.message || "No se pudo armar la etiqueta" };
   }

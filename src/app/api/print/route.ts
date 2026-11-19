@@ -98,6 +98,7 @@ export async function POST(request: Request) {
         language: calRes.language,
         usbName: cfg.usbName,
         gapMm: cfg.gapMm,
+        invert: cfg.invert,
       });
       await recordLastPrint(vendor.id, result);
       return NextResponse.json({
@@ -131,6 +132,7 @@ export async function POST(request: Request) {
       language,
       usbName: cfg.usbName,
       gapMm: cfg.gapMm,
+      invert: cfg.invert,
     });
     await recordLastPrint(vendor.id, result);
     return NextResponse.json({

@@ -71,6 +71,8 @@ export type LabelPrinterConfig = {
   usbName: string;
   /** Hueco (gap) entre etiquetas del rollo, en mm. Default 2. */
   gapMm: number;
+  /** Invertir colores (negativo). Para impresoras que imprimen al revés. */
+  invert: boolean;
   /** Imprimir solo al estabilizar el peso (apagado por defecto). */
   autoPrint: boolean;
   /** Días de vida útil sugeridos para el vencimiento (null = no sugerir). */
@@ -86,6 +88,7 @@ export const DEFAULT_LABEL_PRINTER_CONFIG: LabelPrinterConfig = {
   tpl: "envasado",
   usbName: "",
   gapMm: 2,
+  invert: false,
   autoPrint: false,
   shelfLifeDays: null,
 };
@@ -131,6 +134,7 @@ export function readLabelPrinterConfig(raw: unknown): LabelPrinterConfig {
     tpl,
     usbName: String(src.usbName ?? "").trim().slice(0, 120),
     gapMm: Math.round(clampNum(src.gapMm, 1, 10, 2) * 10) / 10,
+    invert: src.invert === true,
     autoPrint: src.autoPrint === true,
     shelfLifeDays:
       Number.isFinite(shelf) && shelf > 0 ? Math.min(365, Math.round(shelf)) : null,

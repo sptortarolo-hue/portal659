@@ -2608,6 +2608,7 @@ export async function dispatchSticker(params: {
   language: "tspl" | "zpl" | "escpos";
   usbName?: string | null;
   gapMm?: number;
+  invert?: boolean;
 }): Promise<DispatchResult> {
   const mode = "usb" as const;
   if (!params.vendor.print_token) {
@@ -2636,6 +2637,7 @@ export async function dispatchSticker(params: {
     copies: params.copies,
     language: params.language,
     gapMm: params.gapMm,
+    invert: params.invert,
   });
   if (!built.ok) return { ok: false, mode, error: built.error };
   const pushed = await pushToBridge(

@@ -44,7 +44,7 @@ export function targetKey(t: DraftTarget): string {
 }
 
 // ---------------------------------------------------------------------------
-// Editor de preparación (plato o insumo elaborado), con costo en vivo.
+// Editor de preparación (producto o insumo elaborado), con costo en vivo.
 // ---------------------------------------------------------------------------
 export function RecipeEditor({
   target,
@@ -249,7 +249,7 @@ export function RecipeEditor({
       </div>
 
       <div className="space-y-2">
-        <Label className="text-xs">Ingredientes (cantidades netas, lo que queda en el plato)</Label>
+        <Label className="text-xs">Ingredientes (cantidades netas, lo que queda en la pieza)</Label>
         {lines.map((l) => {
           const ing = ingMap.get(l.ingredient_id);
           const units = ing ? LINE_UNITS[ing.base_unit as IngredientUnit] ?? [ing.base_unit] : ["mg", "g", "kg", "ml", "cl", "l", "u", "doc"];

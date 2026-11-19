@@ -2434,11 +2434,11 @@ function VendorDashboardInner() {
               {mountedTabs.has("recetas") && (
                 <div className={tab === "recetas" ? "" : "hidden"}>
                   {(isGastro || isComercio) && effectivePlan.can("recipes") ? (
-                    <MemoRecipeManager />
+                    <MemoRecipeManager isComercio={isComercio} />
                   ) : (
                     <PlanLock
                       title="Preparación y Costo"
-                      description="Cargá insumos con su merma, armá la preparación de cada plato y conocé tu costo real y food cost. Parte del plan Gestión integral."
+                      description="Cargá insumos con su merma, armá la preparación de cada producto y conocé tu costo real. Parte del plan Gestión integral."
                     />
                   )}
                 </div>

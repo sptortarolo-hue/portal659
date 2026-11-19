@@ -17,8 +17,9 @@ export default function PreparacionCostosPage() {
         <h1 className="font-display text-2xl font-semibold">Preparación y Costo 🧪</h1>
       </div>
       <p className="text-muted-foreground mb-4 text-sm">
-        Solo <strong>gastronomía con plan Gestión</strong>: conocé el costo real de cada plato y
-        su food-cost. Está en <span className="font-medium">Más → Preparación y Costo</span>.
+        Solo <strong>Gestión integral (gastronomía y comercio de barrio)</strong>: conocé el costo real de cada producto y
+        su food-cost. Está en <span className="font-medium">Más → Preparación y Costo</span> (en comercio la solapa se llama
+        {" "}<strong>Productos</strong>).
       </p>
 
       <section className="space-y-8 text-sm leading-relaxed text-foreground">

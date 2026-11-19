@@ -99,9 +99,9 @@ function ThresholdSettings({
 }
 
 // ---------------------------------------------------------------------------
-// Tab Preparación y Costo: carta con semáforo + editor | biblioteca de insumos | compras.
+// Tab Preparación y Costo: productos/platos con semáforo + editor | biblioteca de insumos | compras | envasado.
 // ---------------------------------------------------------------------------
-export function RecipeManager() {
+export function RecipeManager({ isComercio = false }: { isComercio?: boolean } = {}) {
   const [view, setView] = useState<"platos" | "insumos" | "compras" | "envasado">("platos");
   const [products, setProducts] = useState<Product[]>([]);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
@@ -181,7 +181,7 @@ export function RecipeManager() {
             onClick={() => setView("platos")}
             className={`px-4 py-2 flex-1 sm:flex-none ${view === "platos" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
           >
-            🍽️ Platos
+            {isComercio ? "📦 Productos" : "🍽️ Platos"}
           </button>
           <button
             onClick={() => setView("insumos")}
@@ -209,7 +209,7 @@ export function RecipeManager() {
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder={view === "platos" ? "Buscar plato…" : view === "insumos" ? "Buscar insumo…" : "Buscar por proveedor o comprobante…"}
+          placeholder={view === "platos" ? (isComercio ? "Buscar producto…" : "Buscar plato…") : view === "insumos" ? "Buscar insumo…" : "Buscar por proveedor o comprobante…"}
           className="max-w-sm"
         />
       )}
@@ -229,12 +229,14 @@ export function RecipeManager() {
           {/* Carta con semáforo */}
           <Card className="p-3 overflow-hidden">
             <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide px-1 mb-2">
-              Carta · costo y food cost
+              {isComercio ? "Productos · costo y margen" : "Carta · costo y food cost"}
             </p>
             <div className="space-y-1.5 max-h-[70vh] overflow-y-auto">
               {filteredProducts.length === 0 && (
                 <p className="text-sm text-muted-foreground text-center py-6">
-                  Todavía no hay platos. Cargalos en la pestaña Menú.
+                  {isComercio
+                    ? "Todavía no hay productos. Cargalos en Catálogo."
+                    : "Todavía no hay platos. Cargalos en la pestaña Menú."}
                 </p>
               )}
               {filteredProducts.map((p) => {
@@ -282,7 +284,7 @@ export function RecipeManager() {
                     key={selectedProduct}
                     target={{ productId: p.id }}
                     title={p.name}
-                    subtitle="Preparación del plato (cantidades netas por porción)"
+                    subtitle={isComercio ? "Preparación del producto (cantidades netas por unidad)" : "Preparación del plato (cantidades netas por porción)"}
                     salePrice={p.price}
                     ingredients={ingredients.filter((i) => i.active !== false)}
                     recipes={recipes}
@@ -301,7 +303,9 @@ export function RecipeManager() {
               })()
             ) : (
               <Card className="p-6 text-center text-sm text-muted-foreground">
-                Elegí un plato de la carta para ver o cargar su preparación. El costo se calcula solo a partir de los insumos.
+                {isComercio
+                  ? "Elegí un producto de tu catálogo para ver o cargar su preparación. El costo se calcula solo a partir de los insumos."
+                  : "Elegí un plato de la carta para ver o cargar su preparación. El costo se calcula solo a partir de los insumos."}
               </Card>
             )}
           </div>
@@ -382,7 +386,7 @@ export function RecipeManager() {
                     key={`sub-${selectedElaborated}`}
                     target={{ ingredientId: selectedElaborated }}
                     title={`Sub-preparación: ${editingIngredient.name}`}
-                    subtitle="Costo del elaborado (se prorratea en los platos que lo usan)"
+                    subtitle={isComercio ? "Costo del elaborado (se prorratea en los productos que lo usan)" : "Costo del elaborado (se prorratea en los platos que lo usan)"}
                     yieldUnit={(ingredients.find((i) => i.id === selectedElaborated)?.base_unit as string) || "g"}
                     ingredients={ingredients.filter((i) => i.active !== false && i.id !== selectedElaborated)}
                     recipes={recipes}
@@ -403,7 +407,7 @@ export function RecipeManager() {
       )}
 
       <p className="text-xs text-muted-foreground tabular-nums">
-        Los costos se calculan sin IVA, con la merma de cada insumo aplicada. Semáforo food cost: 🟢 menos de {thresholds.warn}% · 🟡 {thresholds.warn}–{thresholds.bad}% · 🔴 más de {thresholds.bad}%.
+        Los costos se calculan sin IVA, con la merma de cada insumo aplicada. Semáforo de costo: 🟢 menos de {thresholds.warn}% · 🟡 {thresholds.warn}–{thresholds.bad}% · 🔴 más de {thresholds.bad}%.
       </p>
     </div>
   );

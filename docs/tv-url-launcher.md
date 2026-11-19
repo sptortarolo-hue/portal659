@@ -178,7 +178,46 @@ los segundos configurados (imágenes) o se reproduce completo (videos, muted).
 
 ---
 
-## 8. Qué es (y qué no es) la app del Play Store
+## 8. Música / audio en la pantalla de la carta
+
+La Pantalla TV puede sonar música del comercio **en la misma página** que la
+carta (no hay que abrir otra app ni sacar el audio por otro lado).
+
+### Configuración (panel → pestaña Pantalla TV → editar la pantalla → Audio / música)
+
+1. Activá **Sonar música en la TV**.
+2. Elegí el proveedor:
+   - **Stream directo (mp3 / radio web)**: URL directa `https://…` de un stream
+     (ej. una radio que el local quiera), o un archivo MP3 propio. Es la opción
+     sin cuenta ni login. Se puede ajustar el **volumen** (0–100).
+   - **Spotify**: link de una playlist/album del comercio. Requiere cuenta
+     **Premium** iniciada **en el navegador de la TV** (la sesión queda guardada;
+     se loguea una vez). El reproductor aparece como un widget chico abajo a la
+     derecha, con portada y controles (play/pause/skip).
+   - **YouTube**: link de un video, vivo o playlist. Mismo criterio: el widget
+     embebe el reproductor; también necesita un toque en el control remoto para
+     arrancar (Chrome bloquea el autoplay con sonido).
+3. **Nombre visible**: lo que se lee en el widget (ej. "Radio del local").
+4. Tocá **Publicar** como con toda la pantalla.
+
+### Cómo funciona en la tele
+
+- Aparece un widget abajo a la derecha con el estado (♪ / en pausa).
+- La **primera vez** hay que tocar **▶ Activar música** con el control remoto
+  (Chrome exige un gesto del usuario para sonar con volumen).
+- En las actualizaciones de la carta (publicar cambios), la música sigue sonando.
+- En preview de la TV dentro del panel se puede probar igual (tocando activar).
+
+### Importante (legal)
+
+La música que suena en un comercio para el público es una **comunicación
+pública**: SADAIC (autores) y AADI-APIZA (productores de fonogramas) cobran por
+eso en Argentina. Usarlos es responsabilidad del local, no de la app. Las
+opciones gratis y limpias para empezar: **Musopen** (clásica de dominio
+público), **Pixabay Music**, **incompetech** (Kevin MacLeod, con atribución
+mostrada en un cartel) o **StreamBeats** — todas de uso comercial libre.
+
+## 9. Qué es (y qué no es) la app del Play Store
 
 La app de **Portal 659** del Play Store (TWA) es para **celular y tablet**:
 panel, pedidos, mensajes y favoritos. **No sirve en Android TV** (no declara

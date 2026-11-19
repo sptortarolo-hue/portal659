@@ -24,6 +24,7 @@ import {
 } from "@/lib/tv-rotation";
 import type { TvItem, TvSnapshot } from "@/lib/tv-snapshot";
 import type { TvTheme } from "@/lib/tv-config";
+import { TvAudioWidget } from "./tv-audio-widget";
 
 const HEADER_H = 118;
 const HERO_H = 320;
@@ -549,6 +550,8 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
           </div>
         )}
       </div>
+      {/* Música: widget abajo a la derecha (si el comercio la configuró). */}
+      <TvAudioWidget audio={snap.config.audio} />
     </TvCanvas>
   );
 }

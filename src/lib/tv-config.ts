@@ -30,6 +30,25 @@ export type TvDaypart = {
   theme: TvTheme | "";
 };
 
+/** Música/audio que suena en la TV: stream directo, Spotify o YouTube. */
+export type TvAudioProvider = "stream" | "spotify" | "youtube";
+export type TvAudio = {
+  /** Si está activo, el reproductor muestra/acciona el widget de música. */
+  enabled: boolean;
+  provider: TvAudioProvider;
+  /**
+   * URL del contenido:
+   * - "stream": URL directa de audio (mp3/ogg/icecast https).
+   * - "spotify": link de una playlist/album/track del comercio (se embebe).
+   * - "youtube": link de un video/playlist/vivo (se embebe).
+   */
+  url: string;
+  /** Nombre visible en el widget (ej. "Radio del local"). */
+  label: string;
+  /** Volumen 0-100 (solo provider "stream"). */
+  volume: number;
+};
+
 export type TvPoster = {
   /** URL del archivo (imagen PNG/JPG o video MP4). */
   url: string;
@@ -68,6 +87,8 @@ export type TvConfig = {
   showClock: boolean;
   showQr: boolean;
   photoStyle: "none" | "thumb";
+  /** Música/audio de la pantalla (opcional, mismo jsonb). */
+  audio: TvAudio;
   hero: {
     mode: "auto" | "manual";
     productIds: string[];
@@ -110,6 +131,7 @@ export const DEFAULT_TV_CONFIG: TvConfig = {
   showClock: true,
   showQr: false,
   photoStyle: "thumb",
+  audio: { enabled: false, provider: "stream", url: "", label: "Música del local", volume: 70 },
   hero: { mode: "auto", productIds: [], rotate: true, seconds: 10 },
   upsell: { enabled: false, text: "", productId: null },
   ticker: { enabled: false, text: "" },
@@ -236,6 +258,24 @@ export function normalizeTvConfig(input: unknown): TvConfig {
   const photoStyle = raw.photoStyle === "none" ? "none" : "thumb";
 
   const asObj = (v: unknown) => (isTvConfig(v) ? v : {}) as Record<string, unknown>;
+  // Audio: tolerante (el draft viejo no lo trae → apagado).
+  const audioRaw = asObj(raw.audio);
+  const audioEnabled = bool(audioRaw.enabled, false);
+  const audioProvider: TvAudioProvider =
+    audioRaw.provider === "spotify" || audioRaw.provider === "youtube" ? audioRaw.provider : "stream";
+  const audioVolumeRaw = Number(audioRaw.volume);
+  const audioVolume =
+    Number.isFinite(audioVolumeRaw) && audioVolumeRaw >= 0 && audioVolumeRaw <= 100
+      ? Math.round(audioVolumeRaw)
+      : DEFAULT_TV_CONFIG.audio.volume;
+  const audio: TvAudio = {
+    enabled: audioEnabled,
+    provider: audioProvider,
+    url: str(audioRaw.url, "").slice(0, 500),
+    label: str(audioRaw.label, DEFAULT_TV_CONFIG.audio.label).slice(0, 60),
+    volume: audioVolume,
+  };
+
   const heroRaw = asObj(raw.hero);
   const heroIds = Array.isArray(heroRaw.productIds)
     ? heroRaw.productIds.filter((x: unknown) => typeof x === "string" && x).slice(0, 4)
@@ -335,6 +375,7 @@ export function normalizeTvConfig(input: unknown): TvConfig {
     showClock: bool(raw.showClock, true),
     showQr: bool(raw.showQr, false),
     photoStyle,
+    audio,
     hero: {
       mode: heroRaw.mode === "manual" ? "manual" : "auto",
       productIds: heroIds,

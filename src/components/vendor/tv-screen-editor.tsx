@@ -727,6 +727,86 @@ export function TvScreenEditor({
             </div>
           </Field>
 
+          <Field label="Audio / música (opcional)">
+            <div className="rounded-lg border border-border bg-muted/40 p-3">
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={config.audio?.enabled === true}
+                  onCheckedChange={(v) => edit({ audio: { ...config.audio, enabled: v } })}
+                />
+                <span className="text-sm">Sonar música en la TV</span>
+              </div>
+              {config.audio?.enabled && (
+                <div className="mt-3 space-y-3">
+                  <div>
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Proveedor</p>
+                    <select
+                      className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm"
+                      value={config.audio?.provider ?? "stream"}
+                      onChange={(e) =>
+                        edit({
+                          audio: {
+                            ...config.audio,
+                            provider: e.target.value as "stream" | "spotify" | "youtube",
+                          },
+                        })
+                      }
+                    >
+                      <option value="stream">Stream directo (mp3 / radio web)</option>
+                      <option value="spotify">Spotify (requiere Premium en la TV)</option>
+                      <option value="youtube">YouTube (video / vivo / playlist)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Link</p>
+                    <input
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                      value={config.audio?.url ?? ""}
+                      onChange={(e) => edit({ audio: { ...config.audio, url: e.target.value } })}
+                      placeholder={
+                        config.audio?.provider === "spotify"
+                          ? "https://open.spotify.com/playlist/…"
+                          : config.audio?.provider === "youtube"
+                            ? "https://www.youtube.com/watch?v=… o /playlist?list=…"
+                            : "https://stream.somafm.com/… o archivo mp3 directo"
+                      }
+                    />
+                  </div>
+                  <div>
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Nombre visible</p>
+                    <input
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                      value={config.audio?.label ?? ""}
+                      maxLength={60}
+                      onChange={(e) => edit({ audio: { ...config.audio, label: e.target.value } })}
+                      placeholder="Ej: Radio del local"
+                    />
+                  </div>
+                  {config.audio?.provider === "stream" && (
+                    <label className="flex items-center gap-2 text-sm">
+                      Volumen
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={config.audio?.volume ?? 70}
+                        onChange={(e) => edit({ audio: { ...config.audio, volume: Number(e.target.value) } })}
+                        className="flex-1"
+                      />
+                      <span className="text-xs text-muted-foreground tabular-nums">{config.audio?.volume ?? 70}%</span>
+                    </label>
+                  )}
+                  <p className="text-[11px] text-muted-foreground">
+                    La música se oye mientras se ve la carta, en la misma pantalla. La primera vez en la
+                    tele hay que tocar <strong>▶ Activar música</strong> (Chrome exige un gesto). Spotify
+                    requiere cuenta Premium iniciada en el navegador de la TV; en YouTube con Live se ve
+                    y se oye completo. Las licencias de la música del local son responsabilidad del comercio.
+                  </p>
+                </div>
+              )}
+            </div>
+          </Field>
+
           <Field
             label={
               config.layout === "split"

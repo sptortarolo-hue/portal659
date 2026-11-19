@@ -227,7 +227,31 @@ export function LabelPrinterCard({ vendor, saveVendor }: Props) {
         </div>
       </div>
 
-      {/* Calibración: el comercio prueba en qué lenguaje habla su impresora */}
+      {/* Hueco (gap) entre etiquetas */}
+      <div className="rounded-md border border-border bg-muted/30 p-3 space-y-2">
+        <p className="font-medium text-sm">📏 Hueco entre etiquetas (gap)</p>
+        <div className="flex items-center gap-2">
+          <Input
+            id="lp-gap"
+            type="number"
+            min={1}
+            max={10}
+            step={0.5}
+            className="h-9 w-24"
+            value={cfg.gapMm}
+            disabled={!columnReady}
+            onChange={(e) =>
+              setCfg((c) => ({ ...c, gapMm: Number(e.target.value) || 2 }))
+            }
+            onBlur={() => persist(cfg)}
+          />
+          <span className="text-sm text-muted-foreground">mm</span>
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          Medilo con regla del borde de una etiqueta al borde de la siguiente. Si la impresora
+          imprime en el medio o no reconoce la etiqueta, ajustá este valor (típico 2–4 mm).
+        </p>
+      </div>
       <div className="rounded-md border border-border bg-muted/30 p-3 space-y-2">
         <p className="flex items-center gap-2 font-medium">
           🧪 Calibrar impresora

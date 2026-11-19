@@ -97,6 +97,7 @@ export async function POST(request: Request) {
         copies: 1,
         language: calRes.language,
         usbName: cfg.usbName,
+        gapMm: cfg.gapMm,
       });
       await recordLastPrint(vendor.id, result);
       return NextResponse.json({
@@ -129,6 +130,7 @@ export async function POST(request: Request) {
       copies: Math.min(50, Math.max(1, Math.floor(Number(body.copies) || 1))),
       language,
       usbName: cfg.usbName,
+      gapMm: cfg.gapMm,
     });
     await recordLastPrint(vendor.id, result);
     return NextResponse.json({

@@ -54,11 +54,12 @@ function mm(v: number): string {
 }
 
 /** TSPL/TSPL2 (Elitronic, Xprinter, Zebra GC/GK, TSC). */
-export function buildTsplJob(png: Buffer, opts: { widthMm: number; heightMm: number; copies: number }): Promise<Buffer> {
+export function buildTsplJob(png: Buffer, opts: { widthMm: number; heightMm: number; copies: number; gapMm?: number }): Promise<Buffer> {
   return pngToMono(png).then(({ data, widthBytes, heightPx }) => {
+    const gap = Math.max(1, Math.min(10, Number(opts.gapMm) || 2));
     const header =
       `SIZE ${mm(opts.widthMm)} mm,${mm(opts.heightMm)} mm\r\n` +
-      `GAP ${mm(2)} mm,0 mm\r\n` +
+      `GAP ${mm(gap)} mm,0 mm\r\n` +
       `DIRECTION 0\r\n` +
       `REFERENCE 0,0\r\n` +
       `CLS\r\n` +
@@ -112,17 +113,19 @@ export async function buildStickerBuffer(params: {
   heightMm: number;
   copies: number;
   language: StickerLanguage;
+  gapMm?: number;
 }): Promise<{ ok: true; buffer: Buffer; languageUsed: StickerLanguage } | { ok: false; error: string }> {
   try {
     const { png } = params;
     const copies = Math.min(50, Math.max(1, Math.floor(params.copies) || 1));
+    const gapMm = params.gapMm;
     if (params.language === "zpl") {
       return { ok: true, buffer: await buildZplJob(png, { ...params, copies }), languageUsed: "zpl" };
     }
     if (params.language === "escpos") {
       return { ok: true, buffer: await buildEscPosJob(png, { copies }), languageUsed: "escpos" };
     }
-    return { ok: true, buffer: await buildTsplJob(png, { ...params, copies }), languageUsed: "tspl" };
+    return { ok: true, buffer: await buildTsplJob(png, { widthMm: params.widthMm, heightMm: params.heightMm, copies, gapMm }), languageUsed: "tspl" };
   } catch (e: any) {
     return { ok: false, error: e?.message || "No se pudo armar la etiqueta" };
   }

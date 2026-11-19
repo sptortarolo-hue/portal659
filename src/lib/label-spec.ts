@@ -69,6 +69,8 @@ export type LabelPrinterConfig = {
   tpl: LabelTemplateId;
   /** Cola USB del agente de este equipo (vacío = la del agente). */
   usbName: string;
+  /** Hueco (gap) entre etiquetas del rollo, en mm. Default 2. */
+  gapMm: number;
   /** Imprimir solo al estabilizar el peso (apagado por defecto). */
   autoPrint: boolean;
   /** Días de vida útil sugeridos para el vencimiento (null = no sugerir). */
@@ -83,6 +85,7 @@ export const DEFAULT_LABEL_PRINTER_CONFIG: LabelPrinterConfig = {
   heightMm: 30,
   tpl: "envasado",
   usbName: "",
+  gapMm: 2,
   autoPrint: false,
   shelfLifeDays: null,
 };
@@ -127,6 +130,7 @@ export function readLabelPrinterConfig(raw: unknown): LabelPrinterConfig {
     ) / 10,
     tpl,
     usbName: String(src.usbName ?? "").trim().slice(0, 120),
+    gapMm: Math.round(clampNum(src.gapMm, 1, 10, 2) * 10) / 10,
     autoPrint: src.autoPrint === true,
     shelfLifeDays:
       Number.isFinite(shelf) && shelf > 0 ? Math.min(365, Math.round(shelf)) : null,

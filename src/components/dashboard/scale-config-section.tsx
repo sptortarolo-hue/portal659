@@ -22,6 +22,9 @@ import {
   requestScalePort,
   readScaleFromPort,
   ScaleUnparsedError,
+  diagnoseScale,
+  paramsLabel,
+  type DiagComboResult,
 } from "@/lib/scale-reader";
 import { LabelPrinterCard } from "@/components/dashboard/label-printer-card";
 
@@ -211,6 +214,63 @@ export function ScaleConfigSection({ vendor, saveVendor, offers }: Props) {
     } finally {
       setBusy(false);
     }
+  }
+
+  // ── Modo diagnóstico: volcado crudo de todas las combinaciones ───────────
+  const [diagBusy, setDiagBusy] = useState(false);
+  const [diagMsg, setDiagMsg] = useState<string | null>(null);
+  const [diagResults, setDiagResults] = useState<DiagComboResult[] | null>(null);
+  const [diagProgress, setDiagProgress] = useState<string | null>(null);
+
+  async function runDiagnose(forcePicker: boolean) {
+    setDiagBusy(true);
+    setDiagMsg(null);
+    setDiagResults(null);
+    setDiagProgress(null);
+    try {
+      if (!isWebSerialSupported()) {
+        setDiagMsg("Este navegador no soporta balanza directa. Usá Chrome o Edge en la PC.");
+        return;
+      }
+      let port = getCachedScalePort();
+      if (!port || forcePicker) port = await requestScalePort();
+      setCachedScalePort(port);
+      const res = await diagnoseScale(port, { onProgress: (l) => setDiagProgress(l) });
+      setDiagResults(res.combos);
+      if (res.totalBytes === 0) {
+        setDiagMsg(
+          "No llegó ningún byte en ninguna combinación. Revisá: cable/adaptador, driver instalado, balanza encendida, y probá apretar la tecla Imprimir/Enviar mientras lee."
+        );
+      } else {
+        const winners = res.combos.filter((c) => c.bytes > 0);
+        setDiagMsg(
+          `Llegaron ${res.totalBytes} bytes en ${winners.length} combinación(es). Copiá el volcado de abajo y pasalo a soporte.`
+        );
+      }
+    } catch (e: any) {
+      if (e?.name === "NotFoundError") return;
+      setDiagMsg(e?.message || "No se pudo diagnosticar.");
+    } finally {
+      setDiagBusy(false);
+      setDiagProgress(null);
+    }
+  }
+
+  function copyDiag() {
+    if (!diagResults) return;
+    const lines: string[] = [];
+    for (const c of diagResults) {
+      if (c.bytes === 0) continue;
+      lines.push(`=== ${paramsLabel(c.params)} (${c.bytes} bytes) ===`);
+      lines.push(`HEX: ${c.hex}`);
+      lines.push(`ASCII: ${c.raw.replace(/[^\x20-\x7E]/g, "·")}`);
+      lines.push("");
+    }
+    const text = lines.join("\n");
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).catch(() => {});
+    }
+    setDiagMsg((prev) => (prev ? prev + " (copiado)" : "Copiado"));
   }
 
   return (
@@ -503,6 +563,65 @@ export function ScaleConfigSection({ vendor, saveVendor, offers }: Props) {
         )}
         {okMsg && <p className="text-green-700 dark:text-green-400">{okMsg}</p>}
         {errMsg && <p className="text-red-600 dark:text-red-400 whitespace-pre-wrap break-all">{errMsg}</p>}
+      </div>
+
+      {/* Diagnóstico crudo */}
+      <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+        <p className="font-medium">🔬 Diagnóstico (balanza no reconocida)</p>
+        <p className="text-muted-foreground">
+          Prueba TODAS las combinaciones de baudios y paridad/bits, enviando todos
+          los comandos candidatos, y muestra los bytes crudos que llegó la balanza.
+          Usalo cuando "Probar balanza" dice que no llegó ningún dato.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => runDiagnose(false)}
+            disabled={diagBusy}
+            className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
+          >
+            {diagBusy ? "Diagnosticando…" : "Diagnosticar"}
+          </button>
+          <button
+            type="button"
+            onClick={() => runDiagnose(true)}
+            disabled={diagBusy}
+            className="h-9 px-4 rounded-md border border-border text-sm hover:bg-accent disabled:opacity-50"
+          >
+            Cambiar dispositivo
+          </button>
+          {diagResults && diagResults.some((c) => c.bytes > 0) && (
+            <button
+              type="button"
+              onClick={copyDiag}
+              className="h-9 px-4 rounded-md border border-border text-sm hover:bg-accent"
+            >
+              Copiar diagnóstico
+            </button>
+          )}
+        </div>
+        {diagBusy && diagProgress && (
+          <p className="text-xs text-muted-foreground">Probando {diagProgress}…</p>
+        )}
+        {diagMsg && <p className="text-red-600 dark:text-red-400 whitespace-pre-wrap break-all">{diagMsg}</p>}
+        {diagResults && (
+          <div className="space-y-2 max-h-96 overflow-auto rounded-md border border-border bg-muted/30 p-2">
+            {diagResults
+              .filter((c) => c.bytes > 0)
+              .map((c, i) => (
+                <div key={i} className="text-xs space-y-0.5">
+                  <p className="font-medium">
+                    {paramsLabel(c.params)} — {c.bytes} bytes
+                  </p>
+                  <p className="font-mono break-all text-muted-foreground">{c.hex}</p>
+                  <p className="font-mono break-all">{c.raw.replace(/[^\x20-\x7E]/g, "·")}</p>
+                </div>
+              ))}
+            {diagResults.every((c) => c.bytes === 0) && (
+              <p className="text-xs text-muted-foreground">Sin bytes en ninguna combinación.</p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Guía de conexión */}

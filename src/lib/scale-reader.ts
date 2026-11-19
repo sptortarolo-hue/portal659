@@ -13,7 +13,37 @@
  * Client-safe: no importar desde server (usa navigator/localStorage).
  */
 
-const BAUDS = [9600, 19200, 38400, 115200, 4800, 2400];
+const BAUDS = [9600, 4800, 2400, 19200, 1200, 38400, 115200];
+
+/** Combinación de parámetros serie a probar. Muchas balanzas (Systel incluida)
+ *  con adaptadores CH340/PL2303 usan 7E1 o 7O1 en vez de 8N1. */
+export type PortParams = {
+  baudRate: number;
+  parity: "none" | "even" | "odd";
+  dataBits: 7 | 8;
+  stopBits: 1 | 2;
+};
+
+// (PORT_COMBOS se arma dinámicamente por baud en readScaleFromPort / diagnoseScale)
+
+/** Matriz de paridad/bits a barrer (independiente del baud). */
+export const PARITY_COMBOS: { parity: PortParams["parity"]; dataBits: PortParams["dataBits"]; stopBits: PortParams["stopBits"] }[] = [
+  { parity: "none", dataBits: 8, stopBits: 1 },
+  { parity: "even", dataBits: 7, stopBits: 1 },
+  { parity: "odd", dataBits: 7, stopBits: 1 },
+  { parity: "even", dataBits: 8, stopBits: 1 },
+  { parity: "none", dataBits: 7, stopBits: 1 },
+  { parity: "none", dataBits: 8, stopBits: 2 },
+];
+
+export function paramsKey(p: PortParams): string {
+  return `${p.baudRate}-${p.parity[0]}${p.dataBits}${p.stopBits}`;
+}
+
+export function paramsLabel(p: PortParams): string {
+  const par = p.parity === "none" ? "N" : p.parity === "even" ? "E" : "O";
+  return `${p.baudRate} ${p.dataBits}${par}${p.stopBits}`;
+}
 
 const READ_MS_FIRST = 3000; // primer intento (baud recordado o 9600): más margen
 const READ_MS_SCAN = 1500; // resto del barrido
@@ -120,6 +150,31 @@ export function loadRememberedBaud(vendorId?: string | null): number | null {
 function saveRememberedBaud(vendorId: string | null | undefined, baud: number): void {
   try {
     localStorage.setItem(baudKey(vendorId), String(baud));
+  } catch {
+    /* noop */
+  }
+}
+
+// ── Parámetros serie recordados (baud + paridad/bits) ────────────────────────
+function paramsStorageKey(vendorId?: string | null): string {
+  return `portal659-scale-params:${vendorId || "default"}`;
+}
+
+export function loadRememberedParams(vendorId?: string | null): PortParams | null {
+  try {
+    const raw = localStorage.getItem(paramsStorageKey(vendorId));
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    if (!p || typeof p.baudRate !== "number") return null;
+    return p as PortParams;
+  } catch {
+    return null;
+  }
+}
+
+function saveRememberedParams(vendorId: string | null | undefined, p: PortParams): void {
+  try {
+    localStorage.setItem(paramsStorageKey(vendorId), JSON.stringify(p));
   } catch {
     /* noop */
   }
@@ -275,6 +330,100 @@ async function readForMs(
   }
 }
 
+// ── Diagnóstico crudo (para identificar protocolo de balanzas nuevas) ────────
+export type DiagComboResult = {
+  params: PortParams;
+  raw: string;
+  bytes: number;
+  hex: string;
+};
+
+export type ScaleDiagResult = {
+  combos: DiagComboResult[];
+  totalBytes: number;
+};
+
+/** Lee el puerto con cada combinación (baud × paridad/bits), enviando todos
+ *  los comandos candidatos, y devuelve el volcado crudo (hex + ascii) de lo
+ *  que llegó. No intenta parsear: sirve para identificar el protocolo exacto
+ *  de una balanza que no se reconoce. */
+export async function diagnoseScale(
+  port: any,
+  opts: { onProgress?: (label: string) => void } = {}
+): Promise<ScaleDiagResult> {
+  const POLL_COMMANDS = [
+    [0x05],
+    [0x07, 0x07],
+    [0x1b],
+    [0x0d],
+    [0x0a],
+    [0x02, 0x05, 0x03],
+  ];
+  const combos: DiagComboResult[] = [];
+  let totalBytes = 0;
+  for (const pc of PARITY_COMBOS) {
+    for (const b of BAUDS) {
+      const params: PortParams = { baudRate: b, parity: pc.parity, dataBits: pc.dataBits, stopBits: pc.stopBits };
+      opts.onProgress?.(paramsLabel(params));
+      let raw = "";
+      try {
+        await port.open({ baudRate: b, parity: pc.parity, dataBits: pc.dataBits, stopBits: pc.stopBits });
+      } catch {
+        try {
+          await port.close();
+          await port.open({ baudRate: b, parity: pc.parity, dataBits: pc.dataBits, stopBits: pc.stopBits });
+        } catch {
+          continue;
+        }
+      }
+      try {
+        await port.setSignals?.({ dataTerminalReady: true, requestToSend: true });
+      } catch {
+        /* noop */
+      }
+      await new Promise((r) => setTimeout(r, 30));
+      let writer: any = null;
+      try {
+        try {
+          writer = port.writable?.getWriter?.();
+        } catch {
+          writer = null;
+        }
+        const send = async (bytes: number[]) => {
+          if (!writer) return;
+          try {
+            await writer.write(new Uint8Array(bytes));
+          } catch {
+            /* noop */
+          }
+        };
+        for (const cmd of POLL_COMMANDS) {
+          await send(cmd);
+          await new Promise((r) => setTimeout(r, 80));
+        }
+        await readForMs(port, 700, (s) => {
+          raw += s;
+        }, writer);
+      } finally {
+        try {
+          writer?.releaseLock();
+        } catch {
+          /* noop */
+        }
+        try {
+          await port.close();
+        } catch {
+          /* noop */
+        }
+      }
+      const hex = Array.from(raw).map((c) => c.charCodeAt(0).toString(16).padStart(2, "0")).join(" ");
+      combos.push({ params, raw, bytes: raw.length, hex });
+      totalBytes += raw.length;
+    }
+  }
+  return { combos, totalBytes };
+}
+
 export type WatchHandle = {
   stop: () => void;
   /** Baudios con los que quedó la balanza leyendo. */
@@ -301,16 +450,19 @@ export async function watchScale(
   }
 ): Promise<WatchHandle> {
   const pollMs = Math.max(300, opts.pollMs ?? 800);
-  const remembered = loadRememberedBaud(opts.vendorId);
-  const baud = remembered ?? 9600;
+  const remembered = loadRememberedParams(opts.vendorId);
+  const baud = remembered?.baudRate ?? loadRememberedBaud(opts.vendorId) ?? 9600;
+  const parity = remembered?.parity ?? "none";
+  const dataBits = remembered?.dataBits ?? 8;
+  const stopBits = remembered?.stopBits ?? 1;
   let stopped = false;
 
   try {
-    await port.open({ baudRate: baud });
+    await port.open({ baudRate: baud, parity, dataBits, stopBits });
   } catch {
     try {
       await port.close();
-      await port.open({ baudRate: baud });
+      await port.open({ baudRate: baud, parity, dataBits, stopBits });
     } catch {
       throw new ScalePortError();
     }
@@ -397,37 +549,60 @@ export async function watchScale(
 
 export async function readScaleFromPort(
   port: any,
-  opts: { vendorId?: string | null; onBaud?: (baud: number) => void } = {}
+  opts: {
+    vendorId?: string | null;
+    onBaud?: (baud: number) => void;
+    /** Parámetros fijos (si se pasan, no se barre la matriz). */
+    params?: PortParams;
+  } = {}
 ): Promise<ScaleReadResult> {
-  const remembered = loadRememberedBaud(opts.vendorId);
-  const bauds = remembered
-    ? [remembered, ...BAUDS.filter((b) => b !== remembered)]
-    : [...BAUDS];
-  let sawBytes = false;
-  let bestRaw = "";
-  let bestBaud = 0;
-  for (const baud of bauds) {
-    const openOpts = { baudRate: baud };
-    try {
-      await port.open(openOpts);
-    } catch {
-      // Puerto ya abierto de un intento anterior: cerrar y reintentar una vez.
-      try {
-        await port.close();
-        await port.open(openOpts);
-      } catch {
-        throw new ScalePortError();
+  // Lista de combos (baud × paridad/bits) a probar. Si hay params fijos o
+  // params recordados, se priorizan; si no, se barre toda la matriz.
+  const remembered = loadRememberedParams(opts.vendorId) || (loadRememberedBaud(opts.vendorId) ? { baudRate: loadRememberedBaud(opts.vendorId)!, parity: "none" as const, dataBits: 8 as const, stopBits: 1 as const } : null);
+  const fixed = opts.params || remembered;
+  // Armar la lista de combos a probar.
+  const combos: PortParams[] = [];
+  if (fixed) combos.push(fixed);
+  for (const pc of PARITY_COMBOS) {
+    for (const b of BAUDS) {
+      const c: PortParams = { baudRate: b, parity: pc.parity, dataBits: pc.dataBits, stopBits: pc.stopBits };
+      if (!combos.some((x) => x.baudRate === c.baudRate && x.parity === c.parity && x.dataBits === c.dataBits && x.stopBits === c.stopBits)) {
+        combos.push(c);
       }
     }
-    // Activar DTR/RTS: muchas balanzas (Systel incluida) y adaptadores
-    // USB-serie requieren DTR=1 para habilitar la transmisión. Sin esto la
-    // balanza no responde aunque el puerto se abra bien.
+  }
+  // Dedup por paramsKey manteniendo orden.
+  const seen = new Set<string>();
+  const ordered = combos.filter((c) => {
+    const k = paramsKey(c);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+
+  let sawBytes = false;
+  let bestRaw = "";
+  let bestParams: PortParams | null = null;
+
+  const POLL_COMMANDS = [[0x05], [0x07, 0x07], [0x1b]];
+
+  for (const params of ordered) {
+    const baud = params.baudRate;
+    try {
+      await port.open({ baudRate: baud, parity: params.parity, dataBits: params.dataBits, stopBits: params.stopBits });
+    } catch {
+      try {
+        await port.close();
+        await port.open({ baudRate: baud, parity: params.parity, dataBits: params.dataBits, stopBits: params.stopBits });
+      } catch {
+        continue;
+      }
+    }
     try {
       await port.setSignals?.({ dataTerminalReady: true, requestToSend: true });
     } catch {
-      /* noop: no todos los navegadores/adaptadores lo soportan */
+      /* noop */
     }
-    // Dar tiempo a que la balanza detecte DTR antes de enviar ENQ.
     await new Promise((r) => setTimeout(r, 30));
     let raw = "";
     let writer: any = null;
@@ -437,9 +612,6 @@ export async function readScaleFromPort(
       } catch {
         writer = null;
       }
-      // Systel (Clipse/Croma/Cuora) polled: requiere ENQ (0x05) para responder.
-      // Modo B (estabilidad): requiere 0x07 0x07. Ambos son inofensivos en
-      // modo continuo y en otras marcas.
       const send = async (bytes: number[]) => {
         if (!writer) return;
         try {
@@ -448,12 +620,13 @@ export async function readScaleFromPort(
           /* noop */
         }
       };
-      await send([0x05]);
-      await new Promise((r) => setTimeout(r, 50));
-      await send([0x07, 0x07]);
+      for (const cmd of POLL_COMMANDS) {
+        await send(cmd);
+        await new Promise((r) => setTimeout(r, 60));
+      }
       await readForMs(
         port,
-        baud === bauds[0] ? READ_MS_FIRST : READ_MS_SCAN,
+        ordered[0] === params ? READ_MS_FIRST : READ_MS_SCAN,
         (s) => {
           raw += s;
         },
@@ -475,16 +648,17 @@ export async function readScaleFromPort(
       sawBytes = true;
       if (raw.length > bestRaw.length) {
         bestRaw = raw;
-        bestBaud = baud;
+        bestParams = params;
       }
     }
     const kg = parseScaleKg(raw);
     if (kg != null) {
       saveRememberedBaud(opts.vendorId, baud);
+      saveRememberedParams(opts.vendorId, params);
       return { kg, baud, raw: raw.slice(-200) };
     }
     opts.onBaud?.(baud);
   }
-  if (sawBytes) throw new ScaleUnparsedError(bestRaw, bestBaud);
+  if (sawBytes) throw new ScaleUnparsedError(bestRaw, bestParams?.baudRate ?? 0);
   throw new ScaleNoDataError();
 }

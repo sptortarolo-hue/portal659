@@ -443,7 +443,7 @@ export type ScaleDiagResult = {
  *  de una balanza que no se reconoce. */
 export async function diagnoseScale(
   port: any,
-  opts: { onProgress?: (label: string) => void } = {}
+  opts: { onProgress?: (label: string) => void; bauds?: number[] } = {}
 ): Promise<ScaleDiagResult> {
   const POLL_COMMANDS = [
     [0x05],
@@ -453,10 +453,11 @@ export async function diagnoseScale(
     [0x0a],
     [0x02, 0x05, 0x03],
   ];
+  const baudList = opts.bauds && opts.bauds.length ? opts.bauds : BAUDS;
   const combos: DiagComboResult[] = [];
   let totalBytes = 0;
   for (const pc of PARITY_COMBOS) {
-    for (const b of BAUDS) {
+    for (const b of baudList) {
       const params: PortParams = { baudRate: b, parity: pc.parity, dataBits: pc.dataBits, stopBits: pc.stopBits };
       opts.onProgress?.(paramsLabel(params));
       let raw = "";

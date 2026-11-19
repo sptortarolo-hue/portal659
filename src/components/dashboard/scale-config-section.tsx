@@ -226,7 +226,7 @@ export function ScaleConfigSection({ vendor, saveVendor, offers }: Props) {
   const [diagResults, setDiagResults] = useState<DiagComboResult[] | null>(null);
   const [diagProgress, setDiagProgress] = useState<string | null>(null);
 
-  async function runDiagnose(forcePicker: boolean) {
+  async function runDiagnose(forcePicker: boolean, bauds?: number[]) {
     setDiagBusy(true);
     setDiagMsg(null);
     setDiagResults(null);
@@ -239,7 +239,7 @@ export function ScaleConfigSection({ vendor, saveVendor, offers }: Props) {
       let port = getCachedScalePort();
       if (!port || forcePicker) port = await requestScalePort();
       setCachedScalePort(port);
-      const res = await diagnoseScale(port, { onProgress: (l) => setDiagProgress(l) });
+      const res = await diagnoseScale(port, { onProgress: (l) => setDiagProgress(l), bauds });
       setDiagResults(res.combos);
       if (res.totalBytes === 0) {
         setDiagMsg(
@@ -640,7 +640,15 @@ export function ScaleConfigSection({ vendor, saveVendor, offers }: Props) {
             disabled={diagBusy}
             className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
           >
-            {diagBusy ? "Diagnosticando…" : "Diagnosticar"}
+            {diagBusy ? "Diagnosticando…" : "Diagnosticar (todas)"}
+          </button>
+          <button
+            type="button"
+            onClick={() => runDiagnose(false, [115200])}
+            disabled={diagBusy}
+            className="h-9 px-4 rounded-md border border-border text-sm hover:bg-accent disabled:opacity-50"
+          >
+            Solo 115200
           </button>
           <button
             type="button"

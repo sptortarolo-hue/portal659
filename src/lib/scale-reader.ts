@@ -13,7 +13,11 @@
  * Client-safe: no importar desde server (usa navigator/localStorage).
  */
 
-const BAUDS = [9600, 4800, 2400, 19200, 1200, 38400, 115200];
+export const BAUDS = [9600, 115200, 4800, 19200, 2400, 1200, 38400];
+
+const READ_MS_FIRST = 3000; // primer intento (baud recordado o 9600): más margen
+const READ_MS_SCAN = 1500; // resto del barrido
+const READ_MS_DIAG = 1000; // diagnóstico: más corto para barrer rápido
 
 /** Combinación de parámetros serie a probar. Muchas balanzas (Systel incluida)
  *  con adaptadores CH340/PL2303 usan 7E1 o 7O1 en vez de 8N1. */
@@ -44,9 +48,6 @@ export function paramsLabel(p: PortParams): string {
   const par = p.parity === "none" ? "N" : p.parity === "even" ? "E" : "O";
   return `${p.baudRate} ${p.dataBits}${par}${p.stopBits}`;
 }
-
-const READ_MS_FIRST = 3000; // primer intento (baud recordado o 9600): más margen
-const READ_MS_SCAN = 1500; // resto del barrido
 
 /** Peso máximo plausible de una balanza de mostrador (kg). */
 const MAX_KG = 1000;
@@ -330,6 +331,99 @@ async function readForMs(
   }
 }
 
+// ── Lectura continua (para disparar con la tecla Imprimir de la balanza) ─────
+export async function continuousRead(
+  port: any,
+  params: PortParams,
+  opts: { ms?: number; onChunk?: (s: string) => void; onProgress?: (msg: string) => void } = {}
+): Promise<{ raw: string; bytes: number }> {
+  const ms = opts.ms ?? 15000;
+  let raw = "";
+  opts.onProgress?.("Abriendo puerto…");
+  try {
+    await port.open({ baudRate: params.baudRate, parity: params.parity, dataBits: params.dataBits, stopBits: params.stopBits });
+  } catch {
+    try {
+      await port.close();
+      await port.open({ baudRate: params.baudRate, parity: params.parity, dataBits: params.dataBits, stopBits: params.stopBits });
+    } catch {
+      throw new ScalePortError();
+    }
+  }
+  try {
+    await port.setSignals?.({ dataTerminalReady: true, requestToSend: true });
+  } catch {
+    /* noop */
+  }
+  await new Promise((r) => setTimeout(r, 30));
+  let writer: any = null;
+  try {
+    writer = port.writable?.getWriter?.() ?? null;
+  } catch {
+    writer = null;
+  }
+  const send = async (bytes: number[]) => {
+    if (!writer) return;
+    try {
+      await writer.write(new Uint8Array(bytes));
+    } catch {
+      /* noop */
+    }
+  };
+  opts.onProgress?.("Leyendo… apretá la tecla Imprimir/Enviar de la balanza");
+  const start = Date.now();
+  let lastEnq = 0;
+  await send([0x05]);
+  await send([0x07, 0x07]);
+  lastEnq = Date.now();
+  const reader = port.readable.getReader();
+  const decoder = new TextDecoder();
+  let pending: any = null;
+  try {
+    while (Date.now() - start < ms) {
+      if (Date.now() - lastEnq > 1000) {
+        await send([0x05]);
+        await send([0x07, 0x07]);
+        lastEnq = Date.now();
+      }
+      if (!pending) pending = reader.read();
+      const res = await Promise.race([
+        pending,
+        new Promise((r) => setTimeout(() => r("timeout"), 100)),
+      ]);
+      if (res === "timeout") continue;
+      pending = null;
+      const { value, done } = res as any;
+      if (done || !value) break;
+      const chunk = decoder.decode(value, { stream: true });
+      raw += chunk;
+      opts.onChunk?.(chunk);
+    }
+  } finally {
+    try {
+      await reader.cancel();
+    } catch {
+      /* noop */
+    }
+    try {
+      reader.releaseLock();
+    } catch {
+      /* noop */
+    }
+    try {
+      writer?.releaseLock?.();
+    } catch {
+      /* noop */
+    }
+    try {
+      await port.close();
+    } catch {
+      /* noop */
+    }
+  }
+  return { raw, bytes: raw.length };
+}
+
 // ── Diagnóstico crudo (para identificar protocolo de balanzas nuevas) ────────
 export type DiagComboResult = {
   params: PortParams;
@@ -401,7 +495,7 @@ export async function diagnoseScale(
           await send(cmd);
           await new Promise((r) => setTimeout(r, 80));
         }
-        await readForMs(port, 700, (s) => {
+        await readForMs(port, READ_MS_DIAG, (s) => {
           raw += s;
         }, writer);
       } finally {

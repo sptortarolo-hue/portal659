@@ -23,7 +23,11 @@ import {
   readScaleFromPort,
   ScaleUnparsedError,
   diagnoseScale,
+  continuousRead,
   paramsLabel,
+  paramsKey,
+  BAUDS,
+  type PortParams,
   type DiagComboResult,
 } from "@/lib/scale-reader";
 import { LabelPrinterCard } from "@/components/dashboard/label-printer-card";
@@ -271,6 +275,62 @@ export function ScaleConfigSection({ vendor, saveVendor, offers }: Props) {
       navigator.clipboard.writeText(text).catch(() => {});
     }
     setDiagMsg((prev) => (prev ? prev + " (copiado)" : "Copiado"));
+  }
+
+  // ── Lectura continua (para disparar con la tecla Imprimir) ───────────────
+  const [contBusy, setContBusy] = useState(false);
+  const [contBaud, setContBaud] = useState<number>(9600);
+  const [contParity, setContParity] = useState<PortParams["parity"]>("none");
+  const [contDataBits, setContDataBits] = useState<7 | 8>(8);
+  const [contStopBits, setContStopBits] = useState<1 | 2>(1);
+  const [contMsg, setContMsg] = useState<string | null>(null);
+  const [contRaw, setContRaw] = useState<string>("");
+  const [contHex, setContHex] = useState<string>("");
+  const [contBytes, setContBytes] = useState<number>(0);
+
+  async function runContinuous(forcePicker: boolean) {
+    setContBusy(true);
+    setContMsg(null);
+    setContRaw("");
+    setContHex("");
+    setContBytes(0);
+    try {
+      if (!isWebSerialSupported()) {
+        setContMsg("Este navegador no soporta balanza directa. Usá Chrome o Edge en la PC.");
+        return;
+      }
+      let port = getCachedScalePort();
+      if (!port || forcePicker) port = await requestScalePort();
+      setCachedScalePort(port);
+      const params: PortParams = {
+        baudRate: contBaud,
+        parity: contParity,
+        dataBits: contDataBits,
+        stopBits: contStopBits,
+      };
+      const res = await continuousRead(port, params, {
+        ms: 15000,
+        onChunk: (s) => {
+          setContRaw((prev) => (prev + s).slice(-2000));
+          setContHex((prev) => {
+            const added = Array.from(s).map((c) => c.charCodeAt(0).toString(16).padStart(2, "0")).join(" ");
+            return (prev + " " + added).trim().slice(-4000);
+          });
+        },
+        onProgress: (m) => setContMsg(m),
+      });
+      setContBytes(res.bytes);
+      if (res.bytes === 0) {
+        setContMsg("No llegó ningún byte en 15 s. Probá otra velocidad/paridad o revisá el modo PC de la balanza y el adaptador.");
+      } else {
+        setContMsg(`✔ Llegaron ${res.bytes} bytes. Copiá el volcado y pasalo a soporte.`);
+      }
+    } catch (e: any) {
+      if (e?.name === "NotFoundError") return;
+      setContMsg(e?.message || "No se pudo leer.");
+    } finally {
+      setContBusy(false);
+    }
   }
 
   return (
@@ -620,6 +680,80 @@ export function ScaleConfigSection({ vendor, saveVendor, offers }: Props) {
             {diagResults.every((c) => c.bytes === 0) && (
               <p className="text-xs text-muted-foreground">Sin bytes en ninguna combinación.</p>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* Lectura continua */}
+      <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+        <p className="font-medium">⏱️ Lectura continua (15 s)</p>
+        <p className="text-muted-foreground">
+          Abre el puerto y lee durante 15 segundos, reenviando ENQ cada segundo. Apretá la tecla
+          <span className="font-medium"> Imprimir / Enviar </span> de la balanza cuando quieras
+          durante la lectura. Útil cuando la balanza solo envía al apretar una tecla.
+        </p>
+        <div className="grid gap-2 sm:grid-cols-4">
+          <div>
+            <Label>Velocidad</Label>
+            <select
+              className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+              value={contBaud}
+              onChange={(e) => setContBaud(Number(e.target.value))}
+              disabled={contBusy}
+            >
+              {BAUDS.map((b) => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <Label>Paridad/bits</Label>
+            <select
+              className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+              value={`${contParity}-${contDataBits}-${contStopBits}`}
+              onChange={(e) => {
+                const [p, d, s] = e.target.value.split("-");
+                setContParity(p as PortParams["parity"]);
+                setContDataBits(Number(d) as 7 | 8);
+                setContStopBits(Number(s) as 1 | 2);
+              }}
+              disabled={contBusy}
+            >
+              <option value="none-8-1">8N1</option>
+              <option value="even-7-1">7E1</option>
+              <option value="odd-7-1">7O1</option>
+              <option value="even-8-1">8E1</option>
+              <option value="none-7-1">7N1</option>
+              <option value="none-8-2">8N2</option>
+            </select>
+          </div>
+          <div className="sm:col-span-2 flex items-end gap-2">
+            <button
+              type="button"
+              onClick={() => runContinuous(false)}
+              disabled={contBusy}
+              className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
+            >
+              {contBusy ? "Leyendo…" : "Leer 15 s"}
+            </button>
+            <button
+              type="button"
+              onClick={() => runContinuous(true)}
+              disabled={contBusy}
+              className="h-9 px-4 rounded-md border border-border text-sm hover:bg-accent disabled:opacity-50"
+            >
+              Cambiar dispositivo
+            </button>
+          </div>
+        </div>
+        {contMsg && <p className="text-red-600 dark:text-red-400 whitespace-pre-wrap break-all">{contMsg}</p>}
+        {contBytes > 0 && (
+          <div className="space-y-1 rounded-md border border-border bg-muted/30 p-2">
+            <p className="text-xs font-medium">{contBytes} bytes recibidos</p>
+            <p className="font-mono text-xs break-all text-muted-foreground">{contHex}</p>
+            <p className="font-mono text-xs break-all">{contRaw.replace(/[^\x20-\x7E]/g, "·")}</p>
           </div>
         )}
       </div>

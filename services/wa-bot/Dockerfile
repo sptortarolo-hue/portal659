@@ -6,6 +6,7 @@ COPY package.json ./
 RUN npm install --omit=dev
 
 COPY index.mjs ./
+COPY laboratorio.mjs ./
 COPY src ./src
 
 ENV PORT=8792

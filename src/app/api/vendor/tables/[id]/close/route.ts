@@ -485,7 +485,7 @@ export async function POST(
       await tx.query(`UPDATE orders SET bank_account_id = $1 WHERE id = ANY($2)`, [
         acct,
         list.map((o) => o.id),
-      ]).catch(() => {});
+      ]);
     }
 
     await tx.query(`UPDATE tables SET status = 'libre' WHERE id = $1`, [table.id]);

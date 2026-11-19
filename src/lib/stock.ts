@@ -1,4 +1,4 @@
-import type { Tx } from "@/lib/db";
+import { hasColumn, type Tx } from "@/lib/db";
 import type { OrderItem } from "@/types/database";
 
 /** Error de negocio: no hay stock suficiente para reservar un ítem. */
@@ -38,23 +38,22 @@ async function resolveComboMembersFromDb(
   tx: Tx,
   productId: string
 ): Promise<{ product_id: string; qty: number }[] | null> {
-  try {
-    const t = await tx.query<{ ok: boolean }>(
-      `SELECT to_regclass('public.combo_items') IS NOT NULL AS ok`
-    );
-    if (!t[0]?.ok) return null;
-    const crows = await tx.query<{ member_product_id: string; qty: number }>(
-      `SELECT member_product_id, qty FROM combo_items WHERE combo_product_id = $1`,
-      [productId]
-    );
-    if (crows.length === 0) return null;
-    return crows.map((c) => ({
-      product_id: String(c.member_product_id),
-      qty: Math.max(1, Math.round(Number(c.qty) || 1)),
-    }));
-  } catch {
-    return null;
-  }
+  // to_regclass nunca lanza. Después del guard la tabla existe, así que el
+  // SELECT no puede fallar por tabla inexistente: un catch acá dejaría la
+  // tx abortada (25P02) y la venta moriría con un mensaje críptico.
+  const t = await tx.query<{ ok: boolean }>(
+    `SELECT to_regclass('public.combo_items') IS NOT NULL AS ok`
+  );
+  if (!t[0]?.ok) return null;
+  const crows = await tx.query<{ member_product_id: string; qty: number }>(
+    `SELECT member_product_id, qty FROM combo_items WHERE combo_product_id = $1`,
+    [productId]
+  );
+  if (crows.length === 0) return null;
+  return crows.map((c) => ({
+    product_id: String(c.member_product_id),
+    qty: Math.max(1, Math.round(Number(c.qty) || 1)),
+  }));
 }
 
 /**
@@ -74,21 +73,21 @@ export async function stockItemsForMovement(
   const normal = arr.filter((i) => (i as any)?.unit !== "kg");
   const kgLines = arr.filter((i) => (i as any)?.unit === "kg" && !(i as any)?.manual && (i as any)?.product_id);
   if (kgLines.length === 0) return normal as OrderItem[];
-  try {
-    const rows = await tx.query<{ id: string }>(
-      `SELECT id FROM products WHERE vendor_id = $1 AND count_pack = true AND id = ANY($2)`,
-      [vendorId, [...new Set(kgLines.map((i) => String((i as any).product_id)))]]
-    );
-    const packIds = new Set((rows || []).map((r) => String(r.id)));
-    return [
-      ...(normal as OrderItem[]),
-      ...kgLines
-        .filter((i) => packIds.has(String((i as any).product_id)))
-        .map((i) => ({ ...(i as any), qty: 1 }) as OrderItem),
-    ];
-  } catch {
-    return normal as OrderItem[];
-  }
+  // Chequeo ANTES (information_schema nunca lanza): sin count_pack el kg no
+  // descuenta stock, como siempre. Un catch con la query fallida dentro de
+  // la tx la abortaría (25P02).
+  if (!(await hasColumn(tx, "products", "count_pack"))) return normal as OrderItem[];
+  const rows = await tx.query<{ id: string }>(
+    `SELECT id FROM products WHERE vendor_id = $1 AND count_pack = true AND id = ANY($2)`,
+    [vendorId, [...new Set(kgLines.map((i) => String((i as any).product_id)))]]
+  );
+  const packIds = new Set((rows || []).map((r) => String(r.id)));
+  return [
+    ...(normal as OrderItem[]),
+    ...kgLines
+      .filter((i) => packIds.has(String((i as any).product_id)))
+      .map((i) => ({ ...(i as any), qty: 1 }) as OrderItem),
+  ];
 }
 
 export type AdjustStockOptions = {

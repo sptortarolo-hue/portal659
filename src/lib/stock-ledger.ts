@@ -1,4 +1,4 @@
-import { hasTable, type Tx } from "@/lib/db";
+import { hasColumn, hasTable, type Tx } from "@/lib/db";
 
 /**
  * Kardex append-only (tolerante a migración sin aplicar: si la tabla no
@@ -43,16 +43,9 @@ export async function logStockMovement(
   // dentro de la tx la envenenaría (25P02).
   let hasBookingRef = false;
   if (move.ref_booking) {
-    const col = await tx
-      .queryOne<{ e: boolean }>(
-        `SELECT EXISTS (
-           SELECT 1 FROM information_schema.columns
-           WHERE table_schema = 'public' AND table_name = 'stock_ledger' AND column_name = 'ref_booking'
-         ) AS e`,
-        []
-      )
-      .catch(() => ({ e: false }) as { e: boolean } | undefined);
-    hasBookingRef = col?.e === true;
+    // information_schema nunca lanza: seguro dentro de la tx (un catch dejaría
+    // la transacción abortada con 25P02).
+    hasBookingRef = await hasColumn(tx, "stock_ledger", "ref_booking");
   }
   const vals = [
     move.vendorId,

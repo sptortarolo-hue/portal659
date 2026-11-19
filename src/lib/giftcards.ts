@@ -132,14 +132,7 @@ export async function issueGiftcardsForOrder(
   );
   if (priceById.size === 0) return out;
 
-  const hasOrderCols =
-    (
-      await tx
-        .queryOne<{ e: boolean }>(
-          `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'giftcards' AND column_name = 'order_id') AS e`
-        )
-        .catch(() => null)
-    )?.e === true;
+  const hasOrderCols = await hasColumn(tx, "giftcards", "order_id");
 
   // ¿El CHECK de kind acepta 'issue'? (migrate-giftcard-issue.sql). Chequeo
   // con pg_constraint + to_regclass: nunca lanza y no envenena la tx.
@@ -168,13 +161,11 @@ export async function issueGiftcardsForOrder(
     for (let u = 0; u < qty; u++) {
       // Idempotencia: ¿ya se emitió esta unidad?
       if (hasOrderCols) {
-        const prev = await tx
-          .queryOne<IssuedGiftcard>(
-            `SELECT id, code, amount FROM giftcards
-             WHERE vendor_id = $1 AND order_id = $2 AND product_id = $3 AND unit_index = $4 LIMIT 1`,
-            [opts.vendorId, opts.orderId, pid, u]
-          )
-          .catch(() => null);
+        const prev = await tx.queryOne<IssuedGiftcard>(
+          `SELECT id, code, amount FROM giftcards
+           WHERE vendor_id = $1 AND order_id = $2 AND product_id = $3 AND unit_index = $4 LIMIT 1`,
+          [opts.vendorId, opts.orderId, pid, u]
+        );
         if (prev) {
           out.push({ id: String(prev.id), code: String(prev.code), amount: Math.round(Number(prev.amount)) || 0 });
           continue;
@@ -202,19 +193,21 @@ export async function issueGiftcardsForOrder(
             created = { id: String(row.id), code: String(row.code), amount: Math.round(Number(row.amount)) || 0 };
           } else if (hasOrderCols) {
             // Carrera: otro proceso la emitió → traer la ganadora.
-            const winner = await tx
-              .queryOne<IssuedGiftcard>(
-                `SELECT id, code, amount FROM giftcards
-                 WHERE vendor_id = $1 AND order_id = $2 AND product_id = $3 AND unit_index = $4 LIMIT 1`,
-                [opts.vendorId, opts.orderId, pid, u]
-              )
-              .catch(() => null);
+            const winner = await tx.queryOne<IssuedGiftcard>(
+              `SELECT id, code, amount FROM giftcards
+               WHERE vendor_id = $1 AND order_id = $2 AND product_id = $3 AND unit_index = $4 LIMIT 1`,
+              [opts.vendorId, opts.orderId, pid, u]
+            );
             if (winner) {
               created = { id: String(winner.id), code: String(winner.code), amount: Math.round(Number(winner.amount)) || 0 };
             }
           }
         } catch (e) {
-          if (!/duplicate|unique/i.test((e as Error)?.message || "")) throw e;
+          // Una query fallida deja la tx abortada (25P02 en todo lo que siga):
+          // no hay reintento posible dentro de la transacción. ON CONFLICT
+          // DO NOTHING ya evita duplicados por diseño; cualquier error acá
+          // aborta la venta entera con el error real.
+          throw e;
         }
       }
       if (!created) continue;

@@ -1,5 +1,5 @@
 import { getVendorByRequest } from "@/lib/vendor-utils";
-import { queryMany, queryOne, withTransaction, type Tx } from "@/lib/db";
+import { hasColumn, hasTable, queryMany, queryOne, withTransaction, type Tx } from "@/lib/db";
 import { resolveVendorPlan } from "@/lib/plans";
 import { cleanMenu } from "@/lib/llm";
 import { unitFactor } from "@/lib/costing";
@@ -437,19 +437,21 @@ async function analyzeFudo(
   });
 }
 
-// upsert tolerante de un proveedor por nombre. Null si la tabla no existe.
+// upsert tolerante de un proveedor por nombre. Null si la tabla no existe
+// (hasTable nunca lanza: un catch dentro de la tx la envenena con 25P02).
 async function upsertSupplierTx(tx: Tx, vendorId: string, name: string): Promise<string | null> {
   const clean = String(name || "").trim();
   if (!clean) return null;
+  if (!(await hasTable(tx, "suppliers"))) return null;
   const existing = await tx.queryOne<{ id: string }>(
     `SELECT id FROM suppliers WHERE vendor_id = $1 AND lower(name) = lower($2) LIMIT 1`,
     [vendorId, clean]
-  ).catch(() => null);
+  );
   if (existing?.id) return existing.id;
   const rows = await tx.query<{ id: string }>(
     `INSERT INTO suppliers (vendor_id, name) VALUES ($1, $2) RETURNING id`,
     [vendorId, clean]
-  ).catch(() => []);
+  );
   return rows[0]?.id ?? null;
 }
 
@@ -470,61 +472,53 @@ async function upsertIngredientTx(
   const round4 = (n: number) => Math.round(n * 10000) / 10000;
   const costPerBase = ing.cost != null ? round4(ing.cost / factor) : null;
   const supplierId = ing.supplier ? await upsertSupplierTx(tx, vendorId, ing.supplier) : null;
+  // Chequeos ANTES (hasColumn/hasTable nunca lanzan dentro de la tx): toleran
+  // migraciones pendientes sin envenenar la transacción con 25P02.
+  const hasIngCategory = await hasColumn(tx, "ingredients", "category");
+  const hasPricelists = await hasTable(tx, "supplier_pricelists");
   const existing = await tx.queryOne<{ id: string; base_unit: string }>(
     `SELECT id, base_unit FROM ingredients WHERE vendor_id = $1 AND lower(name) = lower($2) LIMIT 1`,
     [vendorId, ing.name]
-  ).catch(() => null);
+  );
   if (existing) {
     // Actualizar costo/merma/notas sin tocar base_unit (409 si está en uso).
     await tx.queryVoid(
       `UPDATE ingredients SET cost_per_unit = COALESCE($1, cost_per_unit), waste_pct = $2, notes = COALESCE(NULLIF(notes,''), $3) WHERE id = $4`,
       [costPerBase, ing.wastePct, `Importado de FUDO${ing.category ? ` · ${ing.category}` : ""}`, existing.id]
-    ).catch(() => null);
-    // Intentar guardar categoría si la columna existe (migración nueva).
-    await tx.queryVoid(`UPDATE ingredients SET category = $1 WHERE id = $2`, [ing.category, existing.id]).catch(() => null);
-    if (supplierId && ing.cost != null) {
+    );
+    if (hasIngCategory) {
+      // Intentar guardar categoría si la columna existe (migración nueva).
+      await tx.queryVoid(`UPDATE ingredients SET category = $1 WHERE id = $2`, [ing.category, existing.id]);
+    }
+    if (supplierId && ing.cost != null && hasPricelists) {
       await tx.queryVoid(
         `INSERT INTO supplier_pricelists (supplier_id, vendor_id, ingredient_id, price, unit)
          SELECT $1, $2, $3, $4, $5 WHERE NOT EXISTS (SELECT 1 FROM supplier_pricelists
            WHERE supplier_id = $1 AND ingredient_id = $3 AND price = $4 AND unit = $5)`,
         [supplierId, vendorId, existing.id, ing.cost, lineUnit]
-      ).catch(() => null);
+      );
     }
     return existing.id;
   }
-  try {
-    const rows = await tx.query<{ id: string }>(
-      `INSERT INTO ingredients (vendor_id, name, base_unit, cost_per_unit, waste_pct, notes, category)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-      [vendorId, ing.name, base, costPerBase ?? 0, ing.wastePct, `Importado de FUDO${ing.category ? ` · ${ing.category}` : ""}`, ing.category]
-    );
-    if (rows[0]?.id) {
-      if (supplierId && ing.cost != null) {
-        await tx.queryVoid(
-          `INSERT INTO supplier_pricelists (supplier_id, vendor_id, ingredient_id, price, unit)
-           SELECT $1, $2, $3, $4, $5 WHERE NOT EXISTS (SELECT 1 FROM supplier_pricelists
-             WHERE supplier_id = $1 AND ingredient_id = $3 AND price = $4 AND unit = $5)`,
-          [supplierId, vendorId, rows[0].id, ing.cost, lineUnit]
-        ).catch(() => null);
-      }
-      return rows[0].id;
-    }
-  } catch {
-    // Sin columna category (migración pendiente): reintentar sin ella.
-  }
-  const rows = await tx.query<{ id: string }>(
-    `INSERT INTO ingredients (vendor_id, name, base_unit, cost_per_unit, waste_pct, notes)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-    [vendorId, ing.name, base, costPerBase ?? 0, ing.wastePct, `Importado de FUDO${ing.category ? ` · ${ing.category}` : ""}`]
-  ).catch(() => []);
+  const rows = hasIngCategory
+    ? await tx.query<{ id: string }>(
+        `INSERT INTO ingredients (vendor_id, name, base_unit, cost_per_unit, waste_pct, notes, category)
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+        [vendorId, ing.name, base, costPerBase ?? 0, ing.wastePct, `Importado de FUDO${ing.category ? ` · ${ing.category}` : ""}`, ing.category]
+      )
+    : await tx.query<{ id: string }>(
+        `INSERT INTO ingredients (vendor_id, name, base_unit, cost_per_unit, waste_pct, notes)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+        [vendorId, ing.name, base, costPerBase ?? 0, ing.wastePct, `Importado de FUDO${ing.category ? ` · ${ing.category}` : ""}`]
+      );
   const newId = rows[0]?.id ?? null;
-  if (newId && supplierId && ing.cost != null) {
+  if (newId && supplierId && ing.cost != null && hasPricelists) {
     await tx.queryVoid(
       `INSERT INTO supplier_pricelists (supplier_id, vendor_id, ingredient_id, price, unit)
        SELECT $1, $2, $3, $4, $5 WHERE NOT EXISTS (SELECT 1 FROM supplier_pricelists
          WHERE supplier_id = $1 AND ingredient_id = $3 AND price = $4 AND unit = $5)`,
       [supplierId, vendorId, newId, ing.cost, lineUnit]
-    ).catch(() => null);
+    );
   }
   return newId;
 }
@@ -717,6 +711,14 @@ export async function POST(request: Request) {
     const errors: { name: string; error: string }[] = [];
 
     const result = await withTransaction(async (tx) => {
+      // Chequeos ANTES (hasColumn/hasTable nunca lanzan): toleran migraciones pendientes
+      // sin envenenar la tx con 25P02.
+      const hasProductsSku = await hasColumn(tx, "products", "sku");
+      const hasProductsCostLast = await hasColumn(tx, "products", "cost_last");
+      const hasIngredientsTable = await hasTable(tx, "ingredients");
+      const hasRecipesTable = await hasTable(tx, "recipes");
+      // migrate-modifier-groups.sql trae las dos tablas juntas.
+      const hasModifierTables = await hasTable(tx, "modifier_groups");
       // crear categorías faltantes
       const neededCats = new Set<string>();
       for (const it of items) {
@@ -755,11 +757,11 @@ export async function POST(request: Request) {
             ? (it as any).sku.trim().slice(0, 64)
             : null;
         let existing: { id: string } | null | undefined = null;
-        if (sku) {
+        if (sku && hasProductsSku) {
           existing = await tx.queryOne<{ id: string }>(
             `SELECT id FROM products WHERE vendor_id = $1 AND sku = $2 LIMIT 1`,
             [vendor.id, sku]
-          ).catch(() => null);
+          );
         }
         if (!existing) {
           existing = await tx.queryOne<{ id: string }>(
@@ -786,24 +788,24 @@ export async function POST(request: Request) {
             `UPDATE products SET price = $1, category = $2, description = $3, available = $4, featured_today = $5 WHERE id = $6`,
             [price, (it.category || "").trim() || "otras", it.description || null, rowAvailable, rowFeatured, existing.id]
           );
-          if (sku) {
+          if (sku && hasProductsSku) {
             await tx.queryVoid(
               `UPDATE products SET sku = $1 WHERE id = $2`,
               [sku, existing.id]
-            ).catch(() => null);
+            );
           }
           // Costo/stock FUDO (tolerante a columnas inexistentes).
-          if (rowCostNum != null) {
-            await tx.queryVoid(`UPDATE products SET cost_last = $1 WHERE id = $2`, [rowCostNum, existing.id]).catch(() => null);
+          if (rowCostNum != null && hasProductsCostLast) {
+            await tx.queryVoid(`UPDATE products SET cost_last = $1 WHERE id = $2`, [rowCostNum, existing.id]);
           }
           if (rowStockNum != null || rowStockControl) {
             await tx.queryVoid(
               `UPDATE products SET stock = COALESCE($1, stock), stock_control = $2 WHERE id = $3`,
               [rowStockNum, rowStockControl, existing.id]
-            ).catch(() => null);
+            );
           }
           if (rowStockMinNum != null) {
-            await tx.queryVoid(`UPDATE products SET stock_low_threshold = $1 WHERE id = $2`, [rowStockMinNum, existing.id]).catch(() => null);
+            await tx.queryVoid(`UPDATE products SET stock_low_threshold = $1 WHERE id = $2`, [rowStockMinNum, existing.id]);
           }
           productId = existing.id;
           updated++;
@@ -824,20 +826,20 @@ export async function POST(request: Request) {
             ]
           );
           productId = rows[0]?.id ?? "";
-          if (sku && productId) {
-            await tx.queryVoid(`UPDATE products SET sku = $1 WHERE id = $2`, [sku, productId]).catch(() => null);
+          if (sku && productId && hasProductsSku) {
+            await tx.queryVoid(`UPDATE products SET sku = $1 WHERE id = $2`, [sku, productId]);
           }
-          if (productId && rowCostNum != null) {
-            await tx.queryVoid(`UPDATE products SET cost_last = $1 WHERE id = $2`, [rowCostNum, productId]).catch(() => null);
+          if (productId && rowCostNum != null && hasProductsCostLast) {
+            await tx.queryVoid(`UPDATE products SET cost_last = $1 WHERE id = $2`, [rowCostNum, productId]);
           }
           if (productId && (rowStockNum != null || rowStockControl)) {
             await tx.queryVoid(
               `UPDATE products SET stock = COALESCE($1, stock), stock_control = $2 WHERE id = $3`,
               [rowStockNum, rowStockControl, productId]
-            ).catch(() => null);
+            );
           }
           if (productId && rowStockMinNum != null) {
-            await tx.queryVoid(`UPDATE products SET stock_low_threshold = $1 WHERE id = $2`, [rowStockMinNum, productId]).catch(() => null);
+            await tx.queryVoid(`UPDATE products SET stock_low_threshold = $1 WHERE id = $2`, [rowStockMinNum, productId]);
           }
           imported++;
         }
@@ -855,7 +857,7 @@ export async function POST(request: Request) {
         const opts = (Array.isArray(it.modifiers) ? it.modifiers : [])
           .map((m) => ({ label: String(m.desc ?? "").trim(), price_mod: Number(m.price_mod) || 0 }))
           .filter((o) => o.label !== "");
-        if (opts.length > 0) {
+        if (opts.length > 0 && hasModifierTables) {
           // Grupo por producto importado (un solo grupo "Opciones"/"Grupo").
           // Se busca/crea el grupo del vendor y se lo asigna al plato.
           const vendorIdRow = await tx.queryOne<{ vendor_id: string }>(
@@ -889,7 +891,10 @@ export async function POST(request: Request) {
       }
       // ---- Grupos FUDO multi-grupo (hojas 4/5/6): N grupos por producto ----
       let fudoGroupsLinked = 0;
-      if (fudoGroups.length > 0 || fudoAssociations.length > 0 || fudoGroupOptions.length > 0) {
+      if (!hasModifierTables && (fudoGroups.length > 0 || fudoAssociations.length > 0 || fudoGroupOptions.length > 0)) {
+        errors.push({ name: "Grupos de opciones", error: "Falta migrate-modifier-groups.sql: no se importaron los grupos/modificadores" });
+      }
+      if (hasModifierTables && (fudoGroups.length > 0 || fudoAssociations.length > 0 || fudoGroupOptions.length > 0)) {
         const defByName = new Map<string, FudoGroupDef>();
         for (const g of fudoGroups) defByName.set(normName(g.name), g);
         const optsByGroup = new Map<string, FudoGroupOption[]>();
@@ -901,7 +906,7 @@ export async function POST(request: Request) {
         const allProds = await tx.query<{ id: string; name: string }>(
           `SELECT id, name FROM products WHERE vendor_id = $1`,
           [vendor.id]
-        ).catch(() => []);
+        );
         const prodByName = new Map(allProds.map((p) => [normName(p.name), p.id] as const));
         for (const a of fudoAssociations) {
           const pid = prodByName.get(normName(a.product));
@@ -919,19 +924,19 @@ export async function POST(request: Request) {
           let group = await tx.queryOne<{ id: string }>(
             `SELECT id FROM modifier_groups WHERE vendor_id = $1 AND group_name = $2 AND options = $3::jsonb LIMIT 1`,
             [vendor.id, gname, JSON.stringify(opts)]
-          ).catch(() => null);
+          );
           if (!group) {
             group = await tx.queryOne<{ id: string }>(
               `INSERT INTO modifier_groups (vendor_id, group_name, options, required, max_selections, is_variant)
                VALUES ($1, $2, $3, $4, $5, false) RETURNING id`,
               [vendor.id, gname, JSON.stringify(opts), required, maxSel]
-            ).catch(() => null);
+            );
           }
           if (group?.id) {
             await tx.queryVoid(
               `INSERT INTO product_modifier_links (group_id, product_id, position) VALUES ($1, $2, 0) ON CONFLICT DO NOTHING`,
               [group.id, pid]
-            ).catch(() => null);
+            );
             fudoGroupsLinked++;
           }
         }
@@ -940,12 +945,17 @@ export async function POST(request: Request) {
       // ---- Ingredientes FUDO (hoja 3) ----
       let ingredientsUpserted = 0;
       const ingredientIdByName = new Map<string, string>();
-      const existingIngs = await tx.query<{ id: string; name: string }>(
-        `SELECT id, name FROM ingredients WHERE vendor_id = $1`,
-        [vendor.id]
-      ).catch(() => []);
+      const existingIngs = hasIngredientsTable
+        ? await tx.query<{ id: string; name: string }>(
+            `SELECT id, name FROM ingredients WHERE vendor_id = $1`,
+            [vendor.id]
+          )
+        : [];
+      if (!hasIngredientsTable && (fudoIngredients.length > 0 || fudoRecipeLines.length > 0)) {
+        errors.push({ name: "Insumos/Recetas", error: "Falta migrate-recipes.sql: no se importaron insumos ni recetas" });
+      }
       for (const r of existingIngs) ingredientIdByName.set(normName(r.name), r.id);
-      for (const ing of fudoIngredients) {
+      for (const ing of hasIngredientsTable ? fudoIngredients : []) {
         const name = String(ing.name || "").trim();
         if (!name) continue;
         const id = await upsertIngredientTx(tx, vendor.id, {
@@ -967,7 +977,7 @@ export async function POST(request: Request) {
       let recipesCreated = 0;
       let recipeLinesCreated = 0;
       let recipesSkipped = 0;
-      if (fudoRecipeLines.length > 0) {
+      if (fudoRecipeLines.length > 0 && hasIngredientsTable && hasRecipesTable) {
         const byDish = new Map<string, { dish: string; lines: FudoRecipeLine[]; yield: number; instructions: string }>();
         for (const l of fudoRecipeLines) {
           const k = normName(l.dish);
@@ -980,7 +990,7 @@ export async function POST(request: Request) {
         const prodRows = await tx.query<{ id: string; name: string }>(
           `SELECT id, name FROM products WHERE vendor_id = $1`,
           [vendor.id]
-        ).catch(() => []);
+        );
         const prodByName = new Map(prodRows.map((p) => [normName(p.name), p.id] as const));
         for (const [, g] of byDish) {
           const pid = prodByName.get(normName(g.dish));
@@ -999,7 +1009,7 @@ export async function POST(request: Request) {
           const hasRecipe = await tx.queryOne<{ id: string }>(
             `SELECT id FROM recipes WHERE product_id = $1 LIMIT 1`,
             [pid]
-          ).catch(() => null);
+          );
           if (hasRecipe && !overwriteRecipes) {
             recipesSkipped++;
             continue;
@@ -1025,7 +1035,7 @@ export async function POST(request: Request) {
             const baseRow = await tx.queryOne<{ base_unit: string }>(
               `SELECT base_unit FROM ingredients WHERE id = $1 LIMIT 1`,
               [iid]
-            ).catch(() => null);
+            );
             const unit = normalizeUnit(l.unit);
             if (baseRow && unitFactor(unit, baseRow.base_unit) == null) {
               errors.push({ name: `${g.dish} / ${iname}`, error: `Unidad "${l.unit}" incompatible con base "${baseRow.base_unit}" (se omite la línea)` });

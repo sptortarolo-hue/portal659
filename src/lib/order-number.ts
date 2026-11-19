@@ -18,11 +18,12 @@ export async function nextOrderNumber(
   vendorId: string
 ): Promise<number> {
   await tx.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`ordernum:${vendorId}`]);
-  const vrow = await tx
-    .queryOne<{ vertical: string | null }>(`SELECT vertical FROM vendors WHERE id = $1 LIMIT 1`, [
-      vendorId,
-    ])
-    .catch(() => null);
+  // Sin .catch(): si vendors falla, el error real debe verse (y la tx hacer
+  // rollback). Un catch convertiría cualquier fallo en 25P02 más adelante.
+  const vrow = await tx.queryOne<{ vertical: string | null }>(
+    `SELECT vertical FROM vendors WHERE id = $1 LIMIT 1`,
+    [vendorId]
+  );
   // Solo gastronomía reinicia a diario; cualquier otro caso (incluida DB
   // vieja o vertical nulo) usa correlativo continuo, que nunca colisiona.
   if (String(vrow?.vertical || "") === "gastronomia") {

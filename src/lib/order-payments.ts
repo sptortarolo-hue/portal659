@@ -11,7 +11,7 @@
  * Server-only (usa `pg` directo). Los componentes client hablan con
  * `payment-split.tsx` / `cash-tender.ts`, no con este módulo.
  */
-import { hasTable, queryMany, queryOne, type Tx } from "@/lib/db";
+import { hasColumn, hasTable, queryMany, queryOne, type Tx } from "@/lib/db";
 
 /** Medios que se pueden combinar en un cobro (los manuales del mostrador). */
 export const SPLIT_METHODS = ["efectivo", "transferencia", "tarjeta"] as const;
@@ -185,24 +185,19 @@ export async function insertOrderPayments(tx: Tx, opts: InsertPaymentsOpts): Pro
   // (la fila sigue válida; solo pierde el "Abona con" impreso).
   let createdBy: string | null = opts.createdBy ?? null;
   if (createdBy) {
+    // Sin .catch(): si esta query falla dentro de la tx, un catch dejaría la
+    // transacción abortada (25P02) y la venta moriría con un mensaje opaco.
+    // El caso "el profile no existe" NO lanza: devuelve 0 filas.
     const prof = await tx.queryOne<{ id: string }>(
       `SELECT id FROM profiles WHERE id = $1 LIMIT 1`,
       [createdBy]
-    ).catch(() => null);
+    );
     if (!prof) createdBy = null;
   }
 
   // Si la migración de multi-cuenta se aplicó, persistimos la cuenta destino
-  // (solo transferencia). Si no se aplicó, se omite silenciosamente.
-  let hasBankCol = false;
-  try {
-    const col = await tx.queryOne<{ exists: boolean }>(
-      `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'order_payments' AND column_name = 'bank_account_id') AS exists`
-    );
-    hasBankCol = col?.exists === true;
-  } catch {
-    hasBankCol = false;
-  }
+  // (solo transferencia). hasColumn nunca lanza: seguro dentro de la tx.
+  const hasBankCol = await hasColumn(tx, "order_payments", "bank_account_id");
 
   for (const p of opts.payments) {
     const tendered =

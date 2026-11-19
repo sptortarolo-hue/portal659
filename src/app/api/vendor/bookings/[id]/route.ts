@@ -436,11 +436,12 @@ export async function PATCH(
         }
       }
       // Total a cobrar (service_price) editable desde el panel (p.ej. recalcular desde partidas).
-      if (body?.service_price !== undefined) {
+      // Chequeo ANTES (hasColumn nunca lanza; un catch dejaría la tx abortada con 25P02).
+      if (body?.service_price !== undefined && (await hasColumn(tx, "bookings", "service_price"))) {
         const sp = body.service_price == null || body.service_price === ""
           ? null
           : Math.max(0, Math.round(Number(body.service_price) * 100) / 100);
-        await tx.queryVoid(`UPDATE bookings SET service_price = $1 WHERE id = $2`, [sp, id]).catch(() => {});
+        await tx.queryVoid(`UPDATE bookings SET service_price = $1 WHERE id = $2`, [sp, id]);
       }
       if (wantEquip) {
         const eqId = await resolveEquipmentForWorkTx(tx, vendor.id, body, {

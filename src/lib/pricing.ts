@@ -1,4 +1,4 @@
-import { hasTable, type Tx } from "@/lib/db";
+import { hasColumn, hasTable, type Tx } from "@/lib/db";
 import type { OrderItem } from "@/types/database";
 import {
   normalizeDeliveryMode,
@@ -7,7 +7,7 @@ import {
   type DeliverySelection,
   type DeliveryZoneInfo,
 } from "@/lib/delivery";
-import { queryEffectiveModifiers, isMissingColumnError, type EffectiveModifierRow } from "@/lib/modifier-rules";
+import { queryEffectiveModifiers, type EffectiveModifierRow } from "@/lib/modifier-rules";
 import { cashAppliesToItem, cashPrice, normalizeCashPct } from "@/lib/cash-discount";
 import {
   applyVolumePricing,
@@ -169,22 +169,21 @@ export async function resolveOrderPricing(opts: {
   for (const v of variants) productIds.add(v.product_id);
 
   // Select del catálogo: tolerante a la migración sin aplicar (package_price
-  // no existe todavía): si falla por la columna, se repite sin ella.
+  // no existe todavía): se chequea la columna ANTES de consultar. Un
+  // try/catch con reintento no sirve — la primera query aborta la
+  // transacción y el reintento muere con 25P02 ("current transaction is
+  // aborted…"), tumbando la venta.
   let products: ProductRow[] = [];
   if (productIds.size) {
-    try {
-      products = await tx.query<ProductRow>(
-        `SELECT id, name, price, promo_price, available, cash_discount_excluded, pack_size, unit, package_price FROM products
-         WHERE vendor_id = $1 AND id = ANY($2)`,
-        [[...productIds], vendorId]
-      );
-    } catch {
-      products = await tx.query<ProductRow>(
-        `SELECT id, name, price, promo_price, available, cash_discount_excluded, pack_size, unit FROM products
-         WHERE vendor_id = $1 AND id = ANY($2)`,
-        [[...productIds], vendorId]
-      );
-    }
+    const hasPackagePrice = await hasColumn(tx, "products", "package_price");
+    products = await tx.query<ProductRow>(
+      hasPackagePrice
+        ? `SELECT id, name, price, promo_price, available, cash_discount_excluded, pack_size, unit, package_price FROM products
+           WHERE vendor_id = $1 AND id = ANY($2)`
+        : `SELECT id, name, price, promo_price, available, cash_discount_excluded, pack_size, unit FROM products
+           WHERE vendor_id = $1 AND id = ANY($2)`,
+      [[...productIds], vendorId]
+    );
   }
 
   // Componentes de combos: se adjuntan al ProductRow como snapshot (para
@@ -218,16 +217,14 @@ export async function resolveOrderPricing(opts: {
     const memberIds = [...new Set(crows.map((c) => String(c.member_product_id)))];
     let mvRows: { id: string; product_id: string; color: string | null; talle: string | null }[] = [];
     if (memberIds.length > 0) {
-      try {
-        mvRows = await tx.query(
-          `SELECT pv.id, pv.product_id, pv.color, pv.talle
-           FROM product_variants pv INNER JOIN products p ON p.id = pv.product_id
-           WHERE p.vendor_id = $1 AND pv.product_id = ANY($2)`,
-          [vendorId, memberIds]
-        );
-      } catch {
-        mvRows = [];
-      }
+      // Sin try/catch: si esta query falla la tx ya está abortada y un catch
+      // convertiría el error real en 25P02 ("current transaction is aborted").
+      mvRows = await tx.query(
+        `SELECT pv.id, pv.product_id, pv.color, pv.talle
+         FROM product_variants pv INNER JOIN products p ON p.id = pv.product_id
+         WHERE p.vendor_id = $1 AND pv.product_id = ANY($2)`,
+        [vendorId, memberIds]
+      );
     }
     for (const p of products) {
       const members = byCombo.get(String(p.id));
@@ -258,25 +255,24 @@ export async function resolveOrderPricing(opts: {
   let unavailableByProduct = new Map<string, Set<string>>();
   if (productIds.size) {
     let modRows: { product_id: string; options: { label?: string; price_mod?: number; price_total?: number | null; promo?: number | null }[]; price_mode?: string | null; max_selections?: number }[] = [];
-    try {
-      modRows = await tx.query(
-        `SELECT l.product_id, g.options, g.price_mode, g.max_selections
-         FROM product_modifier_links l
-         JOIN modifier_groups g ON g.id = l.group_id
-         WHERE l.product_id = ANY($1)`,
-        [[...productIds]]
-      );
-    } catch (e) {
-      // Sin migración de price_mode: todo diferencia (comportamiento actual).
-      if (!isMissingColumnError(e)) throw e;
-      modRows = await tx.query(
-        `SELECT l.product_id, g.options
-         FROM product_modifier_links l
-         JOIN modifier_groups g ON g.id = l.group_id
-         WHERE l.product_id = ANY($1)`,
-        [[...productIds]]
-      );
-    }
+    // Chequeo de columna ANTES (information_schema nunca lanza): un catch con
+    // reintento dentro de la tx la aborta y todo lo posterior muere con 25P02.
+    const hasPriceMode = await hasColumn(tx, "modifier_groups", "price_mode");
+    modRows = hasPriceMode
+      ? await tx.query(
+          `SELECT l.product_id, g.options, g.price_mode, g.max_selections
+           FROM product_modifier_links l
+           JOIN modifier_groups g ON g.id = l.group_id
+           WHERE l.product_id = ANY($1)`,
+          [[...productIds]]
+        )
+      : await tx.query(
+          `SELECT l.product_id, g.options
+           FROM product_modifier_links l
+           JOIN modifier_groups g ON g.id = l.group_id
+           WHERE l.product_id = ANY($1)`,
+          [[...productIds]]
+        );
     modifierMap = new Map();
     for (const row of modRows) {
       const opts = Array.isArray(row.options) ? row.options : [];
@@ -364,15 +360,17 @@ export async function resolveOrderPricing(opts: {
   const weightRules: WeightRules = opts.skipWeightRules
     ? { step: 0, min: 0 }
     : await (async () => {
-        try {
-          const row = await tx.query<{ weight_step_kg: number | null; weight_min_kg: number | null }>(
-            `SELECT weight_step_kg, weight_min_kg FROM vendors WHERE id = $1 LIMIT 1`,
-            [vendorId]
-          );
-          return readWeightRules(row[0]?.weight_step_kg, row[0]?.weight_min_kg);
-        } catch {
-          return { step: 0, min: 0 };
-        }
+        // Chequeo de columnas ANTES: la consulta weight_step_kg/weight_min_kg
+        // falla si migrate-weight-step.sql no está aplicada, y un catch acá
+        // dejaría la tx abortada (25P02 en toda query posterior).
+        const hasStep = await hasColumn(tx, "vendors", "weight_step_kg");
+        const hasMin = await hasColumn(tx, "vendors", "weight_min_kg");
+        if (!hasStep || !hasMin) return { step: 0, min: 0 };
+        const row = await tx.query<{ weight_step_kg: number | null; weight_min_kg: number | null }>(
+          `SELECT weight_step_kg, weight_min_kg FROM vendors WHERE id = $1 LIMIT 1`,
+          [vendorId]
+        );
+        return readWeightRules(row[0]?.weight_step_kg, row[0]?.weight_min_kg);
       })();
 
   for (const it of opts.items) {
@@ -620,19 +618,22 @@ export async function resolveOrderPricing(opts: {
   const volumeNetLine = new Map<number, number>();
   const volumeNoCash = new Set<number>();
   if (await hasTable(tx, "volume_groups")) {
-    try {
-      const gRows = await tx.query<{
-        id: string;
-        name: string;
-        product_ids: string[];
-        combine_promo: boolean;
-        combine_cash: boolean;
-        extras_mode: string;
-      }>(
-        `SELECT id, name, product_ids, combine_promo, combine_cash, extras_mode
-         FROM volume_groups WHERE vendor_id = $1 AND active = true ORDER BY position ASC, created_at ASC`,
-        [vendorId]
-      );
+    // Sin try/catch alrededor de las queries: si fallan, la tx ya está
+    // abortada y un catch convertiría el error real en 25P02 ("current
+    // transaction is aborted…"), tumbando la venta entera. Solo el cálculo
+    // en memoria (applyVolumePricing) tolera datos corruptos sin volumen.
+    const gRows = await tx.query<{
+      id: string;
+      name: string;
+      product_ids: string[];
+      combine_promo: boolean;
+      combine_cash: boolean;
+      extras_mode: string;
+    }>(
+      `SELECT id, name, product_ids, combine_promo, combine_cash, extras_mode
+       FROM volume_groups WHERE vendor_id = $1 AND active = true ORDER BY position ASC, created_at ASC`,
+      [vendorId]
+    );
       if (gRows.length > 0) {
         const tRows = await tx.query<{ group_id: string; min_qty: number; kind: string; value: number }>(
           `SELECT group_id, min_qty, kind, value FROM volume_tiers WHERE group_id = ANY($1)`,
@@ -687,26 +688,26 @@ export async function resolveOrderPricing(opts: {
               excluded: s.product.cash_discount_excluded,
             };
           });
-          const vol = applyVolumePricing(volLines, volGroups);
-          volumeDiscount = vol.volumeDiscount;
-          volumeApplied = vol.applied.map((a) => ({ groupName: a.groupName, label: a.label, qty: a.qty }));
-          vol.lines.forEach((l, i) => {
-            if (l.netTotal !== l.grossTotal) {
-              volumeNetLine.set(i, l.netTotal);
-            }
-            if (!l.cashEligible) volumeNoCash.add(i);
-          });
+          // Solo el cálculo en memoria tolera datos corruptos: se sigue sin
+          // volumen. No hay SQL acá, así que no toca ni aborta la tx.
+          try {
+            const vol = applyVolumePricing(volLines, volGroups);
+            volumeDiscount = vol.volumeDiscount;
+            volumeApplied = vol.applied.map((a) => ({ groupName: a.groupName, label: a.label, qty: a.qty }));
+            vol.lines.forEach((l, i) => {
+              if (l.netTotal !== l.grossTotal) {
+                volumeNetLine.set(i, l.netTotal);
+              }
+              if (!l.cashEligible) volumeNoCash.add(i);
+            });
+          } catch {
+            volumeDiscount = 0;
+            volumeApplied = [];
+            volumeNetLine.clear();
+            volumeNoCash.clear();
+          }
         }
       }
-    } catch {
-      // Datos inesperados: se sigue sin volumen (la tabla existe — se chequeó
-      // con hasTable —, así que este catch solo cubre datos corruptos y el
-      // rollback de la tx es limpio: el error se propaga, no se envenena).
-      volumeDiscount = 0;
-      volumeApplied = [];
-      volumeNetLine.clear();
-      volumeNoCash.clear();
-    }
   }
 
   // Descuento en efectivo: % sobre la NETO DE LA LÍNEA elegible (pack-native,

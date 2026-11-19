@@ -6,7 +6,7 @@ import {
   primaryMethod,
   type SplitPayment,
 } from "@/lib/order-payments";
-import { hasTable, queryMany, queryOne, withTransaction } from "@/lib/db";
+import { hasTable, hasColumn, queryMany, queryOne, withTransaction } from "@/lib/db";
 import { fetchVendorDelivery } from "@/lib/delivery-server";
 import { resolveDeliveryFee, type DeliverySelection } from "@/lib/delivery";
 import { nextOrderNumber } from "@/lib/order-number";
@@ -23,7 +23,7 @@ import { adjustStockForItems, stockItemsForMovement, OutOfStockError, type Stock
 import { logStockMovement } from "@/lib/stock-ledger";
 import { upsertCustomerFromOrder, isRealCustomerPhone } from "@/lib/customers";
 import { getOpenShift } from "@/lib/cash-closing";
-import { validateFiadoPhone, fiadoTableReady } from "@/lib/fiados";
+import { validateFiadoPhone } from "@/lib/fiados";
 import { toE164 } from "@/lib/phone";
 import {
   findOrderByClientKey,
@@ -35,6 +35,11 @@ import { NextResponse } from "next/server";
 
 const PAYMENT_METHODS = ["efectivo", "transferencia", "tarjeta", "mixto", "whatsapp", "fiado"] as const;
 type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
+/** Adapter del pool a la firmina mínima de hasColumn (columnas en pre-tx). */
+const POOL_QUERIER = {
+  query: <T extends Record<string, any>>(sql: string, params: unknown[] = []) => queryMany<T>(sql, params),
+};
 
 export async function POST(request: Request) {
   const gate = await gateRequest(request, { allowStaff: true });
@@ -223,61 +228,21 @@ export async function POST(request: Request) {
         ? { kind: "zone", zoneId: deliveryZoneId }
         : { kind: "in_area" };
 
-  // Columna de volumen (tolerante a migración sin aplicar).
-  let hasVolumeCol = false;
-  try {
-    const vc = await queryOne<{ exists: boolean }>(
-      `SELECT EXISTS (
-         SELECT 1 FROM information_schema.columns
-         WHERE table_name = 'orders' AND column_name = 'volume_discount'
-       ) AS exists`
-    );
-    hasVolumeCol = vc?.exists === true;
-  } catch {
-    hasVolumeCol = false;
-  }
+  // Columna de volumen (tolerante a migración sin aplicar; hasColumn nunca
+  // lanza — un catch dejaría la tx envenenada más adelante).
+  const hasVolumeCol = await hasColumn(POOL_QUERIER, "orders", "volume_discount");
 
   // Columnas de descuento manual (tolerante a migración sin aplicar).
-  let hasManualCol = false;
-  try {
-    const mc = await queryOne<{ exists: boolean }>(
-      `SELECT EXISTS (
-         SELECT 1 FROM information_schema.columns
-         WHERE table_name = 'orders' AND column_name = 'manual_discount'
-       ) AS exists`
-    );
-    hasManualCol = mc?.exists === true;
-  } catch {
-    hasManualCol = false;
-  }
+  const hasManualCol = await hasColumn(POOL_QUERIER, "orders", "manual_discount");
   // Columna "con cuánto abona" (migrate-order-cash-amount.sql, tolerante a
   // migración sin aplicar): sin la columna el mostrador funciona igual, solo
   // no queda registrado el vuelto en el pedido/ticket.
-  let hasCashAmountCol = false;
-  try {
-    const cc = await queryOne<{ exists: boolean }>(
-      `SELECT EXISTS (
-         SELECT 1 FROM information_schema.columns
-         WHERE table_name = 'orders' AND column_name = 'cash_amount'
-       ) AS exists`
-    );
-    hasCashAmountCol = cc?.exists === true;
-  } catch {
-    hasCashAmountCol = false;
-  }
+  const hasCashAmountCol = await hasColumn(POOL_QUERIER, "orders", "cash_amount");
   // Desglose de pago combinado (migrate-order-payments.sql, tolerante a
   // migración sin aplicar): sin la tabla la venta sale con medio único.
   const hasPaymentsTable = await hasOrderPaymentsTable();
   // Multi-cuenta: la columna puede no existir si la migración no se aplicó.
-  let hasBankAccountCol = false;
-  try {
-    const col = await queryOne<{ exists: boolean }>(
-      `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'bank_account_id') AS exists`
-    );
-    hasBankAccountCol = col?.exists === true;
-  } catch {
-    hasBankAccountCol = false;
-  }
+  const hasBankAccountCol = await hasColumn(POOL_QUERIER, "orders", "bank_account_id");
 
   const now = new Date().toISOString();
 
@@ -596,16 +561,9 @@ export async function POST(request: Request) {
     // Con desglose, `orders.payment_method` guarda el medio de mayor monto
     // (Kanban/tickets/analytics siguen leyendo un valor único como siempre).
     const paymentMethodDb = split ? primaryMethod(split) : payment;
-    // payment_status: tolerante a migración sin aplicar.
-    let hasPayStatus = false;
-    try {
-      const pc = await tx.queryOne<{ exists: boolean }>(
-        `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'payment_status') AS exists`
-      );
-      hasPayStatus = pc?.exists === true;
-    } catch {
-      hasPayStatus = false;
-    }
+    // payment_status: tolerante a migración sin aplicar (hasColumn nunca
+    // lanza; un catch acá envenenaría la tx con 25P02).
+    const hasPayStatus = await hasColumn(tx, "orders", "payment_status");
 const entries: Array<[string, unknown]> = [
       ["vendor_id", gate.vendor.id],
       ["customer_name", customerName?.trim() || "Mostrador"],
@@ -672,11 +630,9 @@ const entries: Array<[string, unknown]> = [
       });
       // Con desglose, el pedido no se cuenta por payment_method (la Caja usa
       // las filas): se marca para no duplicar. Tolerante a migración sin
-      // columna (en ese caso insertOrderPayments no corrió).
-      try {
+      // columna: hasColumn nunca lanza y envenenaría la tx si lanzara.
+      if (await hasColumn(tx, "orders", "paid_via_payments")) {
         await tx.queryVoid(`UPDATE orders SET paid_via_payments = true WHERE id = $1`, [order.id]);
-      } catch {
-        /* columna sin migrar: se ignora */
       }
     }
 
@@ -743,8 +699,14 @@ const entries: Array<[string, unknown]> = [
 
     // CRM: con teléfono real del cliente → ficha (delivery y retiro con
     // teléfono cargado; el pickup anónimo no genera ficha; tampoco si
-    // pusieron el WA del comercio).
-    if (customerE164 && isRealCustomerPhone(customerPhoneClean, gate.vendor.whatsapp) && !previewOrder) {
+    // pusieron el WA del comercio). Tolerante a migración sin aplicar: la
+    // venta no muere porque falte migrate-crm.sql.
+    if (
+      customerE164 &&
+      isRealCustomerPhone(customerPhoneClean, gate.vendor.whatsapp) &&
+      !previewOrder &&
+      (await hasTable(tx, "customers"))
+    ) {
       await upsertCustomerFromOrder(tx, gate.vendor.id, {
         phone: customerE164,
         name: customerName?.trim() || null,

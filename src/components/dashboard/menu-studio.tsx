@@ -1832,7 +1832,7 @@ export function MenuStudio({
         hasRecipes={hasRecipes}
         datosNode={<div className="space-y-3">
           {editingId && (
-            <div className="pt-2">
+            <div className="pt-2 flex flex-wrap gap-2">
               <Button
                 type="button"
                 variant="outline"
@@ -1844,9 +1844,41 @@ export function MenuStudio({
               >
                 🧬 Presentaciones
               </Button>
-              <span className="ml-2 text-xs text-muted-foreground">
-                Generar tamaños/contenidos a partir de este producto
-              </span>
+              {(() => {
+                const eo = offers.find((o) => o.id === editingId);
+                const hasPres = eo && offers.some((o) => o.parent_id === eo.id);
+                if (!hasPres) return null;
+                return (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      const eo2 = offers.find((o) => o.id === editingId);
+                      if (!eo2) return;
+                      const familyIds = [eo2.id, ...offers.filter((o) => o.parent_id === eo2.id).map((o) => o.id)];
+                      const val = prompt("Recargo % sobre costo (ej. 30):");
+                      if (val == null) return;
+                      const pct = Number(val);
+                      if (!Number.isFinite(pct)) return;
+                      const res = await fetch("/api/vendor/offers/bulk-price", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ ids: familyIds, ops: [{ kind: "markup_pct", value: pct }] }),
+                      });
+                      const data = await res.json().catch(() => ({}));
+                      if (res.ok) {
+                        setMsg(`Se recalcularon ${familyIds.length} presentaciones.`);
+                        reload();
+                      } else {
+                        setMsg(data?.error || "No se pudieron recalcular los precios");
+                      }
+                    }}
+                  >
+                    💰 Recalcular precios
+                  </Button>
+                );
+              })()}
             </div>
           )}
           {menuDraft.restored && (

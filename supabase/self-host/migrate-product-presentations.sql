@@ -21,6 +21,14 @@ ALTER TABLE public.products
 CREATE INDEX IF NOT EXISTS idx_products_parent
   ON public.products(parent_id) WHERE parent_id IS NOT NULL;
 
-ALTER TABLE public.products
-  ADD CONSTRAINT products_no_self_parent
-  CHECK (parent_id IS NULL OR parent_id <> id);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'products_no_self_parent' AND conrelid = 'public.products'::regclass
+  ) THEN
+    ALTER TABLE public.products
+      ADD CONSTRAINT products_no_self_parent
+      CHECK (parent_id IS NULL OR parent_id <> id);
+  END IF;
+END $$;

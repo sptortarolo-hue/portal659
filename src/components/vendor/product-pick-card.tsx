@@ -18,6 +18,8 @@ export type PickProduct = {
   pack_size?: number | null;
   /** Unidad de venta: "kg" = precio por kilo (balanza). */
   unit?: string | null;
+  /** Presentaciones (hijas) de la familia. */
+  presentations?: { id: string; presentation_label?: string | null; price: number; stock?: number | null }[];
 };
 
 /**
@@ -82,6 +84,11 @@ export function ProductPickCard({
         {Number(p.pack_size) >= 2 && (
           <span className="absolute top-2 right-2 rounded-full bg-emerald-600 text-white text-[9px] font-bold px-2 py-0.5">
             pack x{Math.floor(Number(p.pack_size))}
+          </span>
+        )}
+        {Array.isArray(p.presentations) && p.presentations.length > 0 && (
+          <span className="absolute top-2 left-2 rounded-full bg-primary text-primary-foreground text-[9px] font-bold px-2 py-0.5">
+            {p.presentations.length} tamaños
           </span>
         )}
         {(p as any).unit === "kg" && (

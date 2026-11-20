@@ -445,6 +445,38 @@ export function PackEnvasado() {
             )}
           </div>
 
+          {/* Presentaciones de la misma familia: acceso rápido para envasar otro tamaño */}
+          {selectedId && (() => {
+            const sel = (products || []).find((p) => p.id === selectedId);
+            const rootId = (sel as any)?.parent_id || sel?.id;
+            const siblings = (products || []).filter((p) =>
+              (p as any).parent_id === rootId || p.id === rootId
+            );
+            if (siblings.length <= 1) return null;
+            return (
+              <div className="rounded-xl border border-border p-2 space-y-1.5">
+                <p className="text-xs text-muted-foreground font-medium">Presentaciones de esta familia:</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {siblings.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => { setSelectedId(s.id); setResult(null); }}
+                      className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                        s.id === selectedId
+                          ? "border-primary bg-primary/5 text-primary"
+                          : "border-border hover:border-primary/50"
+                      }`}
+                    >
+                      {s.name}
+                      {s.stock != null ? ` (${Number(s.stock)})` : ""}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
           <div className="rounded-xl bg-muted/60 p-2.5 space-y-2">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <p className="text-xs text-muted-foreground">Balanza</p>

@@ -80,6 +80,7 @@ export function PackEnvasado() {
   const [products, setProducts] = useState<EnvasadoProduct[] | null>(null);
   const [recipes, setRecipes] = useState<{ recipes: RecipeRow[]; items: RecipeItemRow[] } | null>(null);
   const [ingredients, setIngredients] = useState<IngredientRow[]>([]);
+  const [links, setLinks] = useState<{ product_id: string; recipe_id: string }[]>([]);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -120,6 +121,8 @@ export function PackEnvasado() {
     setProducts(offers);
     const rec = await getJson<{ recipes: RecipeRow[]; items: RecipeItemRow[] }>("/api/vendor/recipes");
     if (rec) setRecipes({ recipes: rec.recipes || [], items: rec.items || [] });
+    const costs = await getJson<{ links?: { product_id: string; recipe_id: string }[] }>("/api/vendor/recipes/costs");
+    if (costs?.links) setLinks(costs.links.map((l) => ({ product_id: l.product_id, recipe_id: l.recipe_id })));
     const ing = await getJson<{ ingredients: IngredientRow[] }>("/api/vendor/ingredients");
     if (ing) setIngredients(Array.isArray(ing.ingredients) ? ing.ingredients : []);
   }, []);
@@ -148,8 +151,15 @@ export function PackEnvasado() {
     for (const r of recipes?.recipes || []) {
       if (r.product_id) map.set(r.product_id, r);
     }
+    // Productos asociados (heredan la receta de otro): product_recipe_links.
+    for (const l of links) {
+      const rec = (recipes?.recipes || []).find((r) => r.id === l.recipe_id);
+      if (rec && !map.has(l.product_id)) map.set(l.product_id, rec);
+    }
     return map;
-  }, [recipes]);
+  }, [recipes, links]);
+
+  const isLinked = useCallback((productId: string) => links.some((l) => l.product_id === productId), [links]);
 
   const suggestedWeightKg = useCallback((productId: string): number | null => {
     const rec = recipeByProduct.get(productId);
@@ -424,6 +434,7 @@ export function PackEnvasado() {
                   </span>
                 </span>
                 {p.count_pack === true && <Badge variant="secondary">⚖️ kg</Badge>}
+                {isLinked(p.id) && <Badge variant="secondary">🔗</Badge>}
               </button>
             ))}
             {filtered && filtered.length === 0 && (

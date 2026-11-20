@@ -131,14 +131,25 @@ export async function POST(request: Request) {
     );
   }
 
-  // Receta del terminado.
-  const recipe = await queryOne<{ id: string }>(
+  // Receta del terminado: directa o heredada por link (presentaciones compartidas).
+  let recipe = await queryOne<{ id: string }>(
     `SELECT id FROM recipes WHERE product_id = $1 AND vendor_id = $2`,
     [productId, gate.vendor.id]
   );
   if (!recipe) {
+    const link = await queryOne<{ recipe_id: string }>(
+      `SELECT l.recipe_id
+       FROM product_recipe_links l
+       JOIN recipes r ON r.id = l.recipe_id
+       WHERE l.product_id = $1 AND r.vendor_id = $2
+       LIMIT 1`,
+      [productId, gate.vendor.id]
+    ).catch(() => null);
+    if (link?.recipe_id) recipe = { id: link.recipe_id };
+  }
+  if (!recipe) {
     return NextResponse.json(
-      { error: "El producto no tiene receta. Cargala en Preparación y Costo → Platos.", needs_recipe: true },
+      { error: "El producto no tiene receta. Cargala en Preparación y Costo → Productos.", needs_recipe: true },
       { status: 400 }
     );
   }

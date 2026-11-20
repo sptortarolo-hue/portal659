@@ -1830,7 +1830,26 @@ export function MenuStudio({
         }
         isNew={!editingId}
         hasRecipes={hasRecipes}
-        datosNode={<div className="space-y-3">{menuDraft.restored && (
+        datosNode={<div className="space-y-3">
+          {editingId && (
+            <div className="pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const eo = offers.find((o) => o.id === editingId);
+                  if (eo) setGenSource(eo);
+                }}
+              >
+                🧬 Presentaciones
+              </Button>
+              <span className="ml-2 text-xs text-muted-foreground">
+                Generar tamaños/contenidos a partir de este producto
+              </span>
+            </div>
+          )}
+          {menuDraft.restored && (
           <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
             <p className="text-xs font-medium text-primary">Recuperamos tu carga en curso{photoNotice ? " (volvé a elegir la foto)" : ""}</p>
             <button

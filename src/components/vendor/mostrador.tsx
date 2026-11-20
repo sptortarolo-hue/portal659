@@ -681,8 +681,11 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         const comboData = (off.comboItemsByProduct || {}) as Record<string, { product_id: string; name: string; qty: number; price?: number; image_url?: string | null }[]>;
         setComboMap(comboData);
         const mapped = (off.offers || [])
-          .filter((o: any) => o.available !== false)
-          .map((o: any) => ({ ...o, modifiers: modsMap[o.id] || [] }));
+          .filter((o: any) => o.available !== false && !(o.parent_id != null && (off.offers || []).some((r: any) => r.id === o.parent_id)))
+          .map((o: any) => {
+             const pres = (off.offers || []).filter((c: any) => c.parent_id === o.id && c.available !== false);
+             return { ...o, modifiers: modsMap[o.id] || [], presentations: pres.length > 0 ? pres : undefined };
+           });
         setProducts(mapped);
         setRecent(
           (ord.orders || [])

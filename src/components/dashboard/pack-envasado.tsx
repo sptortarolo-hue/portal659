@@ -84,6 +84,8 @@ export function PackEnvasado() {
   const [links, setLinks] = useState<{ product_id: string; recipe_id: string }[]>([]);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [familyBatchMode, setFamilyBatchMode] = useState(false);
+  const [familyBatchCounts, setFamilyBatchCounts] = useState<Record<string, string>>({});
 
   const [bags, setBags] = useState<number[]>([]);
   const [kgLive, setKgLive] = useState<number | null>(null);
@@ -444,6 +446,82 @@ export function PackEnvasado() {
               <p className="text-xs text-muted-foreground text-center py-4">Ningún producto envasado coincide.</p>
             )}
           </div>
+
+          {/* Modo familia: envasar varias presentaciones en una sola pantalla */}
+          {selectedId && (() => {
+            const sel = (products || []).find((p) => p.id === selectedId);
+            const rootId = (sel as any)?.parent_id || sel?.id;
+            const siblings = (products || []).filter((p) =>
+              (p as any).parent_id === rootId || p.id === rootId
+            );
+            if (siblings.length <= 1) return null;
+            return (
+              <div className="rounded-xl border border-border p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground font-medium">Envasar familia (varios tamaños a la vez)</p>
+                  <Switch checked={familyBatchMode} onCheckedChange={setFamilyBatchMode} />
+                </div>
+                {familyBatchMode && (
+                  <div className="space-y-2 pt-1">
+                    {siblings.map((s) => {
+                      const qty = Number((s as any).presentation_qty) || 1;
+                      const defaultKg = qty > 0 ? qty : 1;
+                      const count = familyBatchCounts[s.id] || "";
+                      return (
+                        <div key={s.id} className="flex items-center gap-2">
+                          <span className="text-xs font-medium flex-1 min-w-0 truncate">{s.name}</span>
+                          <Input
+                            type="number"
+                            value={count}
+                            onChange={(e) => setFamilyBatchCounts((prev) => ({ ...prev, [s.id]: e.target.value }))}
+                            placeholder="Cantidad"
+                            className="h-8 text-xs w-20"
+                          />
+                          <span className="text-xs text-muted-foreground tabular-nums w-16 text-right">
+                            {fmtKg(defaultKg)} c/u
+                          </span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={!count || Number(count) <= 0 || saving}
+                            onClick={async () => {
+                              const n = Math.floor(Number(count));
+                              if (n <= 0) return;
+                              const bags = Array.from({ length: n }, () => defaultKg);
+                              setSaving(true);
+                              setError(null);
+                              try {
+                                const res = await fetch("/api/vendor/elaborations", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ product_id: s.id, bags, packedAt, shelfLifeDays }),
+                                });
+                                const data = await res.json().catch(() => null);
+                                if (!res.ok) {
+                                  setError(data?.error || `No se pudo envasar ${s.name}`);
+                                } else {
+                                  setNotice(`Se envasaron ${n} de ${s.name}.`);
+                                  loadBatches();
+                                  loadProducts();
+                                }
+                              } catch {
+                                setError("No se pudo hablar con el servidor.");
+                              } finally {
+                                setSaving(false);
+                              }
+                            }}
+                          >
+                            Envasar
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Presentaciones de la misma familia: acceso rápido para envasar otro tamaño */}
           {selectedId && (() => {

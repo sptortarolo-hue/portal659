@@ -138,7 +138,7 @@ export async function buildStickerForProduct(
     unit: isKg ? "kg" : "unidad",
     price,
     oldPrice,
-    kg: isKg ? kg : null,
+    kg: kg,
     total,
     packedAt: template === "envasado" ? packedAt : null,
     expiresAt,

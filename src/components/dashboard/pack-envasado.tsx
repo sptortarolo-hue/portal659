@@ -19,6 +19,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { getJson } from "@/components/dashboard/shared";
+import { fetchWithAuthRefresh } from "@/lib/auth-refresh";
 import { arISODate, fmtKg, fmtMoney, readLabelPrinterConfig } from "@/lib/label-spec";
 import { unitFactor } from "@/lib/costing";
 import {
@@ -290,7 +291,7 @@ export function PackEnvasado() {
     async (kg: number) => {
       if (!selected) return;
       try {
-        const res = await fetch("/api/print", {
+        const res = await fetchWithAuthRefresh("/api/print", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -342,7 +343,7 @@ export function PackEnvasado() {
     let ok = false;
     let payload: { batch?: { units: number; total_kg: number; cost_total: number; cost_per_unit: number; expires_at?: string | null }; error?: string; missing?: { name: string; need: number; have: number | null; base_unit: string }[] } | null = null;
     try {
-      const res = await fetch("/api/vendor/elaborations", {
+      const res = await fetchWithAuthRefresh("/api/vendor/elaborations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ product_id: selected.id, bags, packedAt, shelfLifeDays }),
@@ -370,6 +371,13 @@ export function PackEnvasado() {
       cost_per_unit: Number(b.cost_per_unit),
       expires_at: b.expires_at ? String(b.expires_at) : null,
     });
+    // Imprimir etiqueta por bolsa (también para productos por unidad con peso fijo).
+    if (autoPrint && selected) {
+      const toPrint = [...bags];
+      for (const kg of toPrint) {
+        if (kg > 0) void printBag(kg);
+      }
+    }
     setBags([]);
     setNotice("Lote guardado: stock y costos actualizados.");
     await loadBatches();

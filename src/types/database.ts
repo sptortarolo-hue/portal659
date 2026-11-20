@@ -229,6 +229,8 @@ export type Ingredient = {
   active: boolean;
   /** Stock en unidad base (g/ml/u). undefined = migración sin aplicar; null = sin control. */
   stock?: number | null;
+  /** Fecha de vencimiento del lote de compra (granel). undefined = migración sin aplicar; null = sin control. */
+  expires_at?: string | null;
   created_at: string;
   updated_at: string;
 };

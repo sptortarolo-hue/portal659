@@ -31,7 +31,12 @@ function normIngredient(body: any) {
   const track_stock = body?.track_stock === true;
   const stock =
     body?.stock != null && body.stock !== "" ? Number(body.stock) : track_stock ? 0 : null;
-  return { name, base_unit, cost_per_unit, waste_pct, is_elaborated, notes, active, track_stock, stock };
+  // Vencimiento (migrate-elaboration-v2.sql): NULL = sin control.
+  const expires_at =
+    body?.expires_at != null && String(body.expires_at).trim() !== ""
+      ? String(body.expires_at).trim()
+      : null;
+  return { name, base_unit, cost_per_unit, waste_pct, is_elaborated, notes, active, track_stock, stock, expires_at };
 }
 
 /** Lista de insumos del comercio. */
@@ -87,16 +92,37 @@ export async function POST(request: Request) {
     );
   }
 
+  // Vencimiento: tolerante a migración sin aplicar.
+  const wantExpiry = ing.expires_at != null && ing.expires_at !== "";
+  const expiryOk = await (async () => {
+    try {
+      const chk = await queryOne<{ exists: boolean }>(
+        `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'ingredients' AND column_name = 'expires_at') AS exists`
+      );
+      return chk?.exists === true;
+    } catch { return false; }
+  })();
+  if (wantExpiry && !expiryOk) {
+    return NextResponse.json(
+      { error: "Falta aplicar migrate-elaboration-v2.sql (columna ingredients.expires_at)." },
+      { status: 503 }
+    );
+  }
+
   const row = stockOk
     ? await queryOne<Record<string, unknown>>(
-        `INSERT INTO ingredients (vendor_id, name, base_unit, cost_per_unit, waste_pct, is_elaborated, notes, active, stock)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-        [gate.vendor.id, ing.name, ing.base_unit, ing.cost_per_unit, ing.waste_pct, ing.is_elaborated, ing.notes, ing.active, ing.track_stock ? ing.stock : null]
+        `INSERT INTO ingredients (vendor_id, name, base_unit, cost_per_unit, waste_pct, is_elaborated, notes, active, stock${expiryOk ? ", expires_at" : ""})
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9${expiryOk ? ", $10" : ""}) RETURNING *`,
+        expiryOk
+          ? [gate.vendor.id, ing.name, ing.base_unit, ing.cost_per_unit, ing.waste_pct, ing.is_elaborated, ing.notes, ing.active, ing.track_stock ? ing.stock : null, ing.expires_at]
+          : [gate.vendor.id, ing.name, ing.base_unit, ing.cost_per_unit, ing.waste_pct, ing.is_elaborated, ing.notes, ing.active, ing.track_stock ? ing.stock : null]
       )
     : await queryOne<Record<string, unknown>>(
-        `INSERT INTO ingredients (vendor_id, name, base_unit, cost_per_unit, waste_pct, is_elaborated, notes, active)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-        [gate.vendor.id, ing.name, ing.base_unit, ing.cost_per_unit, ing.waste_pct, ing.is_elaborated, ing.notes, ing.active]
+        `INSERT INTO ingredients (vendor_id, name, base_unit, cost_per_unit, waste_pct, is_elaborated, notes, active${expiryOk ? ", expires_at" : ""})
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8${expiryOk ? ", $9" : ""}) RETURNING *`,
+        expiryOk
+          ? [gate.vendor.id, ing.name, ing.base_unit, ing.cost_per_unit, ing.waste_pct, ing.is_elaborated, ing.notes, ing.active, ing.expires_at]
+          : [gate.vendor.id, ing.name, ing.base_unit, ing.cost_per_unit, ing.waste_pct, ing.is_elaborated, ing.notes, ing.active]
       );
   return NextResponse.json({ ingredient: row });
 }

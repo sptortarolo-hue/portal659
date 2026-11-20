@@ -174,7 +174,7 @@ export async function POST(request: Request) {
 
   // Normalizar + validar líneas (conversión a unidad base).
   type NormLine =
-    | { kind: "ingredient"; ingredient_id: string; qty: number; unit: string; unit_cost: number; qty_base: number; unit_cost_net: number; line_total: number }
+    | { kind: "ingredient"; ingredient_id: string; qty: number; unit: string; unit_cost: number; qty_base: number; unit_cost_net: number; line_total: number; expires_at: string | null }
     | { kind: "product"; product_id: string; qty: number; unit_cost: number; line_total: number; expires_at: string | null }
     | { kind: "variant"; variant_id: string; product_id: string; qty: number; unit_cost: number; line_total: number; expires_at: string | null };
   const items: NormLine[] = [];
@@ -231,6 +231,13 @@ export async function POST(request: Request) {
     }
     const qtyBase = qty * factor;
     const unitCostNet = round4(unitCostLine / factor);
+    let ingExpiresAt: string | null = null;
+    if (raw?.expires_at != null && String(raw.expires_at).trim() !== "") {
+      if (!isValidDateOnly(raw.expires_at)) {
+        return NextResponse.json({ error: `Línea ${idx + 1} («${ing.name}»): fecha de vencimiento inválida` }, { status: 400 });
+      }
+      ingExpiresAt = toDateOnly(raw.expires_at);
+    }
     items.push({
       kind: "ingredient",
       ingredient_id: iid,
@@ -240,6 +247,7 @@ export async function POST(request: Request) {
       qty_base: qtyBase,
       unit_cost_net: unitCostNet,
       line_total: round2(qtyBase * unitCostNet),
+      expires_at: ingExpiresAt,
     });
   }
 
@@ -337,19 +345,43 @@ export async function POST(request: Request) {
         }
         continue;
       }
-      await tx.queryVoid(
-        `INSERT INTO purchase_items (purchase_id, ingredient_id, qty, unit, unit_cost_net, line_total, position)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [p.id, it.ingredient_id, it.qty, it.unit, it.unit_cost_net, it.line_total, i]
-      );
+      // Persistir expires_at en purchase_items si la columna existe (tolerante).
+      const hasItemExpiryCol = await (async () => {
+        try {
+          const chk = await queryOne<{ exists: boolean }>(
+            `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'purchase_items' AND column_name = 'expires_at') AS exists`
+          );
+          return chk?.exists === true;
+        } catch { return false; }
+      })();
+
+      if (hasItemExpiryCol) {
+        await tx.queryVoid(
+          `INSERT INTO purchase_items (purchase_id, ingredient_id, qty, unit, unit_cost_net, line_total, position, expires_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [p.id, it.ingredient_id, it.qty, it.unit, it.unit_cost_net, it.line_total, i, it.expires_at]
+        );
+      } else {
+        await tx.queryVoid(
+          `INSERT INTO purchase_items (purchase_id, ingredient_id, qty, unit, unit_cost_net, line_total, position)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [p.id, it.ingredient_id, it.qty, it.unit, it.unit_cost_net, it.line_total, i]
+        );
+      }
       // Último costo: la compra pisa el costo del insumo.
       await tx.queryVoid(
         `UPDATE ingredients SET cost_per_unit = $1, updated_at = now() WHERE id = $2`,
         [it.unit_cost_net, it.ingredient_id]
       );
-      // Envasado: si el insumo controla stock (columna presente y no NULL),
-      // la compra entra stock + kardex, como la mercadería. Sin migración o
-      // sin control activo: solo costo, como siempre.
+      // Vencimiento: si la línea trae fecha, actualiza el insumo (como el producto).
+      if (it.expires_at != null && String(it.expires_at).trim() !== "") {
+        try {
+          await tx.queryVoid(
+            `UPDATE ingredients SET expires_at = $1::date, updated_at = now() WHERE id = $2`,
+            [it.expires_at, it.ingredient_id]
+          );
+        } catch { /* sin columna: ignora */ }
+      }
       const currIng = ingMap.get(it.ingredient_id) as any;
       if (currIng && currIng.stock !== undefined && currIng.stock !== null) {
         await tx.queryVoid(

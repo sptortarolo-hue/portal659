@@ -34,8 +34,11 @@ export function IngredientForm({
   const [notes, setNotes] = useState(initial?.notes || "");
   const [active, setActive] = useState(initial ? !!initial.active : true);
   const hasStockCol = initial == null || (initial as any).stock !== undefined;
+  const [hasExpiryCol, setHasExpiryCol] = useState(() => initial == null || (initial as any).expires_at !== undefined);
   const [trackStock, setTrackStock] = useState(() => initial ? (initial as any).stock != null : false);
   const [stock, setStock] = useState(() => initial && (initial as any).stock != null ? String((initial as any).stock) : "");
+  const [trackExpiry, setTrackExpiry] = useState(() => initial ? (initial as any).expires_at != null : false);
+  const [expiry, setExpiry] = useState(() => initial && (initial as any).expires_at != null ? String((initial as any).expires_at).slice(0, 10) : "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -62,6 +65,8 @@ export function IngredientForm({
       active,
       track_stock: trackStock,
       stock: trackStock ? Number(stock || 0) : null,
+      track_expiry: trackExpiry,
+      expires_at: trackExpiry && expiry.trim() !== "" ? expiry.trim() : null,
     };
     const r = initial
       ? await apiJson(`/api/vendor/ingredients/${initial.id}`, {
@@ -178,6 +183,34 @@ export function IngredientForm({
           )}
           {!hasStockCol && (
             <p className="text-[11px] text-amber-600">Falta aplicar migrate-elaboration.sql para guardar el stock.</p>
+          )}
+        </div>
+        <div className="rounded-xl border border-border p-2.5 space-y-2">
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={trackExpiry}
+              disabled={!hasExpiryCol}
+              onCheckedChange={(v) => {
+                if (!v && initial && (initial as any).expires_at != null) {
+                  if (!window.confirm("Al apagar el vencimiento el insumo deja de tener fecha de vencimiento (el kardex se conserva). ¿Seguir?")) return;
+                }
+                setTrackExpiry(v);
+                if (v && expiry === "") setExpiry("");
+              }}
+            />
+            <Label className="text-xs">Controlar vencimiento
+              <br /><span className="text-muted-foreground">granel: se hereda a los paquetes envasados</span>
+            </Label>
+          </div>
+          {trackExpiry && (
+            <div className="flex items-center gap-2">
+              <Label className="text-xs whitespace-nowrap">Vence el</Label>
+              <Input type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} className="w-40" />
+              {expiry && <span className="text-xs text-muted-foreground">{new Date(expiry + "T00:00:00").toLocaleDateString("es-AR")}</span>}
+            </div>
+          )}
+          {!hasExpiryCol && (
+            <p className="text-[11px] text-amber-600">Falta aplicar migrate-elaboration-v2.sql para guardar el vencimiento.</p>
           )}
         </div>
         <p className="text-xs text-muted-foreground -mt-1">

@@ -35,6 +35,22 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     );
   }
 
+  const hasExpiryCol = await (async () => {
+    try {
+      const chk = await queryOne<{ exists: boolean }>(
+        `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'ingredients' AND column_name = 'expires_at') AS exists`
+      );
+      return chk?.exists === true;
+    } catch { return false; }
+  })();
+  const wantsExpiry = body?.track_expiry !== undefined || body?.expires_at !== undefined;
+  if (wantsExpiry && !hasExpiryCol) {
+    return NextResponse.json(
+      { error: "Falta aplicar migrate-elaboration-v2.sql (columna ingredients.expires_at)." },
+      { status: 503 }
+    );
+  }
+
   const current = await queryOne<Record<string, unknown>>(
     `SELECT * FROM ingredients WHERE id = $1 AND vendor_id = $2`,
     [id, gate.vendor.id]
@@ -86,6 +102,31 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     stockDirty = true;
   }
 
+  // Vencimiento (migrate-elaboration-v2.sql): NULL = sin control.
+  let expiryVal: string | null =
+    (current as any).expires_at != null ? String((current as any).expires_at) : null;
+  let expiryDirty = false;
+  if (body?.track_expiry !== undefined && body.track_expiry !== true) {
+    expiryVal = null;
+    expiryDirty = true;
+  }
+  if (body?.expires_at !== undefined) {
+    const v = body.expires_at;
+    if (v === null || v === "" ) {
+      expiryVal = null;
+    } else {
+      const s = String(v).trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+        return NextResponse.json({ error: "La fecha de vencimiento debe tener formato AAAA-MM-DD" }, { status: 400 });
+      }
+      expiryVal = s;
+    }
+    expiryDirty = true;
+  } else if (body?.track_expiry === true && expiryVal === null) {
+    // Activar sin fecha → deja null (el shop la carga después)
+    expiryDirty = true;
+  }
+
   // Si cambia la unidad base, las líneas existentes podrían quedar
   // incompatibles: se bloquea y se pide revisar recetas primero.
   if (base_unit !== current.base_unit) {
@@ -108,16 +149,20 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         `UPDATE ingredients
          SET name = $1, base_unit = $2, cost_per_unit = $3, waste_pct = $4,
              is_elaborated = $5, notes = $6, active = $7, updated_at = now(),
-             stock = $10
+             stock = $10${hasExpiryCol ? ", expires_at = $11" : ""}
          WHERE id = $8 AND vendor_id = $9 RETURNING *`,
-        [name, base_unit, cost_per_unit, waste_pct, is_elaborated, notes, active, id, gate.vendor.id, stockDirty ? stockVal : (current as any).stock]
+        hasExpiryCol
+          ? [name, base_unit, cost_per_unit, waste_pct, is_elaborated, notes, active, id, gate.vendor.id, stockDirty ? stockVal : (current as any).stock, expiryDirty ? expiryVal : (current as any).expires_at]
+          : [name, base_unit, cost_per_unit, waste_pct, is_elaborated, notes, active, id, gate.vendor.id, stockDirty ? stockVal : (current as any).stock]
       )
     : await queryOne<Record<string, unknown>>(
         `UPDATE ingredients
          SET name = $1, base_unit = $2, cost_per_unit = $3, waste_pct = $4,
-             is_elaborated = $5, notes = $6, active = $7, updated_at = now()
+             is_elaborated = $5, notes = $6, active = $7, updated_at = now()${hasExpiryCol ? ", expires_at = $10" : ""}
          WHERE id = $8 AND vendor_id = $9 RETURNING *`,
-        [name, base_unit, cost_per_unit, waste_pct, is_elaborated, notes, active, id, gate.vendor.id]
+        hasExpiryCol
+          ? [name, base_unit, cost_per_unit, waste_pct, is_elaborated, notes, active, id, gate.vendor.id, expiryDirty ? expiryVal : (current as any).expires_at]
+          : [name, base_unit, cost_per_unit, waste_pct, is_elaborated, notes, active, id, gate.vendor.id]
       );
   return NextResponse.json({ ingredient: row });
 }

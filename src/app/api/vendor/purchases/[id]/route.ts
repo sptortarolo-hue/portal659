@@ -101,21 +101,51 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   await withTransaction(async (tx) => {
     await tx.queryVoid(`DELETE FROM purchases WHERE id = $1`, [id]);
     for (const iid of ingIds) {
-      const prev = await tx.queryOne<{ unit_cost_net: number }>(
-        `SELECT i.unit_cost_net
-         FROM purchase_items i JOIN purchases p ON p.id = i.purchase_id
-         WHERE i.ingredient_id = $1 AND p.vendor_id = $2
-         ORDER BY p.purchased_at DESC, i.created_at DESC
-         LIMIT 1`,
-        [iid, gate.vendor.id]
-      );
+      let prev: { unit_cost_net: number; expires_at?: string | null } | null = null;
+      try {
+        prev = await tx.queryOne<{ unit_cost_net: number; expires_at: string | null }>(
+          `SELECT i.unit_cost_net, i.expires_at
+           FROM purchase_items i JOIN purchases p ON p.id = i.purchase_id
+           WHERE i.ingredient_id = $1 AND p.vendor_id = $2
+           ORDER BY p.purchased_at DESC, i.created_at DESC
+           LIMIT 1`,
+          [iid, gate.vendor.id]
+        ) ?? null;
+      } catch {
+        prev = await tx.queryOne<{ unit_cost_net: number }>(
+          `SELECT i.unit_cost_net
+           FROM purchase_items i JOIN purchases p ON p.id = i.purchase_id
+           WHERE i.ingredient_id = $1 AND p.vendor_id = $2
+           ORDER BY p.purchased_at DESC, i.created_at DESC
+           LIMIT 1`,
+          [iid, gate.vendor.id]
+        ) ?? null;
+      }
       if (prev) {
-        await tx.queryVoid(
-          `UPDATE ingredients SET cost_per_unit = $1, updated_at = now() WHERE id = $2`,
-          [prev.unit_cost_net, iid]
-        );
+        try {
+          await tx.queryVoid(
+            `UPDATE ingredients SET cost_per_unit = $1, expires_at = $3::date, updated_at = now() WHERE id = $2`,
+            [prev.unit_cost_net, iid, prev.expires_at]
+          );
+        } catch {
+          await tx.queryVoid(
+            `UPDATE ingredients SET cost_per_unit = $1, updated_at = now() WHERE id = $2`,
+            [prev.unit_cost_net, iid]
+          );
+        }
         result.push({ ingredient_id: iid, cost_per_unit: Number(prev.unit_cost_net) });
       } else {
+        try {
+          await tx.queryVoid(
+            `UPDATE ingredients SET cost_per_unit = NULL, expires_at = NULL, updated_at = now() WHERE id = $1`,
+            [iid]
+          );
+        } catch {
+          await tx.queryVoid(
+            `UPDATE ingredients SET cost_per_unit = NULL, updated_at = now() WHERE id = $1`,
+            [iid]
+          );
+        }
         result.push({ ingredient_id: iid, cost_per_unit: null });
       }
     }

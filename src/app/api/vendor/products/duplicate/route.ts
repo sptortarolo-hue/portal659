@@ -175,11 +175,6 @@ export async function POST(request: Request) {
     { col: "weight_min_kg", val: source.weight_min_kg },
     { col: "scale_plu", val: null }, // PLU no se copia (debe ser único)
     { col: "size_guide", val: shareDesc ? source.size_guide : null },
-    { col: "cash_discount_excluded", val: source.cash_discount_excluded },
-    { col: "requires_prep", val: source.requires_prep },
-    { col: "has_variants", val: source.has_variants },
-    { col: "stock_control", val: shareStockControl ? source.stock_control : false },
-    { col: "stock_low_threshold", val: shareStockControl ? source.stock_low_threshold : null },
     { col: "online_available", val: source.online_available },
   ];
   for (const { col, val } of optionalCols) {

@@ -220,18 +220,36 @@ export async function POST(request: Request) {
 
     // share fields.
     if (shareSupplier && source.supplier_id) {
-      extraCols.push("supplier_id");
-      extraVals.push(source.supplier_id);
+      const hasSupplier = await queryOne<{ exists: boolean }>(
+        `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'supplier_id') AS exists`
+      ).catch(() => ({ exists: false }));
+      if (hasSupplier?.exists === true) {
+        extraCols.push("supplier_id");
+        extraVals.push(source.supplier_id);
+      }
     }
     if (shareExpiry && source.expires_at) {
-      extraCols.push("expires_at");
-      extraVals.push(source.expires_at);
+      const hasExpires = await queryOne<{ exists: boolean }>(
+        `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'expires_at') AS exists`
+      ).catch(() => ({ exists: false }));
+      if (hasExpires?.exists === true) {
+        extraCols.push("expires_at");
+        extraVals.push(source.expires_at);
+      }
     }
     if (shareMarginList && source.margin_list_id) {
-      extraCols.push("margin_list_id");
-      extraVals.push(source.margin_list_id);
+      const hasMl = await queryOne<{ exists: boolean }>(
+        `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'margin_list_id') AS exists`
+      ).catch(() => ({ exists: false }));
+      if (hasMl?.exists === true) {
+        extraCols.push("margin_list_id");
+        extraVals.push(source.margin_list_id);
+      }
     }
-    if (source.cost_last != null) {
+    const hasCostLastPres = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'cost_last') AS exists`
+    ).catch(() => ({ exists: false }));
+    if (hasCostLastPres?.exists === true && source.cost_last != null) {
       extraCols.push("cost_last");
       extraVals.push(source.cost_last);
       extraCols.push("cost_avg");
@@ -246,11 +264,6 @@ export async function POST(request: Request) {
       { col: "weight_step_kg", val: source.weight_step_kg },
       { col: "weight_min_kg", val: source.weight_min_kg },
       { col: "size_guide", val: shareDesc ? source.size_guide : null },
-      { col: "cash_discount_excluded", val: source.cash_discount_excluded },
-      { col: "requires_prep", val: source.requires_prep },
-      { col: "has_variants", val: source.has_variants },
-      { col: "stock_control", val: shareStockControl ? source.stock_control : false },
-      { col: "stock_low_threshold", val: shareStockControl ? source.stock_low_threshold : null },
       { col: "online_available", val: source.online_available },
     ];
     for (const { col, val } of optionalCols) {

@@ -118,9 +118,15 @@ export async function POST(request: Request) {
     [productId, gate.vendor.id]
   );
   if (!product) return NextResponse.json({ error: "Producto no encontrado" }, { status: 404 });
-  if (String(product.unit) !== "kg" || product.count_pack !== true) {
+  if (String(product.unit) !== "kg" && String(product.unit) !== "unidad") {
     return NextResponse.json(
-      { error: "Ese producto no está marcado como envasado (unidad kg + 'cuento paquetes'). Editalo en el catálogo." },
+      { error: "El producto debe ser por kilo (envasado) o por unidad (paquete fijo)." },
+      { status: 400 }
+    );
+  }
+  if (String(product.unit) === "kg" && product.count_pack !== true) {
+    return NextResponse.json(
+      { error: "Ese producto kg no está marcado como envasado (Catálogo → 'cuento paquetes'). Editalo en el catálogo." },
       { status: 400 }
     );
   }

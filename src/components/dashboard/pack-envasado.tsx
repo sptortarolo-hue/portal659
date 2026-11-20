@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { getJson } from "@/components/dashboard/shared";
 import { arISODate, fmtKg, fmtMoney, readLabelPrinterConfig } from "@/lib/label-spec";
+import { unitFactor } from "@/lib/costing";
 import {
   getCachedScalePort,
   isWebSerialSupported,
@@ -41,6 +42,10 @@ export type EnvasadoProduct = {
   /** undefined = la migración no está aplicada en el servidor */
   count_pack?: boolean;
 };
+
+type RecipeRow = { id: string; product_id: string | null; ingredient_id: string | null; portions: number };
+type RecipeItemRow = { recipe_id: string; ingredient_id: string; qty_net: number; unit: string; position: number };
+type IngredientRow = { id: string; base_unit: string; name: string };
 
 type BatchRow = {
   id: string;
@@ -73,6 +78,8 @@ function unitPriceOf(p: EnvasadoProduct): number {
 export function PackEnvasado() {
   const [vendor, setVendor] = useState<Record<string, any> | null>(null);
   const [products, setProducts] = useState<EnvasadoProduct[] | null>(null);
+  const [recipes, setRecipes] = useState<{ recipes: RecipeRow[]; items: RecipeItemRow[] } | null>(null);
+  const [ingredients, setIngredients] = useState<IngredientRow[]>([]);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -83,6 +90,10 @@ export function PackEnvasado() {
   const [autoSeal, setAutoSeal] = useState(false);
   const [shelfLifeDays, setShelfLifeDays] = useState<number | null>(null);
   const [packedAt] = useState(() => arISODate());
+
+  // Modo lote: "N bolsas de X g" sin balanza.
+  const [batchCount, setBatchCount] = useState("10");
+  const [batchWeight, setBatchWeight] = useState("");
 
   const [scaleState, setScaleState] = useState<"idle" | "connecting" | "watching" | "error">("idle");
   const [scaleMsg, setScaleMsg] = useState<string | null>(null);
@@ -106,7 +117,11 @@ export function PackEnvasado() {
   const loadProducts = useCallback(async () => {
     const r = await getJson<{ offers?: EnvasadoProduct[] }>("/api/vendor/offers");
     const offers = Array.isArray(r?.offers) ? r!.offers : [];
-    setProducts(offers.filter((p) => String(p.unit ?? "") === "kg"));
+    setProducts(offers);
+    const rec = await getJson<{ recipes: RecipeRow[]; items: RecipeItemRow[] }>("/api/vendor/recipes");
+    if (rec) setRecipes({ recipes: rec.recipes || [], items: rec.items || [] });
+    const ing = await getJson<{ ingredients: IngredientRow[] }>("/api/vendor/ingredients");
+    if (ing) setIngredients(Array.isArray(ing.ingredients) ? ing.ingredients : []);
   }, []);
   const loadBatches = useCallback(async () => {
     setBatchesBusy(true);
@@ -127,11 +142,43 @@ export function PackEnvasado() {
     loadBatches();
   }, [loadVendor, loadProducts, loadBatches]);
 
+  // Productos con receta (cualquier unidad): son los envasables.
+  const recipeByProduct = useMemo(() => {
+    const map = new Map<string, RecipeRow>();
+    for (const r of recipes?.recipes || []) {
+      if (r.product_id) map.set(r.product_id, r);
+    }
+    return map;
+  }, [recipes]);
+
+  const suggestedWeightKg = useCallback((productId: string): number | null => {
+    const rec = recipeByProduct.get(productId);
+    if (!rec) return null;
+    const lines = (recipes?.items || []).filter((i) => i.recipe_id === rec.id);
+    let totalKg = 0;
+    let hasWeight = false;
+    for (const l of lines) {
+      const ing = ingredients.find((g) => g.id === l.ingredient_id);
+      const base = ing?.base_unit || "g";
+      const f = unitFactor(l.unit, base);
+      if (f === null) continue;
+      // Solo líneas de peso (g/kg/ml) aportan al peso nominal del paquete.
+      const unit = String(l.unit || "").trim().toLowerCase();
+      if (!["mg", "g", "kg", "ml", "l", "lt", "lts"].includes(unit)) continue;
+      const baseQty = Number(l.qty_net) * f;
+      const kg = base === "g" ? baseQty / 1000 : base === "ml" ? baseQty / 1000 : baseQty;
+      totalKg += kg;
+      hasWeight = true;
+    }
+    return hasWeight && totalKg > 0 ? Math.round(totalKg * 1000) / 1000 : null;
+  }, [recipeByProduct, recipes, ingredients]);
+
   const envasables = useMemo(() => {
     if (!products) return null;
-    return products.filter((p) => p.count_pack === true);
-  }, [products]);
-  const migrationPending = products !== null && products.some((p) => p.count_pack === undefined);
+    return products.filter((p) => recipeByProduct.has(p.id));
+  }, [products, recipeByProduct]);
+
+  const migrationPending = products !== null && products.length > 0 && products.some((p) => p.count_pack === undefined);
 
   const filtered = useMemo(() => {
     const list = envasables ?? [];
@@ -146,6 +193,13 @@ export function PackEnvasado() {
     () => (products ?? []).find((p) => p.id === selectedId) ?? null,
     [products, selectedId]
   );
+
+  useEffect(() => {
+    if (selected) {
+      const w = suggestedWeightKg(selected.id);
+      if (w != null) setBatchWeight(String(w));
+    }
+  }, [selected, suggestedWeightKg]);
 
   const totalKg = useMemo(() => bags.reduce((s, k) => s + k, 0), [bags]);
   const price = selected ? unitPriceOf(selected) : 0;
@@ -318,7 +372,7 @@ export function PackEnvasado() {
       <Card className="p-3 border-primary/30">
         <p className="text-sm font-medium">🫙 Envasado: granel → paquetes</p>
         <p className="text-xs text-muted-foreground pt-1">
-          Pesá cada bolsa con la balanza: la etiqueta sale con el peso real y el total. Al guardar el lote se descuenta
+          Pesá cada bolsa con la balanza (peso real) o usá "Modo lote" para paquetes de peso fijo sin balanza. Al guardar el lote se descuenta
           el granel y el packaging, y se suma el stock de paquetes con el costo real.
         </p>
         {today.units > 0 && (
@@ -339,10 +393,10 @@ export function PackEnvasado() {
 
       {products !== null && !migrationPending && envasables && envasables.length === 0 && (
         <Card className="p-4 space-y-2">
-          <p className="text-sm font-medium">Todavía no hay productos envasados.</p>
+          <p className="text-sm font-medium">Todavía no hay productos con preparación.</p>
           <ol className="text-xs text-muted-foreground list-decimal pl-4 space-y-1">
-            <li>Creá el producto en el catálogo con unidad <strong>kg</strong>, precio por kilo y marcale <strong>“cuento paquetes”</strong> (y el PLU de balanza).</li>
-            <li>Cargale la receta en <strong>Platos</strong>: granel + bolsa + etiqueta (el packaging va adentro del costo).</li>
+            <li>Creá el producto en el catálogo (por unidad para paquetes fijos, o por kilo para venta por peso).</li>
+            <li>Cargale la receta en <strong>Preparación y Costo → Productos</strong>: granel + bolsa + etiqueta (el packaging va adentro del costo).</li>
             <li>Volvé acá y envasá el lote.</li>
           </ol>
         </Card>
@@ -363,12 +417,13 @@ export function PackEnvasado() {
                 <span className="flex-1 min-w-0">
                   <span className="block text-sm font-medium truncate">{p.name}</span>
                   <span className="block text-xs text-muted-foreground tabular-nums truncate">
-                    {fmtMoney(unitPriceOf(p), 0)}/kg
-                    {p.scale_plu ? ` · PLU ${p.scale_plu}` : " · sin PLU"}
-                    {p.stock != null ? ` · stock ${Number(p.stock)} paq.` : ""}
+                    {fmtMoney(unitPriceOf(p), 0)}{String(p.unit) === "kg" ? "/kg" : " c/u"}
+                    {p.scale_plu ? ` · PLU ${p.scale_plu}` : ""}
+                    {p.stock != null ? ` · stock ${Number(p.stock)} ${String(p.unit) === "kg" ? "paq." : "u."}` : ""}
+                    {suggestedWeightKg(p.id) != null ? ` · sug. ${fmtKg(suggestedWeightKg(p.id)!)} por bolsa` : ""}
                   </span>
                 </span>
-                {p.count_pack === true && <Badge variant="secondary">📦</Badge>}
+                {p.count_pack === true && <Badge variant="secondary">⚖️ kg</Badge>}
               </button>
             ))}
             {filtered && filtered.length === 0 && (
@@ -434,6 +489,62 @@ export function PackEnvasado() {
 
         {/* Bolsas + guardar */}
         <div className="space-y-3">
+          <Card className="p-3">
+            <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide px-1 mb-2">Modo lote (sin balanza)</p>
+            <div className="flex items-end gap-2 flex-wrap">
+              <div className="flex-1 min-w-[90px]">
+                <Label className="text-xs">Cantidad</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={100}
+                  step={1}
+                  inputMode="numeric"
+                  value={batchCount}
+                  onChange={(e) => setBatchCount(e.target.value)}
+                  placeholder="10"
+                />
+              </div>
+              <div className="flex-1 min-w-[110px]">
+                <Label className="text-xs">Peso por bolsa (kg)</Label>
+                <Input
+                  type="number"
+                  min={0.001}
+                  max={99}
+                  step="any"
+                  inputMode="decimal"
+                  value={batchWeight}
+                  onChange={(e) => setBatchWeight(e.target.value)}
+                  placeholder={selected ? (suggestedWeightKg(selected.id) != null ? String(suggestedWeightKg(selected.id)) : "0,250") : "0,250"}
+                />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!selected}
+                onClick={() => {
+                  const n = Math.max(1, Math.min(100, Math.floor(Number(batchCount) || 0)));
+                  const w = parseKgInput(batchWeight || String(suggestedWeightKg(selected!.id) ?? ""));
+                  if (!w || w <= 0) {
+                    setError("Indicá el peso por bolsa (ej. 0,250).");
+                    return;
+                  }
+                  setBags((prev) => [...prev, ...Array.from({ length: n }, () => w)]);
+                  setError(null);
+                  if (autoPrint) {
+                    for (let i = 0; i < n; i++) void printBag(w);
+                  }
+                }}
+              >
+                Generar
+              </Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground pt-1.5">
+              Pre-llena el peso de la receta; editá cada bolsa si alguna salió distinta. Cada bolsa = 1 paquete y se imprime si "Imprimir al sellar" está activo.
+            </p>
+          </Card>
+
           <Card className="p-3">
             <div className="flex items-center justify-between px-1 mb-2">
               <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Bolsas del lote ({bags.length})</p>

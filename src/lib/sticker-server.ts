@@ -94,14 +94,22 @@ export async function buildStickerForProduct(
   const price = Math.round((Number(product.promo_price ?? product.price) || 0) * 100) / 100;
   const oldPrice = product.promo_price != null ? Math.round(Number(product.price) * 100) / 100 : null;
 
+  // Peso para la etiqueta:
+  //  - producto kg (balanza): el peso real leído (validado).
+  //  - producto unitario (envasado fijo): el peso NOMINAL del paquete (lo que
+  //    dice la etiqueta, ej. 0,250 kg), solo para mostrar; NO se cobra por kg.
   let kg: number | null = null;
+  const reqKg = req.kg != null ? Math.round(Number(req.kg) * 1000) / 1000 : null;
   if (isKg) {
-    kg = Math.round(Number(req.kg) * 1000) / 1000;
-    if (!(kg > 0) || kg > 999) {
+    kg = reqKg;
+    if (!(kg! > 0) || kg! > 999) {
       return { ok: false, status: 400, error: "Ingresá el peso (entre 0,001 y 999 kg)" };
     }
+  } else if (reqKg != null && reqKg > 0 && reqKg <= 999) {
+    kg = reqKg;
   }
-  const total = isKg ? Math.round((kg || 0) * price * 100) / 100 : price;
+  const totalKg = isKg && kg != null ? kg : null;
+  const total = totalKg != null ? Math.round(totalKg * price * 100) / 100 : price;
 
   const template: LabelTemplateId = req.template === "gondola" || req.template === "envasado" ? req.template : cfg.tpl;
   const packedAt = String(req.packedAt ?? "").match(/^\d{4}-\d{2}-\d{2}$/)

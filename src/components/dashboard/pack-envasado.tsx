@@ -380,8 +380,8 @@ export function PackEnvasado() {
   );
 
   return (
-    <div className="space-y-4 min-w-0">
-      <Card className="p-3 border-primary/30">
+    <div className="space-y-4 min-w-0 overflow-x-hidden w-full max-w-full">
+      <Card className="p-3 border-primary/30 min-w-0 overflow-hidden">
         <p className="text-sm font-medium">🫙 Envasado: granel → paquetes</p>
         <p className="text-xs text-muted-foreground pt-1">
           Pesá cada bolsa con la balanza (peso real) o usá "Modo lote" para paquetes de peso fijo sin balanza. Al guardar el lote se descuenta
@@ -416,7 +416,7 @@ export function PackEnvasado() {
 
       <div className="grid lg:grid-cols-2 gap-4 items-start">
         {/* Picker + balanza */}
-        <Card className="p-3 space-y-3">
+        <Card className="p-3 space-y-3 min-w-0 overflow-hidden">
           <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide px-1">Producto a envasar</p>
           <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por nombre, SKU o PLU…" />
           <div className="space-y-1.5 max-h-56 overflow-y-auto">
@@ -469,9 +469,9 @@ export function PackEnvasado() {
                 onChange={(e) => setKgManual(e.target.value)}
                 placeholder="Kilos a mano (ej. 0,532)"
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); sealCurrent(); } }}
-                className="flex-1"
+                className="flex-1 min-w-0"
               />
-              <Button type="button" onClick={sealCurrent}>+ Sellar bolsa</Button>
+              <Button type="button" onClick={sealCurrent} className="flex-shrink-0">+ Sellar bolsa</Button>
             </div>
             <div className="flex items-center gap-4 flex-wrap pt-1">
               <div className="flex items-center gap-2">
@@ -503,10 +503,10 @@ export function PackEnvasado() {
 
         {/* Bolsas + guardar */}
         <div className="space-y-3">
-          <Card className="p-3">
+          <Card className="p-3 min-w-0 overflow-hidden">
             <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide px-1 mb-2">Modo lote (sin balanza)</p>
             <div className="flex items-end gap-2 flex-wrap">
-              <div className="flex-1 min-w-[90px]">
+              <div className="flex-1 min-w-0">
                 <Label className="text-xs">Cantidad</Label>
                 <Input
                   type="number"
@@ -519,7 +519,7 @@ export function PackEnvasado() {
                   placeholder="10"
                 />
               </div>
-              <div className="flex-1 min-w-[110px]">
+              <div className="flex-1 min-w-0">
                 <Label className="text-xs">Peso por bolsa (kg)</Label>
                 <Input
                   type="number"
@@ -550,6 +550,7 @@ export function PackEnvasado() {
                     for (let i = 0; i < n; i++) void printBag(w);
                   }
                 }}
+                className="flex-shrink-0"
               >
                 Generar
               </Button>
@@ -559,7 +560,7 @@ export function PackEnvasado() {
             </p>
           </Card>
 
-          <Card className="p-3">
+          <Card className="p-3 min-w-0 overflow-hidden">
             <div className="flex items-center justify-between px-1 mb-2">
               <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Bolsas del lote ({bags.length})</p>
               {bags.length > 0 && (
@@ -574,9 +575,9 @@ export function PackEnvasado() {
               <div className="space-y-1.5 max-h-64 overflow-y-auto">
                 {bags.map((kg, i) => (
                   <div key={i} className="flex items-center gap-2 rounded-lg border border-border px-2.5 py-1.5 text-sm">
-                    <span className="text-xs text-muted-foreground w-6">#{i + 1}</span>
-                    <span className="flex-1 tabular-nums">{fmtKg(kg)}</span>
-                    <span className="text-xs text-muted-foreground tabular-nums">{fmtMoney(kg * price, 2)}</span>
+                    <span className="text-xs text-muted-foreground w-6 flex-shrink-0">#{i + 1}</span>
+                    <span className="flex-1 min-w-0 tabular-nums">{fmtKg(kg)}</span>
+                    <span className="text-xs text-muted-foreground tabular-nums flex-shrink-0">{fmtMoney(kg * price, 2)}</span>
                     <button className="text-muted-foreground hover:text-red-600 px-1" aria-label="Quitar bolsa" onClick={() => setBags((prev) => prev.filter((_, j) => j !== i))}>✕</button>
                   </div>
                 ))}

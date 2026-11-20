@@ -73,7 +73,7 @@ export async function GET(request: Request) {
       [vendorId, since]
     ),
     queryMany<Record<string, any>>(
-      `SELECT id, name, price, category, available, stock, stock_low_threshold FROM products WHERE vendor_id = $1`,
+      `SELECT id, name, price, category, available, stock, stock_low_threshold, parent_id FROM products WHERE vendor_id = $1`,
       [vendorId]
     ),
     queryMany<Record<string, any>>(
@@ -174,6 +174,14 @@ export async function GET(request: Request) {
 
   // Insight: producto más vendido
   const productSales: Record<string, { name: string; count: number; revenue: number }> = {};
+  // Roll-up por familia: agrupa presentaciones (hijas) bajo la raíz.
+  const productToRoot: Record<string, string> = {};
+  for (const p of products) {
+    const rootId = p.parent_id ? String(p.parent_id) : String(p.id);
+    const root = products.find((r: any) => String(r.id) === rootId);
+    productToRoot[String(p.id)] = root ? String(root.name) : String(p.name);
+  }
+  const familySales: Record<string, { name: string; count: number; revenue: number; presentations: Record<string, { count: number; revenue: number }> }> = {};
   for (const order of completedOrders) {
     for (const item of order.items || []) {
       // Líneas manuales de mostrador ("Varios"): fuera de estadísticas.
@@ -182,6 +190,28 @@ export async function GET(request: Request) {
       if (!productSales[key]) productSales[key] = { name: key, count: 0, revenue: 0 };
       productSales[key].count += item.qty;
       productSales[key].revenue += itemRevenue(item);
+
+      // Family roll-up: agrupa ventas de presentaciones bajo la raíz.
+      const pid = (item as any)?.product_id || (item as any)?.offerId;
+      if (pid) {
+        const product = products.find((p: any) => String(p.id) === String(pid));
+        if (product) {
+          const rootId = product.parent_id ? String(product.parent_id) : String(product.id);
+          const root = products.find((r: any) => String(r.id) === rootId);
+          // Solo familias que tienen al menos una presentación (hija).
+          const hasChildren = products.some((p: any) => String(p.parent_id) === rootId);
+          if (root && hasChildren) {
+            const rootName = String(root.name);
+            if (!familySales[rootName]) familySales[rootName] = { name: rootName, count: 0, revenue: 0, presentations: {} };
+            familySales[rootName].count += item.qty;
+            familySales[rootName].revenue += itemRevenue(item);
+            const presName = key;
+            if (!familySales[rootName].presentations[presName]) familySales[rootName].presentations[presName] = { count: 0, revenue: 0 };
+            familySales[rootName].presentations[presName].count += item.qty;
+            familySales[rootName].presentations[presName].revenue += itemRevenue(item);
+          }
+        }
+      }
     }
   }
   const topProduct = Object.values(productSales).sort((a, b) => b.revenue - a.revenue)[0] || null;
@@ -498,6 +528,12 @@ export async function GET(request: Request) {
       avgRating: Math.round(avgRating * 10) / 10,
     },
     topProducts,
+    familySales: Object.values(familySales).map((f) => ({
+      name: f.name,
+      count: f.count,
+      revenue: f.revenue,
+      presentations: Object.entries(f.presentations).map(([name, data]) => ({ name, ...data })),
+    })),
     ordersByDay: Object.entries(ordersByDay).map(([date, data]) => ({ date, ...data })),
     recentReviews: reviews.slice(0, 5),
     lowStock,

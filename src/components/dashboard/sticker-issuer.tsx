@@ -107,7 +107,9 @@ export function StickerPanel({ vendor, offers }: StickerPanelProps) {
   const lastAutoPrintedRef = useRef<number | null>(null);
 
   const isKgProduct = selected ? String(selected.unit ?? "unidad") === "kg" : false;
-  const effectiveKg = isKgProduct ? kgLive ?? parseKgInput(kgManual) : null;
+  // Para productos por unidad con peso fijo (empaquetados), también se puede
+  // ingresar el peso para mostrarlo en la etiqueta (no se cobra por kg).
+  const effectiveKg = kgLive ?? parseKgInput(kgManual);
   const limitKg = effectiveKg != null && effectiveKg > 0;
 
   const results = useMemo(() => {
@@ -127,7 +129,7 @@ export function StickerPanel({ vendor, offers }: StickerPanelProps) {
     if (!selected) return null;
     const price = unitPriceOf(selected);
     const isKg = isKgProduct;
-    const kg = isKg ? effectiveKg : null;
+    const kg = effectiveKg;
     const total = isKg ? Math.round((kg || 0) * price * 100) / 100 : price;
     const packed = packedAt;
     let expiresAt: string | null = null;
@@ -197,7 +199,7 @@ export function StickerPanel({ vendor, offers }: StickerPanelProps) {
           body: JSON.stringify({
             type: "sticker",
             productId: selected.id,
-            kg: isKgProduct ? effectiveKg : null,
+            kg: effectiveKg,
             copies,
             template,
             packedAt,
@@ -364,7 +366,7 @@ export function StickerPanel({ vendor, offers }: StickerPanelProps) {
         )}
 
         {/* ── Peso ─────────────────────────────────────────────── */}
-        {selected && isKgProduct && (
+        {selected && (
           <div className="space-y-2">
             <div className="flex items-end justify-between gap-3">
               <div>
@@ -542,7 +544,7 @@ export function StickerPanel({ vendor, offers }: StickerPanelProps) {
           <button
             type="button"
             onClick={() => printNow(false)}
-            disabled={!selected || printBusy || (isKgProduct && !limitKg)}
+            disabled={!selected || printBusy}
             className="h-10 px-5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
           >
             {printBusy ? "Imprimiendo…" : "🖨️ Imprimir"}

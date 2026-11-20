@@ -39,6 +39,7 @@ export type EnvasadoProduct = {
   unit?: string | null;
   sku?: string | null;
   scale_plu?: string | null;
+  expires_at?: string | null;
   /** undefined = la migración no está aplicada en el servidor */
   count_pack?: boolean;
 };
@@ -101,7 +102,7 @@ export function PackEnvasado() {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [result, setResult] = useState<{ units: number; total_kg: number; cost_total: number; cost_per_unit: number } | null>(null);
+  const [result, setResult] = useState<{ units: number; total_kg: number; cost_total: number; cost_per_unit: number; expires_at: string | null } | null>(null);
   const [batches, setBatches] = useState<BatchRow[]>([]);
   const [today, setToday] = useState<BatchSummary>({ units: 0, total_kg: 0, cost_total: 0 });
   const [batchesBusy, setBatchesBusy] = useState(false);
@@ -337,12 +338,12 @@ export function PackEnvasado() {
     setError(null);
     setNotice(null);
     let ok = false;
-    let payload: { batch?: { units: number; total_kg: number; cost_total: number; cost_per_unit: number }; error?: string; missing?: { name: string; need: number; have: number | null; base_unit: string }[] } | null = null;
+    let payload: { batch?: { units: number; total_kg: number; cost_total: number; cost_per_unit: number; expires_at?: string | null }; error?: string; missing?: { name: string; need: number; have: number | null; base_unit: string }[] } | null = null;
     try {
       const res = await fetch("/api/vendor/elaborations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ product_id: selected.id, bags }),
+        body: JSON.stringify({ product_id: selected.id, bags, packedAt, shelfLifeDays }),
       });
       payload = await res.json().catch(() => null);
       ok = res.ok;
@@ -365,6 +366,7 @@ export function PackEnvasado() {
       total_kg: Number(b.total_kg),
       cost_total: Number(b.cost_total),
       cost_per_unit: Number(b.cost_per_unit),
+      expires_at: b.expires_at ? String(b.expires_at) : null,
     });
     setBags([]);
     setNotice("Lote guardado: stock y costos actualizados.");
@@ -431,6 +433,7 @@ export function PackEnvasado() {
                     {p.scale_plu ? ` · PLU ${p.scale_plu}` : ""}
                     {p.stock != null ? ` · stock ${Number(p.stock)} ${String(p.unit) === "kg" ? "paq." : "u."}` : ""}
                     {suggestedWeightKg(p.id) != null ? ` · sug. ${fmtKg(suggestedWeightKg(p.id)!)} por bolsa` : ""}
+                    {(p as any).expires_at ? ` · vence ${new Date(String((p as any).expires_at) + "T00:00:00").toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" })}` : ""}
                   </span>
                 </span>
                 {p.count_pack === true && <Badge variant="secondary">⚖️ kg</Badge>}
@@ -587,6 +590,7 @@ export function PackEnvasado() {
               <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900 p-3 mt-2 text-xs space-y-0.5">
                 <p className="font-semibold text-emerald-700 dark:text-emerald-400">✅ Lote guardado</p>
                 <p>{result.units} paquetes · {fmtKg(result.total_kg)} · costo del lote {fmtMoney(result.cost_total, 2)} ({fmtMoney(result.cost_per_unit, 2)} c/u)</p>
+                {result.expires_at && <p>Vence: {new Date(result.expires_at + "T00:00:00").toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" })}</p>}
               </div>
             )}
             {error && <p className="text-xs text-red-600 pt-2">{error}</p>}

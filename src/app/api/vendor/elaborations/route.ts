@@ -113,7 +113,7 @@ export async function POST(request: Request) {
   }
 
   const product = await queryOne<Record<string, any>>(
-    `SELECT id, name, unit, count_pack, COALESCE(stock, 0) AS stock, cost_avg, cost_last
+    `SELECT id, name, unit, count_pack, COALESCE(stock, 0) AS stock, cost_avg, cost_last, expires_at
      FROM products WHERE id = $1 AND vendor_id = $2`,
     [productId, gate.vendor.id]
   );
@@ -153,9 +153,18 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
+  // Tolerante a migración sin aplicar: ingredients.expires_at puede no existir.
+  let hasIngExpiry = false;
+  try {
+    const chk = await queryOne<{ e: boolean }>(
+      `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'ingredients' AND column_name = 'expires_at') AS e`
+    );
+    hasIngExpiry = chk?.e === true;
+  } catch { /* noop */ }
+
   const rawLines = await queryMany<Record<string, any>>(
     `SELECT i.ingredient_id, i.qty_net, i.unit,
-            g.name, g.base_unit, g.waste_pct, g.cost_per_unit, g.stock, g.is_elaborated
+            g.name, g.base_unit, g.waste_pct, g.cost_per_unit, g.stock, g.is_elaborated${hasIngExpiry ? ", g.expires_at" : ""}
      FROM recipe_items i JOIN ingredients g ON g.id = i.ingredient_id
      WHERE i.recipe_id = $1
      ORDER BY i.position ASC, i.created_at ASC`,
@@ -191,6 +200,45 @@ export async function POST(request: Request) {
     );
   }
 
+  // Vencimiento del lote: granel (insumo) manda; si no tiene, chip shelf-life;
+  // si tampoco, el del producto; si ninguno, null.
+  const packedAt = String(body?.packedAt ?? "").match(/^\d{4}-\d{2}-\d{2}$/)
+    ? String(body.packedAt)
+    : (new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }));
+  const shelfLifeDays = body?.shelfLifeDays != null ? Number(body.shelfLifeDays) : null;
+
+  // Granel: la fecha más cercana entre los insumos de peso de la receta.
+  let granelExpiry: string | null = null;
+  for (const l of rawLines) {
+    if (l.expires_at) {
+      if (!granelExpiry || String(l.expires_at) < granelExpiry) {
+        granelExpiry = String(l.expires_at);
+      }
+    }
+  }
+  const productExpiry = product.expires_at ? String(product.expires_at) : null;
+
+  let batchExpiry: string | null = null;
+  if (productExpiry) {
+    batchExpiry = productExpiry;
+  } else if (granelExpiry) {
+    batchExpiry = granelExpiry;
+  } else if (shelfLifeDays && shelfLifeDays > 0) {
+    const d = new Date(packedAt + "T00:00:00");
+    d.setDate(d.getDate() + shelfLifeDays);
+    batchExpiry = d.toISOString().slice(0, 10);
+  }
+
+  // Tolerante a migración sin aplicar: packing_batches.expires_at puede no existir.
+  let hasBatchExpiryCol = false;
+  try {
+    const chk = await queryOne<{ e: boolean }>(
+      `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'packing_batches' AND column_name = 'expires_at') AS e`
+    );
+    hasBatchExpiryCol = chk?.e === true;
+  } catch { /* noop */ }
+  const hasProductExpiryCol = true; // products.expires_at ya existe desde migrate-product-supplier-expiry
+
   const createdBy = gate.user.id.startsWith("preview:") ? null : gate.user.id;
   try {
     const result = await withTransaction(async (tx) => {
@@ -222,11 +270,25 @@ export async function POST(request: Request) {
           created_by: createdBy,
         });
       }
-      const b = await tx.queryOne<{ id: string }>(
-        `INSERT INTO packing_batches (vendor_id, product_id, units, total_kg, cost_total, cost_per_unit, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-        [gate.vendor.id, productId, batch.units, batch.totalKg, batch.costTotal, batch.costPerUnit, createdBy]
-      );
+      const b = hasBatchExpiryCol
+        ? await tx.queryOne<{ id: string }>(
+            `INSERT INTO packing_batches (vendor_id, product_id, units, total_kg, cost_total, cost_per_unit, created_by, expires_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+            [gate.vendor.id, productId, batch.units, batch.totalKg, batch.costTotal, batch.costPerUnit, createdBy, batchExpiry]
+          )
+        : await tx.queryOne<{ id: string }>(
+            `INSERT INTO packing_batches (vendor_id, product_id, units, total_kg, cost_total, cost_per_unit, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+            [gate.vendor.id, productId, batch.units, batch.totalKg, batch.costTotal, batch.costPerUnit, createdBy]
+          );
+      // Si el producto no tenía vencimiento, se lo asigna desde el lote (así el
+      // inventario "Vencimientos" lo ve y los lotes siguientes heredan).
+      if (batchExpiry && product.expires_at == null) {
+        await tx.queryVoid(
+          `UPDATE products SET expires_at = $2::date WHERE id = $1 AND expires_at IS NULL`,
+          [productId, batchExpiry]
+        );
+      }
       // Terminado: +stock (paquetes) y costo promedio ponderado.
       const prevStock = Number(product.stock) || 0;
       const prevAvg = product.cost_avg != null ? Number(product.cost_avg) : null;
@@ -259,6 +321,7 @@ export async function POST(request: Request) {
         total_kg: batch.totalKg,
         cost_total: batch.costTotal,
         cost_per_unit: batch.costPerUnit,
+        expires_at: batchExpiry,
       },
     });
   } catch (e: any) {

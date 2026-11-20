@@ -49,10 +49,18 @@ export async function loadCartaData(vendorId: string, isCatalog: boolean): Promi
       [vendorId]
     ).catch(() => [])) || [];
 
-  const menuOffers = offers.filter((o: any) => o.promo_only !== true);
+  const isChildOffer = (o: any) => o.parent_id != null && offers.some((r: any) => r.id === o.parent_id);
+  const menuOffers = offers.filter((o: any) => o.promo_only !== true && !isChildOffer(o));
   const promos = offers
-    .filter((o: any) => o.promo_price != null || o.promo_only === true)
+    .filter((o: any) => (o.promo_price != null || o.promo_only === true) && !isChildOffer(o))
     .sort((a: any, b: any) => discountOf(b) - discountOf(a));
+  // Adjuntar presentaciones (hijas) a la raíz.
+  for (const o of menuOffers) {
+    const pres = offers.filter((c: any) => c.parent_id === o.id);
+    if (pres.length > 0) {
+      (o as any).presentations = pres.sort((a: any, b: any) => (Number(a.presentation_qty) || 0) - (Number(b.presentation_qty) || 0));
+    }
+  }
 
   const sections: CartaSection[] = [];
   if (cats.length > 0) {

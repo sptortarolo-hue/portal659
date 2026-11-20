@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { ProductImage } from "@/components/product-image";
 import { ProductCard } from "@/components/store/product-card";
 import { GastroProductRow } from "@/components/store/gastro-product-row";
+import { PresentationPicker } from "@/components/store/presentation-picker";
 import { CategoryNav } from "@/components/store/category-nav";
 import { PromoSection } from "@/components/store/promo-section";
 import { WeeklyHours } from "@/components/store/weekly-hours";
@@ -217,6 +218,30 @@ export default async function CartaPage({ params }: { params: Promise<{ slug: st
                 <div className={useCards ? "grid grid-cols-2 sm:grid-cols-3 gap-3" : "space-y-3"}>
                   {s.items.map((o: any) => {
                     if (useCards) {
+                      if (Array.isArray((o as any).presentations) && (o as any).presentations.length > 0) {
+                        return (
+                          <div key={o.id} id={`product-${o.id}`} className="scroll-mt-24 col-span-2 sm:col-span-3">
+                            <div className="rounded-xl border border-border bg-card p-3 space-y-2">
+                              <div className="flex items-start gap-3">
+                                {o.image_url ? (
+                                  <ProductImage src={o.image_url} name={o.name} alt={o.name} className="h-16 w-16 rounded-lg object-cover flex-shrink-0" />
+                                ) : null}
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-semibold leading-tight">{o.name}</p>
+                                  {o.description && <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{o.description}</p>}
+                                </div>
+                              </div>
+                              <PresentationPicker
+                                root={o}
+                                presentations={(o as any).presentations}
+                                vendor={vendorBrief}
+                                acceptsCart={false}
+                                consultHref={consultHref}
+                              />
+                            </div>
+                          </div>
+                        );
+                      }
                       return (
                         <div key={o.id} id={`product-${o.id}`} className="scroll-mt-24">
                           <ProductCard

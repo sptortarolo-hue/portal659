@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Modal } from "@/components/ui/modal";
 import { getJson } from "@/components/dashboard/shared";
+import { fetchWithAuthRefresh } from "@/lib/auth-refresh";
 
 type PresentationRow = {
   label: string;
@@ -75,7 +76,7 @@ export function PresentationGenerator({ source, onClose, onCreated }: Props) {
       price: pricingMode === "manual" ? Number(r.price) : Number(calcPrice(r)),
       create: r.create,
     }));
-    const res = await fetch("/api/vendor/products/presentations", {
+    const res = await fetchWithAuthRefresh("/api/vendor/products/presentations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -90,7 +91,10 @@ export function PresentationGenerator({ source, onClose, onCreated }: Props) {
     const data = await res.json().catch(() => ({}));
     setSaving(false);
     if (!res.ok) {
-      setMsg(data?.error || "No se pudieron crear las presentaciones");
+      const detail = Array.isArray(data?.errors) && data.errors.length > 0
+        ? data.errors.map((e: any) => e.error || e.label).join("; ")
+        : null;
+      setMsg(data?.error || detail || "No se pudieron crear las presentaciones");
       return;
     }
     const created = Array.isArray(data?.created) ? data.created.length : 0;

@@ -332,6 +332,7 @@ export function Mostrador({
   const [pendingVariant, setPendingVariant] = useState<ProductVariant | null>(null);
   // Producto con variantes tocado: hay que elegir color × talle.
   const [variantPicker, setVariantPicker] = useState<Product | null>(null);
+  const [presPicker, setPresPicker] = useState<any | null>(null);
   // Combo armado por unidad tocado: primero se eligen las piezas.
   const [comboPicker, setComboPicker] = useState<Product | null>(null);
   const [variantsMap, setVariantsMap] = useState<Record<string, ProductVariant[]>>({});
@@ -2369,7 +2370,13 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             isCombo={(comboMap[p.id] || []).length > 0}
             comboMembers={comboMap[p.id]}
             vertical={vendorVertical}
-            onAdd={() => add(p)}
+            onAdd={() => {
+              if (Array.isArray((p as any).presentations) && (p as any).presentations.length > 0) {
+                setPresPicker(p);
+              } else {
+                add(p);
+              }
+            }}
           />
         ))}
         {filtered.length === 0 && <p className="text-xs text-muted-foreground col-span-full text-center py-6">Sin productos</p>}
@@ -3537,6 +3544,44 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         </div>
       )}
 
+      {presPicker && (
+        <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/50 p-4" onClick={() => setPresPicker(null)}>
+          <div className="w-full max-w-sm rounded-2xl bg-card border border-border p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-display text-base font-semibold">{presPicker.name}</h3>
+              <button onClick={() => setPresPicker(null)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground" aria-label="Cerrar">✕</button>
+            </div>
+            <p className="text-xs text-muted-foreground mb-3">Elegí la presentación</p>
+            <div className="space-y-1.5 max-h-72 overflow-y-auto">
+              {(presPicker.presentations || []).map((p: any) => {
+                const stock = Math.max(0, Math.floor(Number(p.stock ?? 0)));
+                const price = Number(p.promo_price ?? p.price);
+                const qty = Number(p.presentation_qty) || 1;
+                const perKg = qty > 0 ? price / qty : 0;
+                return (
+                  <button
+                    key={p.id}
+                    disabled={stock <= 0}
+                    onClick={() => { add(p); setPresPicker(null); }}
+                    className="w-full flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm text-left hover:border-primary disabled:opacity-40"
+                  >
+                    <span className="flex-1 min-w-0">
+                      <span className="font-medium">{p.presentation_label || p.name}</span>
+                      <span className="block text-[11px] text-muted-foreground">
+                        {stock <= 0 ? "Sin stock" : stock <= 5 ? `¡Quedan ${stock}!` : `Stock: ${stock}`}
+                        {perKg > 0 && ` · $${Math.round(perKg).toLocaleString("es-AR")}/kg`}
+                      </span>
+                    </span>
+                    <span className="tabular-nums font-semibold">
+                      ${price.toLocaleString("es-AR")}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
       {/* Modal de modalidad (solo desktop): datos que requiere retiro/delivery */}
       {methodModal && (
         <div className="hidden sm:flex fixed inset-0 z-[70] items-center justify-center bg-black/50 p-4" onClick={() => { setMethodModal(null); setMethodMsg(""); }}>

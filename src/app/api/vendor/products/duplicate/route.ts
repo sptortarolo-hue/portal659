@@ -188,7 +188,7 @@ export async function POST(request: Request) {
     }
   }
 
-  const extraPlaceholders = extraVals.map((_, i) => `$${16 + i}`).join(", ");
+  const extraPlaceholders = extraVals.map((_, i) => `$${17 + i}`).join(", ");
 
   const newProduct = await queryOne<Record<string, unknown>>(
     `INSERT INTO products (vendor_id, name, description, price, currency, category, neighborhood, type, available, featured_today, image_url, stock, stock_low_threshold, stock_control, requires_prep, has_variants, cash_discount_excluded${extraCols.length ? ", " + extraCols.join(", ") : ""})

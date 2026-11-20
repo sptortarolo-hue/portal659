@@ -32,8 +32,14 @@ export async function GET(request: Request) {
 
   const effective = resolveVendorPlan(vendor, plans);
 
+  // Presentaciones (hijas) no consumen cupo del plan: solo las raíces.
+  const hasParentColMe = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'parent_id') AS exists`
+  ).catch(() => ({ exists: false }));
   const productCount = await queryOne<{ c: number }>(
-    `SELECT count(*)::int AS c FROM products WHERE vendor_id = $1`,
+    hasParentColMe?.exists === true
+      ? `SELECT count(*)::int AS c FROM products WHERE vendor_id = $1 AND parent_id IS NULL`
+      : `SELECT count(*)::int AS c FROM products WHERE vendor_id = $1`,
     [vendor.id]
   );
   const count = productCount?.c || 0;

@@ -132,20 +132,36 @@ export async function POST(request: Request) {
   }
 
   // Receta del terminado: directa o heredada por link (presentaciones compartidas).
+  // Para presentaciones (parent_id IS NOT NULL) que usan link, se aplica
+  // servings al consumo de granel (no al packaging). Para productos existentes
+  // se mantiene el comportamiento actual (servings ignorado) para no romper.
   let recipe = await queryOne<{ id: string }>(
     `SELECT id FROM recipes WHERE product_id = $1 AND vendor_id = $2`,
     [productId, gate.vendor.id]
   );
+  let linkServings: number | null = null;
+  let isLinkRecipe = false;
   if (!recipe) {
-    const link = await queryOne<{ recipe_id: string }>(
-      `SELECT l.recipe_id
+    const link = await queryOne<{ recipe_id: string; servings: number }>(
+      `SELECT l.recipe_id, l.servings
        FROM product_recipe_links l
        JOIN recipes r ON r.id = l.recipe_id
        WHERE l.product_id = $1 AND r.vendor_id = $2
        LIMIT 1`,
       [productId, gate.vendor.id]
     ).catch(() => null);
-    if (link?.recipe_id) recipe = { id: link.recipe_id };
+    if (link?.recipe_id) {
+      recipe = { id: link.recipe_id };
+      isLinkRecipe = true;
+      // Solo aplicar servings a presentaciones nuevas (parent_id IS NOT NULL).
+      const isPresentation = await queryOne<{ parent_id: string | null }>(
+        `SELECT parent_id FROM products WHERE id = $1 LIMIT 1`,
+        [productId]
+      ).catch(() => null);
+      if (isPresentation?.parent_id != null) {
+        linkServings = Number(link.servings) || 1;
+      }
+    }
   }
   if (!recipe) {
     return NextResponse.json(
@@ -181,16 +197,25 @@ export async function POST(request: Request) {
     );
   }
 
-  const lines: RecipeLineForBatch[] = rawLines.map((l) => ({
-    ingredient_id: String(l.ingredient_id),
-    name: String(l.name),
-    base_unit: (l.base_unit === "ml" ? "ml" : l.base_unit === "u" ? "u" : "g") as "g" | "ml" | "u",
-    qty_net: Number(l.qty_net) || 0,
-    unit: String(l.unit || "g"),
-    waste_pct: Number(l.waste_pct) || 0,
-    cost_per_unit: Number(l.cost_per_unit) || 0,
-    stock: l.stock === undefined ? undefined : l.stock === null ? null : Number(l.stock),
-  }));
+  const lines: RecipeLineForBatch[] = rawLines.map((l) => {
+    const baseUnit = l.base_unit === "ml" ? "ml" : l.base_unit === "u" ? "u" : "g";
+    // Servings se aplica solo a granel (g/ml), no a packaging (u).
+    const isPackaging = baseUnit === "u" || String(l.unit || "") === "u";
+    let qtyNet = Number(l.qty_net) || 0;
+    if (isLinkRecipe && linkServings != null && !isPackaging) {
+      qtyNet = qtyNet * linkServings;
+    }
+    return {
+      ingredient_id: String(l.ingredient_id),
+      name: String(l.name),
+      base_unit: baseUnit as "g" | "ml" | "u",
+      qty_net: qtyNet,
+      unit: String(l.unit || "g"),
+      waste_pct: Number(l.waste_pct) || 0,
+      cost_per_unit: Number(l.cost_per_unit) || 0,
+      stock: l.stock === undefined ? undefined : l.stock === null ? null : Number(l.stock),
+    };
+  });
 
   const batch = computeBatch(bags, lines);
   if (batch.missing.length > 0) {

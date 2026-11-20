@@ -221,10 +221,15 @@ export async function POST(request: Request) {
   const plans = await queryMany<Plan>(`SELECT * FROM plans`);
   const plan = resolveVendorPlan(fullVendor as Vendor, plans || []);
   if (plan.maxProducts != null) {
-    const countRow = await queryOne<{ c: number }>(
-      `SELECT count(*)::int AS c FROM products WHERE vendor_id = $1`,
-      [vendor.id]
-    );
+    // Presentaciones (hijas) no consumen cupo del plan: solo las raíces
+    // (parent_id IS NULL) cuentan. Tolerante a migración sin aplicar.
+    const hasParentCol = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'parent_id') AS exists`
+    ).catch(() => ({ exists: false }));
+    const countSql = hasParentCol?.exists === true
+      ? `SELECT count(*)::int AS c FROM products WHERE vendor_id = $1 AND parent_id IS NULL`
+      : `SELECT count(*)::int AS c FROM products WHERE vendor_id = $1`;
+    const countRow = await queryOne<{ c: number }>(countSql, [vendor.id]);
     const count = countRow?.c || 0;
     if (count >= plan.maxProducts) {
       return NextResponse.json(
@@ -383,6 +388,34 @@ export async function POST(request: Request) {
   }
   if (supplierId != null) { extraCols.push("supplier_id"); extraVals.push(supplierId); }
   if (expiresAt != null) { extraCols.push("expires_at"); extraVals.push(expiresAt); }
+  // Presentaciones (migrate-product-presentations.sql): tolerante a migración sin aplicar.
+  const hasParentCol = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'parent_id') AS exists`
+  ).catch(() => ({ exists: false }));
+  if (hasParentCol?.exists === true) {
+    if (body?.parent_id != null && String(body.parent_id).trim() !== "") {
+      extraCols.push("parent_id");
+      extraVals.push(String(body.parent_id).trim());
+    }
+    if (body?.presentation_label != null && String(body.presentation_label).trim() !== "") {
+      extraCols.push("presentation_label");
+      extraVals.push(String(body.presentation_label).trim().slice(0, 64));
+    }
+    if (body?.presentation_qty != null && String(body.presentation_qty).trim() !== "") {
+      const pq = Number(body.presentation_qty);
+      if (Number.isFinite(pq) && pq > 0) {
+        extraCols.push("presentation_qty");
+        extraVals.push(pq);
+      }
+    }
+    if (body?.presentation_unit != null && String(body.presentation_unit).trim() !== "") {
+      const pu = String(body.presentation_unit).trim();
+      if (pu === "kg" || pu === "u" || pu === "ml") {
+        extraCols.push("presentation_unit");
+        extraVals.push(pu);
+      }
+    }
+  }
   // Venta online on/off (taller): tolerante a migración sin aplicar.
   const hasOnlineAvailableCol = await queryOne<{ exists: boolean }>(
     `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'online_available') AS exists`

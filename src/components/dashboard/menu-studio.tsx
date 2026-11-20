@@ -21,6 +21,7 @@ import { toDateOnly } from "@/lib/expiry";
 import { HeladeriaKitCard, ProductModifiersBlock } from "@/components/dashboard/modifier-editor";
 import { ProductOptionsEditor } from "@/components/dashboard/product-options-editor";
 import { VolumeEditor } from "@/components/dashboard/volume-editor";
+import { PresentationGenerator } from "@/components/dashboard/presentation-generator";
 import { MarginListsManager, type MarginList } from "@/components/dashboard/margin-lists-manager";
 import { MenuImportModal } from "@/components/dashboard/menu-import";
 import { MenuImportWaModal } from "@/components/dashboard/menu-import-wa";
@@ -56,6 +57,11 @@ type Offer = {
   unit?: string | null;
   /** Código de barras / SKU (etiquetas de góndola). */
   sku?: string | null;
+  /** Presentaciones: parent_id si es hija, label/qty/unit si es presentación. */
+  parent_id?: string | null;
+  presentation_label?: string | null;
+  presentation_qty?: number | null;
+  presentation_unit?: string | null;
 };
 
 type CostInfo = { cost: number | null; pct: number | null; status: "ok" | "warn" | "bad" | "none" };
@@ -296,6 +302,7 @@ export function MenuStudio({
   // Estado del formulario de plato (alta/edición; lo comparten el inline de
   // mobile y el drawer de desktop).
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [genSource, setGenSource] = useState<Offer | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [offName, setOffName] = useState("");
   const [offDesc, setOffDesc] = useState("");
@@ -1092,6 +1099,24 @@ export function MenuStudio({
       {offerForm}
       {galleryNode}
       {editingId && <ProductModifiersBlock productId={editingId} productName={offName} />}
+      {editingId && (
+        <div className="pt-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const eo = offers.find((o) => o.id === editingId);
+              if (eo) setGenSource(eo);
+            }}
+          >
+            🧬 Presentaciones
+          </Button>
+          <span className="ml-2 text-xs text-muted-foreground">
+            Generar tamaños/contenidos a partir de este producto
+          </span>
+        </div>
+      )}
     </div>
   );
 
@@ -1822,6 +1847,13 @@ export function MenuStudio({
         }
         recetaNode={recetaNode}
       />
+      {genSource && (
+        <PresentationGenerator
+          source={genSource}
+          onClose={() => setGenSource(null)}
+          onCreated={() => { setGenSource(null); reload(); }}
+        />
+      )}
     </div>
   );
 }

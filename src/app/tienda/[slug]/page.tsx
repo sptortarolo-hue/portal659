@@ -19,6 +19,7 @@ import { EsteticaServicesSection } from "@/components/services/service-booking-s
 import { StickyWhatsApp } from "@/components/store/sticky-whatsapp";
 import { VariantSelector } from "@/components/store/variant-selector";
 import { ProductCard } from "@/components/store/product-card";
+import { PresentationPicker } from "@/components/store/presentation-picker";
 import { GastroProductRow } from "@/components/store/gastro-product-row";
 import { GiftCardPicker } from "@/components/store/giftcard-picker";
 import { WhatsAppShareButton } from "@/components/store/whatsapp-share-button";
@@ -382,11 +383,29 @@ export default async function TiendaPage({
   // Solo-promo: sale en la sección Promo, no en el menú (tolerante a
   // migración sin aplicar: promo_only llega undefined y no excluye).
   // Los combos tienen su propia sección: no se duplican en el menú ni promo.
-  const menuOffers = (offersNoCombos || []).filter((o: any) => o.promo_only !== true);
+  // Presentaciones (hijas) no se muestran como cards sueltas: se agrupan bajo
+  // la raíz (parent_id). Si la raíz no existe (huérfana), se muestra sola.
+  const offerIsChild = (o: any) => o.parent_id != null && (offersNoCombos || []).some((r: any) => r.id === o.parent_id);
+  const menuOffers = (offersNoCombos || []).filter((o: any) => o.promo_only !== true && !offerIsChild(o));
+  // Adjuntar presentaciones (hijas) a la raíz para el picker del micrositio.
+  const presentationsByRoot = new Map<string, any[]>();
+  for (const o of offersNoCombos || []) {
+    if (o.parent_id && (offersNoCombos || []).some((r: any) => r.id === o.parent_id)) {
+      const arr = presentationsByRoot.get(String(o.parent_id)) || [];
+      arr.push(o);
+      presentationsByRoot.set(String(o.parent_id), arr);
+    }
+  }
+  for (const o of menuOffers) {
+    const pres = presentationsByRoot.get(String(o.id));
+    if (pres && pres.length > 0) {
+      (o as any).presentations = pres.sort((a, b) => (Number(a.presentation_qty) || 0) - (Number(b.presentation_qty) || 0));
+    }
+  }
   // Promo (criterio OR): precio promo o marcado promo_only. Descuentos
   // reales primero, promo_only sin descuento después.
   const promos = (offersNoCombos || [])
-    .filter((o: any) => o.promo_price != null || o.promo_only === true)
+    .filter((o: any) => (o.promo_price != null || o.promo_only === true) && !offerIsChild(o))
     .sort((a: any, b: any) => discountOf(b) - discountOf(a));
   // Packs multi-producto (para CTA + sección). Se calcula tras volumeGroups.
   if (cats && cats.length > 0) {
@@ -1111,6 +1130,31 @@ export default async function TiendaPage({
                     <div className={useCards ? "grid grid-cols-2 sm:grid-cols-3 gap-3" : "space-y-3"}>
                       {s.items.map((o: any) => {
                         if (useCards) {
+                          // Presentaciones: una card con selector de tamaño.
+                          if (Array.isArray((o as any).presentations) && (o as any).presentations.length > 0) {
+                            return (
+                              <div key={o.id} id={`product-${o.id}`} data-pname={String(o.name).toLowerCase()} className="scroll-mt-16 sm:scroll-mt-24 col-span-2 sm:col-span-3">
+                                <div className="rounded-xl border border-border bg-card p-3 space-y-2">
+                                  <div className="flex items-start gap-3">
+                                    {o.image_url ? (
+                                      <ProductImage src={o.image_url} name={o.name} alt={o.name} className="h-16 w-16 rounded-lg object-cover flex-shrink-0" />
+                                    ) : null}
+                                    <div className="min-w-0 flex-1">
+                                      <p className="font-semibold leading-tight">{o.name}</p>
+                                      {o.description && <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{o.description}</p>}
+                                    </div>
+                                  </div>
+                                  <PresentationPicker
+                                    root={o}
+                                    presentations={(o as any).presentations}
+                                    vendor={vendorBrief}
+                                    acceptsCart={acceptsCart}
+                                    consultHref={waUrl}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          }
                           return (
                             <div key={o.id} id={`product-${o.id}`} data-pname={String(o.name).toLowerCase()} className="scroll-mt-16 sm:scroll-mt-24">
                               <ProductCard
@@ -1208,6 +1252,34 @@ export default async function TiendaPage({
                                   />
                                 )}
                               </div>
+                            </div>
+                          );
+                        }
+                        if (Array.isArray((o as any).presentations) && (o as any).presentations.length > 0) {
+                          const oAllImages = [
+                            ...(o.image_url ? [{ image_url: o.image_url }] : []),
+                            ...(imagesByProduct[o.id] || []),
+                          ];
+                          return (
+                            <div key={o.id} data-pname={String(o.name).toLowerCase()} className="border border-border rounded-xl p-3 bg-card space-y-2">
+                              <div className="flex items-start gap-3">
+                                {oAllImages.length > 0 && (
+                                  <div className="h-16 w-16 rounded-lg overflow-hidden flex-shrink-0">
+                                    <ProductImage src={oAllImages[0].image_url} name={o.name} alt={o.name} className="w-full h-full object-cover" />
+                                  </div>
+                                )}
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-semibold leading-tight">{o.name}</p>
+                                  {o.description && <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{o.description}</p>}
+                                </div>
+                              </div>
+                              <PresentationPicker
+                                root={o}
+                                presentations={(o as any).presentations}
+                                vendor={vendorBrief}
+                                acceptsCart={acceptsCart}
+                                consultHref={waUrl}
+                              />
                             </div>
                           );
                         }

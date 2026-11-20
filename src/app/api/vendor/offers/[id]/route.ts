@@ -39,6 +39,7 @@ export async function PATCH(
     "pack_size", "size_guide", "promo_only", "sku", "supplier_id", "expires_at",
     "online_available", "scale_plu", "margin_list_id",
     "count_pack", "package_price",
+    "parent_id", "presentation_label", "presentation_qty", "presentation_unit",
   ] as const;
 
   const safeUpdate: Record<string, unknown> = {};
@@ -190,6 +191,38 @@ export async function PATCH(
       delete safeUpdate.scale_plu;
     } else {
       safeUpdate.scale_plu = nextPlu;
+    }
+  }
+  // Presentaciones (migrate-product-presentations.sql): tolerante a migración sin aplicar.
+  const hasPresCol = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'parent_id') AS exists`
+  ).catch(() => ({ exists: false }));
+  if (hasPresCol?.exists !== true) {
+    delete safeUpdate.parent_id;
+    delete safeUpdate.presentation_label;
+    delete safeUpdate.presentation_qty;
+    delete safeUpdate.presentation_unit;
+  } else {
+    if ("parent_id" in safeUpdate) {
+      const v = safeUpdate.parent_id;
+      safeUpdate.parent_id = v != null && String(v).trim() !== "" ? String(v).trim() : null;
+    }
+    if ("presentation_label" in safeUpdate) {
+      const v = safeUpdate.presentation_label;
+      safeUpdate.presentation_label = v != null && String(v).trim() !== "" ? String(v).trim().slice(0, 64) : null;
+    }
+    if ("presentation_qty" in safeUpdate) {
+      const v = safeUpdate.presentation_qty;
+      if (v == null || v === "") {
+        safeUpdate.presentation_qty = null;
+      } else {
+        const n = Number(v);
+        safeUpdate.presentation_qty = Number.isFinite(n) && n > 0 ? n : null;
+      }
+    }
+    if ("presentation_unit" in safeUpdate) {
+      const v = String(safeUpdate.presentation_unit ?? "").trim();
+      safeUpdate.presentation_unit = v === "kg" || v === "u" || v === "ml" ? v : null;
     }
   }
   if ("scale_plu" in safeUpdate && safeUpdate.scale_plu != null) {

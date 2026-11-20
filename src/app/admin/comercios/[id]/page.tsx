@@ -70,6 +70,7 @@ export default function AdminComercioDetailPage() {
   }
 
   const [resetting, setResetting] = useState(false);
+  const [deletingCatalog, setDeletingCatalog] = useState(false);
 
   async function handleRecordPayment() {
     if (!subscriptions.length) return;
@@ -136,6 +137,50 @@ export default function AdminComercioDetailPage() {
       setMsg("Error al inicializar datos");
     } finally {
       setResetting(false);
+    }
+  }
+
+  async function deleteCatalog() {
+    if (
+      !confirm(
+        `¿Borrar TODO el catálogo de "${vendor?.store_name}"?\\n\\n` +
+          `• Productos y sus fotos\\n• Variantes (color/talle)\\n• Modificadores y grupos\\n` +
+          `• Combos\\n• Categorías del comercio\\n• Grupos de volumen y listas de margen\\n` +
+          `• Lotes de envasado y escandallos ligados`
+      )
+    )
+      return;
+    if (
+      !confirm(
+        "Esta acción es definitiva y no se puede deshacer.\\n\\n" +
+          "Se CONSERVAN los pedidos históricos (sus ítems referencian productos ya borrados), " +
+          "servicios, equipo de trabajo, sedes, caja y el plan del comercio. ¿Continuar?"
+      )
+    )
+      return;
+    setDeletingCatalog(true);
+    try {
+      const res = await fetch(`/api/admin/comercios/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reset_catalog" }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setMsg(
+          `Catálogo borrado: ${data.products ?? 0} producto(s), ${data.vendorCategories ?? 0} categoría(s), ` +
+            `${data.modifierGroups ?? 0} grupo(s) de modificadores, ${data.productVariants ?? 0} variante(s), ` +
+            `${data.productImages ?? 0} imagen(es), ${data.comboItems ?? 0} línea(s) de combo, ` +
+            `${data.volumeGroups ?? 0} grupo(s) de volumen, ${data.marginLists ?? 0} lista(s) de margen.`
+        );
+        load();
+      } else {
+        setMsg(data.error || "No se pudo borrar el catálogo");
+      }
+    } catch {
+      setMsg("Error al borrar el catálogo");
+    } finally {
+      setDeletingCatalog(false);
     }
   }
 
@@ -374,6 +419,22 @@ export default function AdminComercioDetailPage() {
         <Button size="sm" variant="outline" className="border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-950" onClick={resetOrders} disabled={resetting}>
           {resetting && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
           Inicializar datos de prueba
+        </Button>
+      </div>
+
+      {/* Borrar catálogo (productos + dependencias) */}
+      <div className="rounded-xl border border-red-200 bg-red-50/40 dark:bg-red-950/20 dark:border-red-900 p-4 space-y-3">
+        <h2 className="font-semibold text-sm uppercase tracking-wide text-red-600">Borrar catálogo</h2>
+        <p className="text-xs text-muted-foreground">
+          Borra todos los <strong>productos</strong> del comercio junto con sus variantes, imágenes,
+          modificadores y grupos, combos, categorías, grupos de volumen, listas de margen, lotes de
+          envasado y escandallos ligados. Se <strong>conservan</strong> los pedidos históricos
+          (sus ítems referencian productos ya borrados), servicios, equipo de trabajo, sedes, caja y el
+          plan del comercio.
+        </p>
+        <Button size="sm" variant="outline" className="border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-950" onClick={deleteCatalog} disabled={deletingCatalog}>
+          {deletingCatalog && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+          Borrar todo el catálogo
         </Button>
       </div>
     </div>

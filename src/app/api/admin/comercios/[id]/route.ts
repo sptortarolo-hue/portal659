@@ -136,6 +136,94 @@ export async function POST(
     return NextResponse.json({ ok: true, ...result });
   }
 
+  // Borrar todo el catálogo de un comercio (solo admin).
+  //
+  // Borra productos + dependencias (variantes, imágenes, modificadores, combos,
+  // grupos de volumen, listas de margen, categorías del comercio, lotes de
+  // envasado, escandallos ligados a productos). Conserva la operación (pedidos,
+  // turnos, caja, clientes) y la configuración (servicios, staff, sedes, plan).
+  // Los pedidos históricos siguen existiendo; sus items referencian productos
+  // ya borrados (solo visual). Tolerante a migraciones sin aplicar.
+  if (
+    action === "reset_catalog" ||
+    action === "delete_all_products" ||
+    action === "delete_catalog"
+  ) {
+    const vendor = await queryOne<{ id: string }>(
+      `SELECT id FROM vendors WHERE id = $1 LIMIT 1`,
+      [id]
+    );
+    if (!vendor) {
+      return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });
+    }
+
+    const wipe = async (tx: Tx, table: string): Promise<number> => {
+      if (!(await hasTable(tx, table))) return 0;
+      const rows = await tx.query<Record<string, unknown>>(
+        `DELETE FROM public.${table} WHERE vendor_id = $1 RETURNING 1`,
+        [id]
+      );
+      return Array.isArray(rows) ? rows.length : 0;
+    };
+
+    // Borra filas de `table` cuyo product_id pertenece al comercio.
+    const wipeByProducts = async (tx: Tx, table: string): Promise<number> => {
+      if (!(await hasTable(tx, table))) return 0;
+      const rows = await tx.query<Record<string, unknown>>(
+        `DELETE FROM public.${table}
+         WHERE product_id IN (SELECT id FROM public.products WHERE vendor_id = $1)
+         RETURNING 1`,
+        [id]
+      );
+      return Array.isArray(rows) ? rows.length : 0;
+    };
+
+    // Borra filas de `table` cuyo group_id pertenece a un volume_group del comercio.
+    const wipeByVolumeGroups = async (tx: Tx, table: string): Promise<number> => {
+      if (!(await hasTable(tx, table))) return 0;
+      const rows = await tx.query<Record<string, unknown>>(
+        `DELETE FROM public.${table}
+         WHERE group_id IN (SELECT id FROM public.volume_groups WHERE vendor_id = $1)
+         RETURNING 1`,
+        [id]
+      );
+      return Array.isArray(rows) ? rows.length : 0;
+    };
+
+    const result = await withTransaction(async (tx) => {
+      const counted: Record<string, number> = {};
+
+      // --- Combos: líneas por vendor (cascade también las borra al borrar products) ---
+      counted.comboItems = await wipe(tx, "combo_items");
+      // --- Modificadores nuevos (links + grupos) ---
+      counted.productModifierLinks = await wipeByProducts(tx, "product_modifier_links");
+      counted.modifierGroups = await wipe(tx, "modifier_groups");
+      // --- Modificadores legacy (product_modifiers, por product_id) ---
+      counted.productModifiers = await wipeByProducts(tx, "product_modifiers");
+      // --- Variantes e imágenes ---
+      counted.productVariants = await wipeByProducts(tx, "product_variants");
+      counted.productImages = await wipeByProducts(tx, "product_images");
+      // --- Envasado: lotes ---
+      counted.packingBatches = await wipe(tx, "packing_batches");
+      // --- Escandallos ligados a productos ---
+      counted.productRecipeLinks = await wipeByProducts(tx, "product_recipe_links");
+      counted.recipes = await wipeByProducts(tx, "recipes");
+      // --- Volumen ---
+      counted.volumeTiers = await wipeByVolumeGroups(tx, "volume_tiers");
+      counted.volumeGroups = await wipe(tx, "volume_groups");
+      // --- Listas de margen ---
+      counted.marginLists = await wipe(tx, "margin_lists");
+      // --- Categorías del comercio ---
+      counted.vendorCategories = await wipe(tx, "vendor_categories");
+      // --- Productos (cascada al resto) ---
+      counted.products = await wipe(tx, "products");
+
+      return counted;
+    });
+
+    return NextResponse.json({ ok: true, ...result });
+  }
+
   return NextResponse.json({ error: "Acción desconocida" }, { status: 400 });
 }
 

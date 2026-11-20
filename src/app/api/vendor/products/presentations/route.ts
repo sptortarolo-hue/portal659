@@ -207,7 +207,7 @@ export async function POST(request: Request) {
 
     // parent_id
     extraCols.push("parent_id");
-    extraVals.push(source.id);
+    extraVals.push(String(source.id));
     // presentation_label
     extraCols.push("presentation_label");
     extraVals.push(label.slice(0, 64));
@@ -277,7 +277,16 @@ export async function POST(request: Request) {
       }
     }
 
-    const extraPlaceholders = extraVals.map((_, i) => `$${16 + i}`).join(", ");
+    // Cast explícito para evitar "could not determine data type" cuando un
+    // valor es null/undefined (Postgres no infiere el tipo del parámetro).
+    const extraPlaceholders = extraVals.map((v, i) => {
+      const col = extraCols[i];
+      if (col === "parent_id") return `$${14 + i}::uuid`;
+      if (col === "presentation_qty" || col === "cost_last" || col === "cost_avg" || col === "weight_step_kg" || col === "weight_min_kg" || col === "package_price") return `$${14 + i}::numeric`;
+      if (col === "stock_low_threshold") return `$${14 + i}::int`;
+      if (col === "stock_control" || col === "requires_prep" || col === "has_variants" || col === "cash_discount_excluded" || col === "count_pack" || col === "online_available") return `$${14 + i}::boolean`;
+      return `$${14 + i}`;
+    }).join(", ");
 
     try {
       const newProduct = await queryOne<Record<string, unknown>>(

@@ -223,7 +223,7 @@ export function RecipeEditor({
   const belowCost = salePrice != null && preview !== null && preview.perPortion > salePrice;
 
   return (
-    <Card className="p-4 space-y-4 overflow-hidden">
+    <Card className="p-4 space-y-4 overflow-hidden w-full max-w-full">
       <div>
         <h3 className="font-semibold">{title}</h3>
         {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
@@ -258,11 +258,12 @@ export function RecipeEditor({
           return (
             <div key={l.key} className="flex flex-col gap-1.5 rounded-xl border border-border p-2">
               <div className="flex flex-wrap gap-1.5">
-                <select
-                  value={l.ingredient_id}
-                  onChange={(e) => pickIngredient(l.key, e.target.value)}
-                  className="flex-1 min-w-0 w-0 rounded-lg border border-input bg-background px-2 py-2 text-sm"
-                >
+                <div className="flex-1 min-w-0 overflow-hidden">
+                  <select
+                    value={l.ingredient_id}
+                    onChange={(e) => pickIngredient(l.key, e.target.value)}
+                    className="w-full rounded-lg border border-input bg-background px-2 py-2 text-sm"
+                  >
                   <option value="">Elegí insumo…</option>
                   {ingredients.map((i) => (
                     <option key={i.id} value={i.id}>
@@ -272,6 +273,7 @@ export function RecipeEditor({
                     </option>
                   ))}
                 </select>
+              </div>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -290,7 +292,7 @@ export function RecipeEditor({
                   placeholder="Cantidad neta"
                   value={l.qty_net}
                   onChange={(e) => patchLine(l.key, { qty_net: e.target.value })}
-                  className="flex-1 min-w-0"
+                  className="flex-1 min-w-0 max-w-full"
                 />
                 <select
                   value={l.unit}
@@ -379,7 +381,7 @@ export function RecipeEditor({
                   max={90}
                   value={targetPct}
                   onChange={(e) => setTargetPct(e.target.value)}
-                  className="w-14 h-7 px-1 text-xs inline-block"
+                  className="w-14 h-7 px-1 text-xs inline-block max-w-full"
                 />
                 %)
               </span>
@@ -409,7 +411,7 @@ export function RecipeEditor({
           onChanged={() => onLinksChanged?.()}
         />
       )}
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         <Button onClick={handleSave} disabled={saving} className="flex-1">
           {saving ? "Guardando…" : existing ? "Guardar cambios" : "Crear preparación"}
         </Button>
@@ -526,16 +528,18 @@ function RecipePresentations({
       ))}
       {eligible.length > 0 ? (
         <div className="flex flex-wrap gap-1.5">
-          <select
-            value={selProduct}
-            onChange={(e) => setSelProduct(e.target.value)}
-            className="flex-1 min-w-0 w-0 rounded-lg border border-input bg-background px-2 py-2 text-sm"
-          >
+          <div className="flex-1 min-w-0 overflow-hidden">
+            <select
+              value={selProduct}
+              onChange={(e) => setSelProduct(e.target.value)}
+              className="w-full rounded-lg border border-input bg-background px-2 py-2 text-sm"
+            >
             <option value="">Vincular producto…</option>
             {eligible.map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
+          </div>
           <Input
             type="number"
             min={0.001}

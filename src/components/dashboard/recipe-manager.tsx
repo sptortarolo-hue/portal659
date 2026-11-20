@@ -173,31 +173,31 @@ export function RecipeManager({ isComercio = false }: { isComercio?: boolean } =
   }
 
   return (
-    <div className="space-y-4 min-w-0 overflow-x-hidden">
+    <div className="space-y-4 min-w-0 overflow-x-hidden w-full max-w-full">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <h2 className="font-display text-xl font-semibold">Preparación y Costo</h2>
-        <div className="flex rounded-xl border border-border overflow-hidden text-sm font-medium flex-wrap w-full sm:w-auto">
+        <div className="flex rounded-xl border border-border overflow-hidden text-sm font-medium flex-wrap w-full sm:w-auto min-w-0">
           <button
             onClick={() => setView("platos")}
-            className={`px-4 py-2 flex-1 sm:flex-none ${view === "platos" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+            className={`px-4 py-2 flex-1 sm:flex-none min-w-0 ${view === "platos" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
           >
             {isComercio ? "📦 Productos" : "🍽️ Platos"}
           </button>
           <button
             onClick={() => setView("insumos")}
-            className={`px-4 py-2 flex-1 sm:flex-none ${view === "insumos" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+            className={`px-4 py-2 flex-1 sm:flex-none min-w-0 ${view === "insumos" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
           >
             🧂 Insumos ({ingredients.filter((i) => i.active !== false).length})
           </button>
           <button
             onClick={() => setView("compras")}
-            className={`px-4 py-2 flex-1 sm:flex-none ${view === "compras" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+            className={`px-4 py-2 flex-1 sm:flex-none min-w-0 ${view === "compras" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
           >
             🧾 Compras
           </button>
           <button
             onClick={() => setView("envasado")}
-            className={`px-4 py-2 flex-1 sm:flex-none ${view === "envasado" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+            className={`px-4 py-2 flex-1 sm:flex-none min-w-0 ${view === "envasado" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
             title="Envasar granel en paquetes con la balanza"
           >
             🫙 Envasado
@@ -227,7 +227,7 @@ export function RecipeManager({ isComercio = false }: { isComercio?: boolean } =
       ) : view === "platos" ? (
         <div className="grid lg:grid-cols-2 gap-4 items-start">
           {/* Carta con semáforo */}
-          <Card className="p-3 overflow-hidden">
+          <Card className="p-3 overflow-hidden min-w-0">
             <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide px-1 mb-2">
               {isComercio ? "Productos · costo y margen" : "Carta · costo y food cost"}
             </p>
@@ -274,7 +274,7 @@ export function RecipeManager({ isComercio = false }: { isComercio?: boolean } =
             </div>
           </Card>
           {/* Editor */}
-          <div className="lg:sticky lg:top-20">
+          <div className="lg:sticky lg:top-20 min-w-0">
             {selectedProduct ? (
               (() => {
                 const p = products.find((x) => x.id === selectedProduct);
@@ -313,7 +313,7 @@ export function RecipeManager({ isComercio = false }: { isComercio?: boolean } =
       ) : (
         <div className="grid lg:grid-cols-2 gap-4 items-start">
           {/* Biblioteca de insumos */}
-          <Card className="p-3 overflow-hidden">
+          <Card className="p-3 overflow-hidden min-w-0">
             <div className="flex items-center justify-between px-1 mb-2">
               <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">
                 Biblioteca · costo sin IVA
@@ -366,7 +366,7 @@ export function RecipeManager({ isComercio = false }: { isComercio?: boolean } =
             )}
           </Card>
           {/* Form + sub-preparación */}
-          <div className="space-y-4 lg:sticky lg:top-20">
+          <div className="space-y-4 lg:sticky lg:top-20 min-w-0">
             {editingIngredient === "new" ? (
               <IngredientForm
                 key="new"

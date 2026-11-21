@@ -272,6 +272,10 @@ export function Mostrador({
     setGiftcardExpires(null);
     setGiftcardErr("");
     setGiftcardOpen(false);
+    setDiscountOpen(false);
+    setManualOpen(false);
+    setDesgloseOpen(false);
+    setOptionsOpen(false);
     setFiscalReceptorTipo("cf");
     setFiscalReceptorNro("");
     setFiscalReceptorNombre("");

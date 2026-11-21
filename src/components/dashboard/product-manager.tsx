@@ -1027,6 +1027,7 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
                   offers={offers}
                   onEdit={startEdit}
                   onToggleFeatured={toggleFeatured}
+                  onToggleSuggestible={toggleSuggestible}
                   onToggleAvailable={toggleAvailable}
                   onToggleOnline={isTaller ? toggleOnline : undefined}
                   onDelete={deleteOffer}

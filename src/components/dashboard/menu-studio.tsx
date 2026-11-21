@@ -1861,6 +1861,19 @@ export function MenuStudio({
               >
                 🧬 Presentaciones
               </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (!editingId) return;
+                  setLabelChecked(new Set([editingId]));
+                  setLabelProductId(editingId);
+                  setShowLabels(true);
+                }}
+              >
+                🏷️ Etiqueta
+              </Button>
               {(() => {
                 const eo = offers.find((o) => o.id === editingId);
                 const hasPres = eo && offers.some((o) => o.parent_id === eo.id);

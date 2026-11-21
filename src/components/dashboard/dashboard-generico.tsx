@@ -10,7 +10,6 @@ import { ChipToggle } from "@/components/ui/chip-toggle";
 import { RadioCards } from "@/components/ui/radio-cards";
 import { OfferForm, OfferList, CategoryManager, LivePreview, apiJson, TransferConfig, DeliveryFeeConfig } from "./shared";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
-import { BankConciliationSettings } from "@/components/dashboard/bank-conciliation-settings";
 import { LocationPicker } from "./location-picker";
 import type { Vendor, Product } from "@/types/database";
 
@@ -257,7 +256,6 @@ export default function DashboardGenerico({
           {paymentMethods.includes("Transferencia") && (
             <TransferConfig vendor={vendor} saveVendor={saveVendor} />
           )}
-          <BankConciliationSettings vendor={vendor} saveVendor={saveVendor} />
           <div><Label className="mb-2 block">Entrega</Label><RadioCards options={DELIVERY_OPTIONS} value={deliveryOptions} onChange={setDeliveryOptions} /></div>
           {deliveryOptions !== "retiro" && (
             <DeliveryFeeConfig vendor={vendor} saveVendor={saveVendor} />

@@ -3572,21 +3572,28 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             <p className="text-xs text-muted-foreground mb-3">Elegí la presentación</p>
             <div className="space-y-1.5 max-h-72 overflow-y-auto">
               {(presPicker.presentations || []).map((p: any) => {
-                const stock = Math.max(0, Math.floor(Number(p.stock ?? 0)));
+                const hasStockControl = p.stock_control === true;
+                const stock = p.stock == null ? null : Math.max(0, Math.floor(Number(p.stock)));
                 const price = Number(p.promo_price ?? p.price);
                 const qty = Number(p.presentation_qty) || 1;
                 const perKg = qty > 0 ? price / qty : 0;
                 return (
                   <button
                     key={p.id}
-                    disabled={stock <= 0}
+                    disabled={hasStockControl && (stock ?? 0) <= 0}
                     onClick={() => { add(p); setPresPicker(null); }}
                     className="w-full flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm text-left hover:border-primary disabled:opacity-40"
                   >
                     <span className="flex-1 min-w-0">
                       <span className="font-medium">{p.presentation_label || p.name}</span>
                       <span className="block text-[11px] text-muted-foreground">
-                        {stock <= 0 ? "Sin stock" : stock <= 5 ? `¡Quedan ${stock}!` : `Stock: ${stock}`}
+                        {hasStockControl && (stock ?? 0) <= 0
+                          ? "Sin stock"
+                          : stock == null
+                            ? "Disponible"
+                            : stock <= 5
+                              ? `¡Quedan ${stock}!`
+                              : `Stock: ${stock}`}
                         {perKg > 0 && ` · $${Math.round(perKg).toLocaleString("es-AR")}/kg`}
                       </span>
                     </span>

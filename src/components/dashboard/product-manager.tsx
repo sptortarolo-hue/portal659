@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { OfferForm, OfferList, CategoryManager, apiJson, useFormDraft } from "@/components/dashboard/shared";
 import { VolumeEditor } from "@/components/dashboard/volume-editor";
 import { MarginListsManager, type MarginList } from "@/components/dashboard/margin-lists-manager";
+import { SuggestionsManager } from "@/components/dashboard/suggestions-manager";
 import { SupplierSelect } from "@/components/dashboard/supplier-select";
 import { clearDraft } from "@/lib/draft";
 import { toDateOnly } from "@/lib/expiry";
@@ -114,6 +115,7 @@ const PM_VIEWS: { id: string; icon: string; label: string }[] = [
   { id: "volumen", icon: "📦", label: "Precios por volumen" },
   { id: "combos", icon: "🧩", label: "Combos" },
   { id: "listas", icon: "🏷️", label: "Listas" },
+  { id: "sugerencias", icon: "🛒", label: "Sugerencias" },
 ];
 
 /** Gestión completa de platos/productos (listado + ficha inline + modificadores), sin ir a Configuración. */
@@ -1189,6 +1191,10 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
               onRefresh={refreshMarginLists}
               onChanged={() => { load(); onChanged?.(); }}
             />
+          )}
+
+          {view === "sugerencias" && (
+            <SuggestionsManager vendorId={vendorId} onChanged={() => { load(); onChanged?.(); }} />
           )}
         </>
       ) : (

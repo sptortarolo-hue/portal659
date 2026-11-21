@@ -23,6 +23,7 @@ import { ProductOptionsEditor } from "@/components/dashboard/product-options-edi
 import { VolumeEditor } from "@/components/dashboard/volume-editor";
 import { PresentationGenerator } from "@/components/dashboard/presentation-generator";
 import { MarginListsManager, type MarginList } from "@/components/dashboard/margin-lists-manager";
+import { SuggestionsManager } from "@/components/dashboard/suggestions-manager";
 import { MenuImportModal } from "@/components/dashboard/menu-import";
 import { MenuImportWaModal } from "@/components/dashboard/menu-import-wa";
 import { ProductsTable } from "@/components/dashboard/products-table";
@@ -108,7 +109,7 @@ type Props = {
   vendor?: Record<string, any> | null;
 };
 
-type View = "productos" | "categorias" | "opciones" | "volumen" | "combos" | "listas";
+type View = "productos" | "categorias" | "opciones" | "volumen" | "combos" | "listas" | "sugerencias";
 
 /**
  * Vista previa de la etiqueta de góndola (estilo supermercado): nombre
@@ -199,6 +200,7 @@ const VIEWS: { id: View; icon: string; label: string }[] = [
   { id: "volumen", icon: "📦", label: "Precios por volumen" },
   { id: "combos", icon: "🧩", label: "Combos" },
   { id: "listas", icon: "🏷️", label: "Listas" },
+  { id: "sugerencias", icon: "🛒", label: "Sugerencias" },
 ];
 
 type BulkOp = "pct_up" | "pct_down" | "add" | "set" | "markup_pct" | "margin_pct";
@@ -1509,6 +1511,10 @@ export function MenuStudio({
           onRefresh={refreshMarginLists}
           onChanged={reload}
         />
+      )}
+
+      {view === "sugerencias" && (
+        <SuggestionsManager vendorId={vendorId} onChanged={reload} />
       )}
 
       <MenuImportModal

@@ -195,7 +195,9 @@ export async function POST(request: Request) {
     // Calcular precio según modo.
     let price = Number(pres.price);
     if (pricingMode === "base_plus_packaging" && basePricePerKg > 0) {
-      const pct = packagingPctForQty(qty);
+      // El % de packaging es por fila (configurable libre en cada renglón).
+      const rowPct = Number(pres.packaging_pct);
+      const pct = Number.isFinite(rowPct) ? rowPct : 0;
       price = Math.round(basePricePerKg * qty * (1 + pct / 100));
     } else if (!Number.isFinite(price) || price < 0) {
       price = Number(source.price) || 0;
@@ -246,14 +248,24 @@ export async function POST(request: Request) {
         extraVals.push(source.margin_list_id);
       }
     }
+    // Costo proporcional al peso de la presentación: el granel escala
+    // por el ratio (qty / qty_madre). El packaging (bolsa) es el mismo
+    // para todos los tamaños, pero para v1 se escala completo (el envasado
+    // real recalcula cost_avg con el costo real del lote).
     const hasCostLastPres = await queryOne<{ exists: boolean }>(
       `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'cost_last') AS exists`
     ).catch(() => ({ exists: false }));
     if (hasCostLastPres?.exists === true && source.cost_last != null) {
+      const sourceQty = Number(source.presentation_qty) || 1;
+      const ratio = sourceQty > 0 ? qty / sourceQty : 1;
+      const scaledCost = Math.round(Number(source.cost_last) * ratio * 100) / 100;
       extraCols.push("cost_last");
-      extraVals.push(source.cost_last);
-      extraCols.push("cost_avg");
-      extraVals.push(source.cost_avg);
+      extraVals.push(scaledCost);
+      if (source.cost_avg != null) {
+        const scaledAvg = Math.round(Number(source.cost_avg) * ratio * 100) / 100;
+        extraCols.push("cost_avg");
+        extraVals.push(scaledAvg);
+      }
     }
     // Optional cols (tolerant).
     const optionalCols: { col: string; val: unknown }[] = [

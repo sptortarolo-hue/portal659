@@ -23,7 +23,7 @@ type Template = {
 };
 
 type Props = {
-  source: { id: string; name: string; price: number; presentation_qty?: number | null };
+  source: { id: string; name: string; price: number; presentation_qty?: number | null; cost_last?: number | string | null };
   onClose: () => void;
   onCreated: () => void;
 };
@@ -88,6 +88,17 @@ export function PresentationGenerator({ source, onClose, onCreated }: Props) {
     const q = Number(row.qty) || 1;
     if (q <= 0) return "—";
     return `$${Math.round(p / q).toLocaleString("es-AR")}/kg`;
+  }
+
+  function calcCost(row: PresentationRow): string {
+    const sourceCost = Number(source.cost_last);
+    if (!Number.isFinite(sourceCost) || sourceCost <= 0) return "—";
+    const sourceQty = Number(source.presentation_qty) || 1;
+    const qty = Number(row.qty) || 0;
+    if (qty <= 0 || sourceQty <= 0) return "—";
+    const ratio = qty / sourceQty;
+    const scaled = Math.round(sourceCost * ratio * 100) / 100;
+    return `$${scaled.toLocaleString("es-AR", { maximumFractionDigits: 2 })}`;
   }
 
   async function save() {
@@ -310,6 +321,9 @@ export function PresentationGenerator({ source, onClose, onCreated }: Props) {
                   title="% de packaging (envase chico)"
                 />
               )}
+              <span className="text-[10px] text-muted-foreground w-16 text-right" title="Costo proporcional">
+                {calcCost(row)}
+              </span>
               <span className="text-[10px] text-muted-foreground w-16 text-right">
                 {pricePerKg(row)}
               </span>

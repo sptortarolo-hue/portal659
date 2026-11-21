@@ -57,6 +57,8 @@ type Offer = {
   unit?: string | null;
   /** Código de barras / SKU (etiquetas de góndola). */
   sku?: string | null;
+  /** PLU de balanza (etiquetas de medida variable). */
+  scale_plu?: string | null;
   /** Presentaciones: parent_id si es hija, label/qty/unit si es presentación. */
   parent_id?: string | null;
   presentation_label?: string | null;
@@ -874,7 +876,7 @@ export function MenuStudio({
   const filteredOffers = useMemo(() => {
     const q = search.trim().toLowerCase();
     return offers.filter((o) => {
-      if (q && !o.name.toLowerCase().includes(q)) return false;
+      if (q && !(o.name.toLowerCase().includes(q) || (o.sku || "").toLowerCase().includes(q) || (o.scale_plu || "").toLowerCase().includes(q))) return false;
       if (catFilter !== "all" && (o.category || "") !== catFilter) return false;
       if (statusFilter === "active" && !o.available) return false;
       if (statusFilter === "paused" && o.available) return false;

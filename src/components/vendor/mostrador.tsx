@@ -717,6 +717,24 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     };
   }, [vendorId, catalogVersion]);
 
+  // Lista plana (raíces + sus presentaciones) para búsqueda/escaneo: las
+  // presentaciones están ocultas del catálogo principal pero deben poder
+  // encontrarse por código/SKU (etiquetas térmicas, etc.).
+  const scanProducts = useMemo(() => {
+    const out: Product[] = [];
+    for (const p of products) {
+      if (p.available === false) continue;
+      out.push(p);
+      const pres = (p as any).presentations;
+      if (Array.isArray(pres)) {
+        for (const c of pres) {
+          if (c && c.available !== false) out.push(c as Product);
+        }
+      }
+    }
+    return out;
+  }, [products]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const matchVariantSku = (vv: ProductVariant) => {
@@ -749,8 +767,8 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     const n = normalizePlu(plu);
     if (!n) return null;
     return (
-      products.find((p) => p.available !== false && normalizePlu(p.scale_plu) === n) ||
-      products.find((p) => p.available !== false && normalizePlu(p.sku) === n) ||
+      scanProducts.find((p) => p.available !== false && normalizePlu(p.scale_plu) === n) ||
+      scanProducts.find((p) => p.available !== false && normalizePlu(p.sku) === n) ||
       null
     );
   }
@@ -844,7 +862,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       searchRef.current?.focus();
       return;
     }
-    const hit = products.find((p) => ((p as any).sku || "").toLowerCase() === q && p.available !== false);
+    const hit = scanProducts.find((p) => ((p as any).sku || "").toLowerCase() === q && p.available !== false);
     if (hit) {
       add(hit);
       setQuery("");
@@ -869,7 +887,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         return;
       }
     }
-    const named = products.filter(
+    const named = scanProducts.filter(
       (p) => p.available !== false && p.name.toLowerCase().includes(q)
     );
     if (named.length === 1) {

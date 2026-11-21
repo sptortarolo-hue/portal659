@@ -424,6 +424,42 @@ export async function POST(request: Request) {
     extraCols.push("online_available");
     extraVals.push(body.online_available === true);
   }
+  // Productos sugeribles en el carrito (migrate-product-suggestions.sql):
+  // tolerante a migración sin aplicar. Valida elegibilidad si se intenta
+  // marcar suggestible = true.
+  const hasSuggestibleCol = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'suggestible') AS exists`
+  ).catch(() => ({ exists: false }));
+  if (body?.suggestible !== undefined) {
+    if (hasSuggestibleCol?.exists !== true) {
+      if (body.suggestible === true) {
+        return NextResponse.json(
+          { error: "Falta aplicar migrate-product-suggestions.sql para marcar productos sugeribles" },
+          { status: 503 }
+        );
+      }
+    } else {
+      if (body.suggestible === true) {
+        // El producto aún no existe (es alta): la validación estricta de
+        // elegibilidad se hace en el toggle post-creación (PATCH). Acá solo
+        // se persiste el flag si la migración está aplicada.
+      }
+      extraCols.push("suggestible");
+      extraVals.push(body.suggestible === true);
+      if (body.suggestible === true) {
+        // posición = max actual + 1
+        const maxPos = await queryOne<{ m: number | null }>(
+          `SELECT COALESCE(MAX(suggestible_position), 0) AS m FROM products WHERE vendor_id = $1`,
+          [vendor.id]
+        ).catch(() => ({ m: 0 }));
+        extraCols.push("suggestible_position");
+        extraVals.push((Number(maxPos?.m) || 0) + 1);
+      } else {
+        extraCols.push("suggestible_position");
+        extraVals.push(0);
+      }
+    }
+  }
   const extraPlaceholders = extraVals.map((_, i) => `$${15 + i}`).join(", ");
   // Foto remota sugerida por lookup (Open Food Facts): se descarga a uploads
   // para no hotlinkear. Si falla, se guarda la URL tal cual (no rompe el alta).

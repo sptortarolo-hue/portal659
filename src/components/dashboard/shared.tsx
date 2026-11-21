@@ -123,6 +123,7 @@ type Offer = {
   sku?: string | null;
   available: boolean;
   featured_today: boolean;
+  suggestible?: boolean;
   image_url: string | null;
   stock: number | null;
   stock_low_threshold: number | null;
@@ -825,7 +826,7 @@ export function OfferForm({
   );
 }
 
-export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable, onDelete, editingId, editForm, onEditModifiers, costByProduct, showBuyCost = false, emptyText = "Todavía no cargaste platos.", onTogglePromoOnly, onToggleOnline }: {
+export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable, onDelete, editingId, editForm, onEditModifiers, costByProduct, showBuyCost = false, emptyText = "Todavía no cargaste platos.", onTogglePromoOnly, onToggleOnline, onToggleSuggestible }: {
   offers: Offer[];
   onEdit: (o: Offer) => void;
   onToggleFeatured: (o: Offer) => void;
@@ -844,6 +845,8 @@ export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable,
   onTogglePromoOnly?: (o: Offer) => void;
   /** Toggle venta online (solo taller: ProductManager lo pasa solo para ese vertical). */
   onToggleOnline?: (o: Offer) => void;
+  /** Toggle producto sugerible en el carrito. */
+  onToggleSuggestible?: (o: Offer) => void;
 }) {
   const editAnchorRef = useRef<HTMLDivElement>(null);
 
@@ -985,7 +988,12 @@ export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable,
                       {offer.online_available !== false ? "🌐 Online" : "🚫 Sin online"}
                     </Button>
                   )}
-                  <Button variant="ghost" size="sm" className="text-red-600" onClick={() => onDelete(offer)}>Eliminar</Button>
+                  {onToggleSuggestible && (
+                     <Button variant="outline" size="sm" onClick={() => onToggleSuggestible(offer)} title="Sugerir este producto en el carrito">
+                       {offer.suggestible ? "🛒 Sugerido" : "🛒 Sugerir"}
+                     </Button>
+                   )}
+                   <Button variant="ghost" size="sm" className="text-red-600" onClick={() => onDelete(offer)}>Eliminar</Button>
                 </div>
                 <div className="sm:hidden flex-shrink-0">
                   <DropdownMenu

@@ -40,6 +40,7 @@ type OfferRow = {
   /** Lista de margen aplicada (migrate-margin-lists.sql). */
   margin_list_id?: string | null;
   featured_today: boolean;
+  suggestible?: boolean;
   image_url: string | null;
   stock: number | null;
   stock_low_threshold: number | null;
@@ -635,6 +636,19 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ featured_today: !offer.featured_today }),
     });
+    load(); onChanged?.();
+  }
+
+  async function toggleSuggestible(offer: OfferRow) {
+    const res = await fetch(`/api/vendor/offers/${offer.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ suggestible: !offer.suggestible }),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d?.error || "No se pudo marcar como sugerible");
+    }
     load(); onChanged?.();
   }
 

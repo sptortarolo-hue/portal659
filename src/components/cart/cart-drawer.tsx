@@ -16,6 +16,7 @@ import { cartLineTotal } from "@/lib/order-line";
 import { mirrorVolume } from "@/lib/volume-mirror";
 import { ProductImage } from "@/components/product-image";
 import { VolumeProgress } from "@/components/store/volume-progress";
+import { CartSuggestions } from "@/components/cart/cart-suggestions";
 
 export function CartDrawer() {
   const pathname = usePathname();
@@ -236,6 +237,9 @@ export function CartDrawer() {
             })()
           )}
         </div>
+
+        {/* Sugerencias */}
+        {items.length > 0 && vendor && <CartSuggestions />}
 
         {/* Footer */}
         {items.length > 0 && vendor && (

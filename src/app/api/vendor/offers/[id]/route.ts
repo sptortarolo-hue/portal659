@@ -40,6 +40,7 @@ export async function PATCH(
     "online_available", "scale_plu", "margin_list_id",
     "count_pack", "package_price",
     "parent_id", "presentation_label", "presentation_qty", "presentation_unit",
+  "suggestible",
   ] as const;
 
   const safeUpdate: Record<string, unknown> = {};
@@ -281,6 +282,57 @@ export async function PATCH(
       safeUpdate.expires_at = raw != null && String(raw).trim() !== "" ? toDateOnly(raw) : null;
     } else {
       delete safeUpdate.expires_at;
+    }
+  }
+  // Productos sugeribles en el carrito (migrate-product-suggestions.sql):
+  // tolerante a migración sin aplicar. Valida elegibilidad si se activa.
+  if ("suggestible" in safeUpdate) {
+    const hasSuggestible = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'suggestible') AS exists`
+    ).catch(() => ({ exists: false }));
+    if (hasSuggestible?.exists !== true) {
+      if (safeUpdate.suggestible === true) {
+        return NextResponse.json(
+          { error: "Falta aplicar migrate-product-suggestions.sql para marcar productos sugeribles" },
+          { status: 503 }
+        );
+      }
+      delete safeUpdate.suggestible;
+    } else {
+      const want = safeUpdate.suggestible === true;
+      safeUpdate.suggestible = want;
+      if (want) {
+        // Validar elegibilidad
+        const { loadSuggestibleContext, isEligible } = await import("@/lib/suggestible-server");
+        const ctx = await loadSuggestibleContext(vendor.id);
+        const prod = await queryOne<any>(
+          `SELECT id, available, parent_id FROM products WHERE id = $1 AND vendor_id = $2`,
+          [params.id, vendor.id]
+        ).catch(() => null);
+        if (prod) {
+          const elig = isEligible(prod, ctx);
+          if (!elig.eligible) {
+            return NextResponse.json(
+              { error: elig.reason || "Este producto no es sugerible" },
+              { status: 400 }
+            );
+          }
+        }
+        // posición = max actual + 1 si no tenía
+        const cur = await queryOne<{ suggestible: boolean; suggestible_position: number }>(
+          `SELECT suggestible, suggestible_position FROM products WHERE id = $1 AND vendor_id = $2`,
+          [params.id, vendor.id]
+        ).catch(() => null);
+        if (!cur?.suggestible) {
+          const maxPos = await queryOne<{ m: number | null }>(
+            `SELECT COALESCE(MAX(suggestible_position), 0) AS m FROM products WHERE vendor_id = $1`,
+            [vendor.id]
+          ).catch(() => ({ m: 0 }));
+          safeUpdate.suggestible_position = (Number(maxPos?.m) || 0) + 1;
+        }
+      } else {
+        safeUpdate.suggestible_position = 0;
+      }
     }
   }
   // Venta online on/off (taller): tolerante a migración sin aplicar.

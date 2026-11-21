@@ -42,6 +42,7 @@ type Offer = {
   category: string | null;
   available: boolean;
   featured_today: boolean;
+  suggestible?: boolean;
   image_url: string | null;
   stock: number | null;
   stock_low_threshold: number | null;
@@ -779,6 +780,19 @@ export function MenuStudio({
     reload();
   }
 
+  async function toggleSuggestible(offer: Offer) {
+    const res = await fetch(`/api/vendor/offers/${offer.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ suggestible: !offer.suggestible }),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      setMsg(d?.error || "No se pudo marcar como sugerible");
+    }
+    reload();
+  }
+
   async function togglePromoOnly(offer: Offer) {
     const toPromo = !offer.promo_only;
     if (toPromo && !(offer.promo_price != null && Number(offer.promo_price) > 0)) {
@@ -1325,6 +1339,7 @@ export function MenuStudio({
               offers={offers}
               onEdit={startEdit}
               onToggleFeatured={toggleFeatured}
+              onToggleSuggestible={toggleSuggestible}
               onToggleAvailable={toggleAvailable}
               onDelete={deleteOffer}
               editingId={editingId}
@@ -1353,7 +1368,7 @@ export function MenuStudio({
                 onToggleAll={toggleSelectAll}
                 onEdit={openEdit}
                 onToggleFeatured={toggleFeatured}
-                onToggleAvailable={toggleAvailable}
+               onToggleAvailable={toggleAvailable}
                 onDelete={deleteOffer}
                 onTogglePromoOnly={togglePromoOnly}
               />

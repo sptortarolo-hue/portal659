@@ -17,6 +17,7 @@ type Offer = {
   category: string | null;
   available: boolean;
   featured_today: boolean;
+  suggestible?: boolean;
   image_url: string | null;
   stock: number | null;
   stock_low_threshold: number | null;
@@ -50,6 +51,7 @@ export function ProductsTable({
   onToggleAvailable,
   onDelete,
   onTogglePromoOnly,
+  onToggleSuggestible,
 }: {
   offers: Offer[];
   costByProduct?: Record<string, CostInfo>;
@@ -64,6 +66,8 @@ export function ProductsTable({
   onDelete: (offer: Offer) => void;
   /** Solo-promo (no figura en el menú). Opcional: solo gastro lo pasa. */
   onTogglePromoOnly?: (offer: Offer) => void;
+  /** Toggle producto sugerible en el carrito. */
+  onToggleSuggestible?: (offer: Offer) => void;
 }) {
   const [sortCol, setSortCol] = useState<"name" | "category" | "stock" | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -302,6 +306,15 @@ export function ProductsTable({
                         icon: "⭐",
                         onClick: () => onToggleFeatured(offer),
                       },
+                      ...(onToggleSuggestible
+                        ? [
+                            {
+                              label: offer.suggestible ? "Quitar de sugeridos" : "Sugerir en carrito",
+                              icon: "🛒",
+                              onClick: () => onToggleSuggestible(offer),
+                            },
+                          ]
+                        : []),
                       ...(onTogglePromoOnly
                         ? [
                             {

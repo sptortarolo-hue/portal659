@@ -1368,6 +1368,7 @@ export function MenuStudio({
                 onToggleAll={toggleSelectAll}
                 onEdit={openEdit}
                 onToggleFeatured={toggleFeatured}
+                onToggleSuggestible={toggleSuggestible}
                onToggleAvailable={toggleAvailable}
                 onDelete={deleteOffer}
                 onTogglePromoOnly={togglePromoOnly}

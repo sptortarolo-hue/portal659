@@ -11,7 +11,8 @@ function canInventory(plan: Pick<EffectivePlan, "can">) {
   return plan.can("recipes") || plan.can("inventory");
 }
 
-/** Lista precios por proveedor (filtro opcional por target). */
+/** Lista precios por proveedor (filtro opcional por target). Enriquecido con
+ *  nombre del target y costo actual (Fase "precio proveedor → costo"). */
 export async function GET(request: Request) {
   const gate = await gateRequest(request);
   if (!gate.ok) return gateError(gate);
@@ -41,14 +42,58 @@ export async function GET(request: Request) {
     vals.push(ingredientId);
     conds.push(`pl.ingredient_id = $${vals.length}`);
   }
+
+  // Tolerante a migraciones: los costos y las tablas extra pueden no existir.
+  let hasTables = { variants: true, ingredients: true };
+  let hasCost = { products: false, variants: false, ingredients: false };
+  try {
+    const cols = await queryMany<{ table_name: string; column_name: string }>(
+      `SELECT table_name, column_name FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND ((table_name IN ('products', 'product_variants') AND column_name = 'cost_last')
+            OR (table_name = 'ingredients' AND column_name = 'cost_per_unit'))`
+    );
+    const tabs = await queryMany<{ table_name: string }>(
+      `SELECT table_name FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name IN ('product_variants', 'ingredients')`
+    );
+    const tabSet = new Set(tabs.map((t) => t.table_name));
+    hasTables = { variants: tabSet.has("product_variants"), ingredients: tabSet.has("ingredients") };
+    const colSet = new Set(cols.map((c) => `${c.table_name}.${c.column_name}`));
+    hasCost = {
+      products: colSet.has("products.cost_last"),
+      variants: colSet.has("product_variants.cost_last"),
+      ingredients: colSet.has("ingredients.cost_per_unit"),
+    };
+  } catch {
+    /* sin info: se degrada a la lista simple */
+  }
+
+  const joinVariant = hasTables.variants ? "LEFT JOIN product_variants v ON v.id = pl.variant_id" : "";
+  const joinIng = hasTables.ingredients ? "LEFT JOIN ingredients i ON i.id = pl.ingredient_id" : "";
+  const costCurrentExpr =
+    `CASE
+       WHEN pl.variant_id IS NOT NULL THEN ${hasCost.variants ? "v.cost_last::float8" : "NULL::numeric"}
+       WHEN pl.ingredient_id IS NOT NULL THEN ${hasCost.ingredients ? "i.cost_per_unit::float8" : "NULL::numeric"}
+       ELSE ${hasCost.products ? "p.cost_last::float8" : "NULL::numeric"}
+     END`;
+
   const rows = await queryMany<Record<string, unknown>>(
-    `SELECT pl.*, s.name AS supplier_name
-     FROM supplier_pricelists pl JOIN suppliers s ON s.id = pl.supplier_id
-     WHERE ${conds.join(" AND ")}
-     ORDER BY pl.updated_at DESC LIMIT 500`,
+    `SELECT pl.*, s.name AS supplier_name,
+            p.name AS product_name,
+            ${hasTables.variants ? "v.color AS variant_color, v.talle AS variant_talle," : ""}
+            ${hasTables.ingredients ? "i.name AS ingredient_name," : ""}
+            ${costCurrentExpr} AS cost_current
+       FROM supplier_pricelists pl
+       JOIN suppliers s ON s.id = pl.supplier_id
+       LEFT JOIN products p ON p.id = pl.product_id
+       ${joinVariant}
+       ${joinIng}
+       WHERE ${conds.join(" AND ")}
+       ORDER BY pl.updated_at DESC LIMIT 500`,
     vals
   ).catch(() => []);
-  return NextResponse.json({ pricelists: rows || [] });
+  return NextResponse.json({ ok: true, pricelists: rows || [] });
 }
 
 /** Alta/actualización de precio (upsert por proveedor + target). */

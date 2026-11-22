@@ -5,11 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { PurchasesManager } from "@/components/dashboard/purchases-manager";
+import { SupplierPriceView } from "@/components/dashboard/supplier-price-view";
 import { getJson, apiJson } from "@/components/dashboard/shared";
 import { waUrlFromPhone } from "@/lib/shipping-geo";
 import { expiryLabel, formatDateAR } from "@/lib/expiry";
 
-type SubView = "compras" | "conteos" | "kardex" | "reposicion" | "vencimientos";
+type SubView = "compras" | "precios" | "conteos" | "kardex" | "reposicion" | "vencimientos";
 
 type CountRow = {
   id: string;
@@ -390,6 +391,7 @@ export function InventoryTab({
 
   const VIEWS: { id: SubView; label: string }[] = [
     { id: "compras", label: "🧾 Compras" },
+    { id: "precios", label: "💲 Precios por proveedor" },
     { id: "conteos", label: "📋 Conteos" },
     { id: "kardex", label: "📒 Kardex" },
     { id: "reposicion", label: "📦 Reposición" },
@@ -440,6 +442,8 @@ export function InventoryTab({
           </span>
         </button>
       )}
+
+      {view === "precios" && <SupplierPriceView />}
 
       {view === "compras" && (
         <PurchasesManager

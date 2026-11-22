@@ -92,9 +92,25 @@ Con packs: `cost` es por unidad (línea = cost × qty); envasado online: por paq
 
 **Reporte**: `GET /api/vendor/analytics` devuelve `realMargin` — ganancia real del período =
 plata neta de productos (itemRevenue menos descuentos prorrateados, sin envío) − Σ(cost × qty).
-`coverage` = % de la plata con costo conocido: si no llega al 99% la UI avisa "margen parcial"
-(pedidos viejos y mesas sin snapshot). Card "💰 Ganancia real del período" en el tab Analytics.
-Excluye líneas manuales ("Varios") y servicios (turnos no traen costo).
+`coverage` = % de la plata con costo conocido: si no llega al **50%**, la UI muestra
+"Sin datos suficientes de costo" (con link a Precios por proveedor); entre 50–98% avisa
+"margen parcial" (pedidos viejos y mesas sin snapshot). Card "💰 Ganancia real del período"
+en el tab Analytics. Excluye líneas manuales ("Varios") y servicios (turnos no traen costo).
+
+## Precio por proveedor → costo (opción B, nov-2026)
+
+El circuito de `supplier_pricelists` estaba muerto (las compras lo escriben; nadie lo leía).
+Ahora: **Inventario → 💲 Precios por proveedor**:
+
+- Tabla por target (producto / variante / insumo): mejor precio + proveedor, costo actual,
+  precios por proveedor (editable inline) y alta de precio nuevo.
+- Botón **"Aplicar como costo"** (individual) y **"⚡ Aplicar todos los mejores precios"**:
+  pisa `products.cost_last` / `product_variants.cost_last` / `ingredients.cost_per_unit`
+  con `MIN(price)` por target (POST `/api/vendor/pricelists/apply-cost`, tolerante a migraciones).
+- **Variantes NO heredan solas** (como Square/Shopify/Lightspeed: costo por SKU); checkbox
+  opcional "copiar a las variantes sin precio propio".
+- No recalcula listas ni toca precios de venta: devuelve `affectedLists` y la UI avisa
+  "si querés recalcular, andá a Catálogo → Listas".
 
 ## Verificación
 

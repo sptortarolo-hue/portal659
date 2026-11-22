@@ -120,6 +120,49 @@ export async function GET(request: Request) {
   const avgOrderValue = completedOrders.length > 0 ? Math.round(totalRevenue / completedOrders.length) : 0;
   const avgRating = reviews.length > 0 ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length : 0;
 
+  // ==== Fase D: margen REAL del período (snapshot de costo en la venta) ====
+  // Ganancia = plata neta de productos (itemRevenue menos descuentos
+  // prorrateados, sin envío) − Σ (costo unitario × qty del snapshot).
+  // Solo completados; líneas manuales ("Varios") fuera; los pedidos viejos
+  // y las mesas sin snapshot no aportan costo → `coverage` lo hace visible.
+  let realRevenue = 0;
+  let realCost = 0;
+  let revenueWithCost = 0;
+  for (const o of completedOrders) {
+    const disc =
+      (Number((o as any).cash_discount) || 0) +
+      (Number((o as any).volume_discount) || 0) +
+      (Number((o as any).giftcard_discount) || 0) +
+      (Number((o as any).manual_discount) || 0);
+    const lines: { rev: number; cost: unknown; qty: number }[] = [];
+    let orderRev = 0;
+    for (const item of o.items || []) {
+      if ((item as any)?.manual) continue;
+      const rev = itemRevenue(item);
+      lines.push({ rev, cost: (item as any)?.cost, qty: Number(item.qty) || 0 });
+      orderRev += rev;
+    }
+    if (lines.length === 0) continue;
+    // Los descuentos son solo sobre productos (nunca envío): se prorratean.
+    const factor = orderRev > 0 ? Math.max(0, (orderRev - disc) / orderRev) : 1;
+    for (const l of lines) {
+      const netRev = l.rev * factor;
+      realRevenue += netRev;
+      const c = Number(l.cost);
+      if (l.cost != null && Number.isFinite(c) && c >= 0) {
+        realCost += c * l.qty;
+        revenueWithCost += netRev;
+      }
+    }
+  }
+  const realMargin = {
+    revenue: Math.round(realRevenue),
+    cost: Math.round(realCost),
+    margin: Math.round(realRevenue - realCost),
+    marginPct: realRevenue > 0 ? Math.round(((realRevenue - realCost) / realRevenue) * 1000) / 10 : null,
+    coverage: realRevenue > 0 ? Math.round((revenueWithCost / realRevenue) * 100) : 0,
+  };
+
   // Panel "Hoy"
   const now = new Date();
   const todayKey = dayKey(now);
@@ -548,6 +591,7 @@ export async function GET(request: Request) {
     byMethod,
     byPay,
     discounts: { cash: Math.round(cashDiscountTotal), volume: Math.round(volumeDiscountTotal), giftcard: Math.round(giftcardDiscountTotal), manual: Math.round(manualDiscountTotal) },
+    realMargin,
     giftcardSales: { amount: giftcardSold, count: giftcardSoldCount },
     insights,
     ...advanced,

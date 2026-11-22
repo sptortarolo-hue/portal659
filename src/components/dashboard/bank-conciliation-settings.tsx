@@ -91,7 +91,7 @@ export function BankConciliationSettings({ vendor, saveVendor }: BankConciliatio
       {enabled && vendor?.id && (
         <div className="mt-4 border-t pt-4">
           <BankConciliation
-            vendorId={parseInt(vendor.id)}
+            vendorId={vendor.id}
             enabled={enabled}
             banks={banks}
             voiceEnabled={voice}

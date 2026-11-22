@@ -66,12 +66,12 @@ export async function POST(request: NextRequest) {
 
   // Determinar el vendor por el email destino (pagos+<slug>@portal659.com.ar)
   const toAddr = (email.to || "").toLowerCase();
-  let vendorId: number | null = null;
+  let vendorId: string | null = null;
 
   // Extraer slug del email destino
   const slugMatch = toAddr.match(/pagos\+([a-z0-9-]+)@/);
   if (slugMatch) {
-    const vendor = await queryOne<{ id: number }>(
+    const vendor = await queryOne<{ id: string }>(
       "SELECT id FROM vendors WHERE slug = $1",
       [slugMatch[1]]
     );
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
 
   // Guardar el depósito
   try {
-    const result = await queryOne<{ id: number }>(
+    const result = await queryOne<{ id: string }>(
       `INSERT INTO bank_deposits (vendor_id, bank, amount, sender_name, operation_id, received_at, raw_subject, raw_body, match_confidence)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'unmatched')
        ON CONFLICT (bank, operation_id) DO NOTHING
@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function runMatching(vendorId: number, depositId: number, deposit: any) {
+async function runMatching(vendorId: string, depositId: string, deposit: any) {
   // Buscar pedidos pendientes de pago por transferencia en los últimos 7 días
   const candidates = await queryMany<any>(
     `SELECT id, total, customer_name, customer_phone, created_at

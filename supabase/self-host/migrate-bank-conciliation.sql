@@ -3,14 +3,14 @@
 
 -- Tabla de depósitos bancarios detectados
 CREATE TABLE IF NOT EXISTS bank_deposits (
-  id serial PRIMARY KEY,
-  vendor_id int NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  vendor_id uuid NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
   bank text NOT NULL,
   amount numeric(12,2) NOT NULL,
   sender_name text,
   operation_id text,
   received_at timestamptz NOT NULL,
-  matched_order_id int REFERENCES orders(id) ON DELETE SET NULL,
+  matched_order_id uuid REFERENCES orders(id) ON DELETE SET NULL,
   match_confidence text, -- 'exact', 'probable', 'unmatched', 'manual', 'ignored'
   raw_subject text,
   raw_body text,

@@ -5,22 +5,22 @@ import { useVoiceAnnouncement } from "@/hooks/use-voice-announcement";
 import { VoiceToggle } from "./voice-toggle";
 
 interface BankDeposit {
-  id: number;
+  id: string;
   bank: string;
   amount: number;
   sender_name: string | null;
   operation_id: string | null;
   received_at: string;
-  matched_order_id: number | null;
+  matched_order_id: string | null;
   match_confidence: string;
-  order_id?: number;
+  order_id?: string;
   order_total?: number;
   order_customer_name?: string;
   order_status?: string;
 }
 
 interface BankConciliationProps {
-  vendorId: number;
+  vendorId: string;
   enabled: boolean;
   banks: string[];
   voiceEnabled: boolean;
@@ -93,7 +93,7 @@ export function BankConciliation({ vendorId, enabled, banks, voiceEnabled, onSet
     prevCount.current = deposits.length;
   }, [deposits, voiceEnabled, speak]);
 
-  const handleConfirm = async (depositId: number, orderId?: number) => {
+  const handleConfirm = async (depositId: string, orderId?: string) => {
     try {
       await fetch(`/api/vendor/bank-deposits/${depositId}`, {
         method: "PATCH",
@@ -104,7 +104,7 @@ export function BankConciliation({ vendorId, enabled, banks, voiceEnabled, onSet
     } catch {}
   };
 
-  const handleIgnore = async (depositId: number) => {
+  const handleIgnore = async (depositId: string) => {
     try {
       await fetch(`/api/vendor/bank-deposits/${depositId}`, {
         method: "PATCH",
@@ -115,7 +115,7 @@ export function BankConciliation({ vendorId, enabled, banks, voiceEnabled, onSet
     } catch {}
   };
 
-  const handleAssign = async (depositId: number, orderId: number) => {
+  const handleAssign = async (depositId: string, orderId: string) => {
     try {
       await fetch("/api/vendor/bank-deposits/assign", {
         method: "POST",
@@ -212,7 +212,7 @@ export function BankConciliation({ vendorId, enabled, banks, voiceEnabled, onSet
                     <button
                       onClick={() => {
                         const orderId = prompt("ID del pedido:");
-                        if (orderId) handleAssign(dep.id, parseInt(orderId));
+                        if (orderId) handleAssign(dep.id, orderId.trim());
                       }}
                       className="text-xs px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700"
                     >

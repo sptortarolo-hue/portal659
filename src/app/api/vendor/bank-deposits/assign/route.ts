@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
   if (!vendor) {
     return NextResponse.json({ error: "no_vendor" }, { status: 404 });
   }
-  const vendorId = parseInt(vendor.id);
+  const vendorId = vendor.id;
 
   const body = await request.json();
   const { depositId, orderId } = body;

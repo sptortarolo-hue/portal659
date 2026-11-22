@@ -59,6 +59,8 @@ type ProductRow = {
   unit?: string | null;
   /** Precio fijo del PAQUETE para venta online (envasado). NULL = sin venta por paquete. */
   package_price?: number | null;
+  /** Costo de referencia (migrate-inventory.sql). Para el snapshot de margen real. */
+  cost_last?: number | null;
 };
 
 type VariantRow = {
@@ -69,7 +71,15 @@ type VariantRow = {
   /** Dimensiones de moda (para saltear los labels sintéticos del checkout). */
   color?: string | null;
   talle?: string | null;
+  /** Costo de la variante (migrate-inventory.sql). Para el snapshot de margen real. */
+  cost_last?: number | null;
 };
+
+/** Costo unitario saneado de una fila (null si no hay dato: margen parcial). */
+function unitCostOf(row: { cost_last?: number | null } | undefined | null): number | undefined {
+  const c = row?.cost_last != null ? Number(row.cost_last) : NaN;
+  return Number.isFinite(c) && c >= 0 ? c : undefined;
+}
 
 export type ResolvedPricing = {
   items: OrderItem[];
@@ -156,13 +166,17 @@ export async function resolveOrderPricing(opts: {
 
   // Traigo variantes (necesitan su product_id para consultar el producto).
   const variants: VariantRow[] = variantIds.size
-    ? await tx.query<VariantRow>(
-        `SELECT pv.id, pv.product_id, pv.price, pv.promo, pv.color, pv.talle
-         FROM product_variants pv
-         INNER JOIN products p ON p.id = pv.product_id
-         WHERE pv.id = ANY($1) AND p.vendor_id = $2`,
-        [[...variantIds], vendorId]
-      )
+    ? await (async () => {
+        // costo de variante solo si existe la columna (migrate-inventory.sql).
+        const hasVarCost = await hasColumn(tx, "product_variants", "cost_last");
+        return tx.query<VariantRow>(
+          `SELECT pv.id, pv.product_id, pv.price, pv.promo, pv.color, pv.talle${hasVarCost ? ", pv.cost_last" : ""}
+           FROM product_variants pv
+           INNER JOIN products p ON p.id = pv.product_id
+           WHERE pv.id = ANY($1) AND p.vendor_id = $2`,
+          [[...variantIds], vendorId]
+        );
+      })()
     : [];
 
   // IDs de producto = los directos + los asociados a variantes.
@@ -176,12 +190,17 @@ export async function resolveOrderPricing(opts: {
   let products: ProductRow[] = [];
   if (productIds.size) {
     const hasPackagePrice = await hasColumn(tx, "products", "package_price");
+    // Snapshot de margen real (Fase D): el costo viaja con la venta. Tolerante
+    // a migrate-inventory.sql sin aplicar (sin costo, margen parcial).
+    const hasCostLast = await hasColumn(tx, "products", "cost_last");
+    const prodCols = [
+      "id", "name", "price", "promo_price", "available", "cash_discount_excluded", "pack_size", "unit",
+      ...(hasPackagePrice ? ["package_price"] : []),
+      ...(hasCostLast ? ["cost_last"] : []),
+    ].join(", ");
     products = await tx.query<ProductRow>(
-      hasPackagePrice
-        ? `SELECT id, name, price, promo_price, available, cash_discount_excluded, pack_size, unit, package_price FROM products
-           WHERE vendor_id = $1 AND id = ANY($2)`
-        : `SELECT id, name, price, promo_price, available, cash_discount_excluded, pack_size, unit FROM products
-           WHERE vendor_id = $1 AND id = ANY($2)`,
+      `SELECT ${prodCols} FROM products
+       WHERE vendor_id = $1 AND id = ANY($2)`,
       [vendorId, [...productIds]]
     );
   }
@@ -583,6 +602,16 @@ export async function resolveOrderPricing(opts: {
       comboMembersOut = res.members;
     }
 
+    // Snapshot de costo para el margen real (Fase D): costo unitario del
+    // producto/variante al momento de la venta. Con paquete (envasado) el
+    // costo es por paquete (cost_last del terminado = costo del lote/paquete).
+    const itemCost =
+      isPackage
+        ? unitCostOf(product)
+        : variant
+          ? unitCostOf(variant) ?? unitCostOf(product)
+          : unitCostOf(product);
+
     outItems.push({
       product_id: it.offerId ? String(it.offerId) : product.id,
       variant_id: variant ? variant.id : undefined,
@@ -602,6 +631,8 @@ export async function resolveOrderPricing(opts: {
       // por unidad cada entrada lleva su variante (color/talle incluidos).
       combo_members: comboMembersOut,
       package: isPackage ? true : undefined,
+      // Fase D (margen real): snapshot del costo unitario al vender.
+      cost: itemCost,
     });
   }
 

@@ -13,13 +13,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!vendor) {
     return NextResponse.json({ error: "no_vendor" }, { status: 404 });
   }
-  const vendorId = parseInt(vendor.id);
+  const vendorId = vendor.id;
 
   const { id } = await params;
-  const depositId = parseInt(id);
-  if (isNaN(depositId)) {
-    return NextResponse.json({ error: "invalid_id" }, { status: 400 });
-  }
+  const depositId = id;
 
   const body = await request.json();
   const { action, orderId } = body;

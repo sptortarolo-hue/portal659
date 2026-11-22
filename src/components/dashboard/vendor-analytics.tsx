@@ -57,6 +57,14 @@ type AnalyticsData = {
   byMethod?: Record<string, { count: number; revenue: number }>;
   byPay?: Record<string, { count: number; revenue: number }>;
   discounts?: { cash: number; volume: number; giftcard?: number; manual?: number };
+  /** Fase D (margen real): snapshot de costo guardado en la venta. */
+  realMargin?: {
+    revenue: number;
+    cost: number;
+    margin: number;
+    marginPct: number | null;
+    coverage: number;
+  };
   giftcardSales?: { amount: number; count: number };
   hourly?: { hour: string; count: number; revenue: number }[];
   topHours?: { hour: string; count: number; revenue: number }[];
@@ -355,6 +363,39 @@ export function VendorAnalytics() {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Fase D: ganancia real del período (snapshot de costo en la venta) */}
+          {data.realMargin && (
+            <div className="border border-border rounded-xl p-4 bg-card">
+              <h3 className="font-medium text-sm mb-3">💰 Ganancia real del período</h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Plata de productos (neta de descuentos)</span>
+                  <span className="font-medium tabular-nums">${(data.realMargin.revenue || 0).toLocaleString("es-AR")}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Costo de mercadería (al vender)</span>
+                  <span className="font-medium tabular-nums text-red-600">-${(data.realMargin.cost || 0).toLocaleString("es-AR")}</span>
+                </div>
+                <div className="flex justify-between border-t border-border pt-2">
+                  <span className="font-medium">Ganancia</span>
+                  <span className={`font-bold tabular-nums ${(data.realMargin.margin || 0) >= 0 ? "text-green-700 dark:text-green-400" : "text-red-600"}`}>
+                    ${(data.realMargin.margin || 0).toLocaleString("es-AR")}
+                    {data.realMargin.marginPct != null ? ` (${data.realMargin.marginPct.toLocaleString("es-AR")}%)` : ""}
+                  </span>
+                </div>
+                {(data.realMargin.coverage || 0) < 99 && (
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    ⚠️ Margen parcial: solo el {data.realMargin.coverage}% de las ventas trae costo guardado
+                    (pedidos viejos y consumiciones de mesa sin snapshot).
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Margen bruto sobre mercadería: neto de descuentos, sin envío ni líneas manuales ("Varios").
+                </p>
+              </div>
             </div>
           )}
 

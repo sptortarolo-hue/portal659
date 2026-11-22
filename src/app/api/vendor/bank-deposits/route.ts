@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
   if (!vendor) {
     return NextResponse.json({ error: "no_vendor" }, { status: 404 });
   }
-  const vendorId = parseInt(vendor.id);
+  const vendorId = vendor.id;
 
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status");

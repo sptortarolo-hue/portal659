@@ -931,6 +931,12 @@ export type OrderItem = {
   /** Línea de PAQUETE online (envasado): precio fijo package_price; stock cuenta 1 paquete. */
   package?: boolean;
   /**
+   * Snapshot del costo unitario al vender (Fase D, margen real:
+   * migrate-inventory.sql). NULL/ausente = sin dato → margen parcial.
+   * Con pack: costo por unidad (línea = cost × qty). Envasado: por paquete.
+   */
+  cost?: number | null;
+  /**
    * Componentes si el ítem es un combo (snapshot al pedir, para stock/kardex).
    * Con armado por unidad cada entrada lleva su variante (color/talle).
    */

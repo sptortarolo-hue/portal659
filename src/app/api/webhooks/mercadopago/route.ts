@@ -956,6 +956,60 @@ export async function POST(request: Request) {
           ...(mpComboByIndex?.[idx] ? { combo_members: mpComboByIndex[idx] } : {}),
           ...(mpPackageByIndex?.[idx] ? { package: true } : {}),
         }));
+        // Fase D (margen real): snapshot del costo por ítem desde cost_last de
+        // la DB (los precios ya vienen del checkout, el costo no viaja por MP).
+        // Best-effort y tolerante: sin migrate-inventory.sql los ítems quedan
+        // sin costo y el margen del período sale "parcial".
+        try {
+          const stockRaw = (metadata as Record<string, unknown>).stock_items;
+          const stockParsed = typeof stockRaw === "string" ? JSON.parse(stockRaw) : null;
+          if (Array.isArray(stockParsed) && stockParsed.length === items.length) {
+            const costCols = await queryMany<{ table_name: string; column_name: string }>(
+              `SELECT table_name, column_name FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND ((table_name = 'products' AND column_name = 'cost_last')
+                    OR (table_name = 'product_variants' AND column_name = 'cost_last'))`
+            );
+            const hasCost = new Set(costCols.map((c) => `${c.table_name}.${c.column_name}`));
+            if (hasCost.has("products.cost_last")) {
+              const pIds = [...new Set(stockParsed.map((s: any) => (typeof s?.product_id === "string" ? s.product_id : null)).filter(Boolean))] as string[];
+              const vIds = hasCost.has("product_variants.cost_last")
+                ? ([...new Set(stockParsed.map((s: any) => (typeof s?.variant_id === "string" ? s.variant_id : null)).filter(Boolean))] as string[])
+                : [];
+              const pRows = pIds.length
+                ? await queryMany<{ id: string; cost_last: number | null }>(
+                    `SELECT id, cost_last FROM products WHERE id = ANY($1) AND vendor_id = $2`,
+                    [pIds, vendorId]
+                  )
+                : [];
+              const vRows = vIds.length
+                ? await queryMany<{ id: string; cost_last: number | null }>(
+                    `SELECT v.id, v.cost_last FROM product_variants v JOIN products p ON p.id = v.product_id
+                     WHERE v.id = ANY($1) AND p.vendor_id = $2`,
+                    [vIds, vendorId]
+                  )
+                : [];
+              const costById = new Map<string, number>();
+              for (const r of pRows) {
+                const c = Number(r.cost_last);
+                if (Number.isFinite(c) && c >= 0) costById.set(String(r.id), c);
+              }
+              for (const r of vRows) {
+                const c = Number(r.cost_last);
+                if (Number.isFinite(c) && c >= 0) costById.set(`v:${String(r.id)}`, c);
+              }
+              stockParsed.forEach((s: any, idx: number) => {
+                if (!orderItems[idx]) return;
+                const c =
+                  (s?.variant_id ? costById.get(`v:${String(s.variant_id)}`) : undefined) ??
+                  (s?.product_id ? costById.get(String(s.product_id)) : undefined);
+                if (c != null) (orderItems[idx] as any).cost = c;
+              });
+            }
+          }
+        } catch {
+          /* margen parcial para esta vía: no bloquea el pedido */
+        }
         // Zona de envío (metadata del checkout): se valida contra el comercio.
         // Zona inexistente/inactiva → fuera de zona (entra a convenir).
         // Zona extendida del catálogo (Portal 659 Envíos) → shipping_zone_id.

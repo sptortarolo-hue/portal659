@@ -3,12 +3,12 @@ import { normalizeName } from "@/lib/bank-parsers/utils";
 
 export interface MatchResult {
   confidence: "exact" | "probable" | "unmatched";
-  orderId: number | null;
-  candidates: Array<{ id: number; total: number; customer_name: string | null; created_at: string }>;
+  orderId: string | null;
+  candidates: Array<{ id: string; total: number; customer_name: string | null; created_at: string }>;
 }
 
 export async function matchDeposit(
-  vendorId: number,
+  vendorId: string,
   amount: number,
   senderName: string | null
 ): Promise<MatchResult> {

@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import type { ConfigSectionStatus } from "@/components/dashboard/config-nav";
 import { PanelUiSwitch } from "@/components/panel-ui/panel-ui-switch";
+import { useState, useEffect, useCallback } from "react";
 
 type Tab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "gastos" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario" | "galeria" | "promos" | "tarjetas" | "pantalla" | "servicios" | "taller";
 
@@ -295,6 +296,48 @@ export default function VendorSidebar({
   rail = false,
   onToggleRail,
 }: VendorSidebarProps) {
+  // Vista de navegación: "classic" (lista plana original) o "new" (grupos
+  // colapsables). Persiste por navegador; default "new".
+  const [navView, setNavView] = useState<"classic" | "new">("new");
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("portal659-nav-view");
+      if (saved === "classic" || saved === "new") setNavView(saved);
+    } catch { /* noop */ }
+  }, []);
+  const toggleNavView = useCallback(() => {
+    setNavView((v) => {
+      const next = v === "new" ? "classic" : "new";
+      try { window.localStorage.setItem("portal659-nav-view", next); } catch { /* noop */ }
+      return next;
+    });
+  }, []);
+
+  // Grupos colapsables del sidebar (solo en vista "new").
+  const [catalogOpen, setCatalogOpen] = useState(true);
+  const [clientesOpen, setClientesOpen] = useState(true);
+  const [finanzasOpen, setFinanzasOpen] = useState(true);
+  const [analisisOpen, setAnalisisOpen] = useState(true);
+  useEffect(() => {
+    try {
+      const c = window.localStorage.getItem("portal659-sidebar-groups");
+      if (c) {
+        const o = JSON.parse(c);
+        if (typeof o.catalog === "boolean") setCatalogOpen(o.catalog);
+        if (typeof o.clientes === "boolean") setClientesOpen(o.clientes);
+        if (typeof o.finanzas === "boolean") setFinanzasOpen(o.finanzas);
+        if (typeof o.analisis === "boolean") setAnalisisOpen(o.analisis);
+      }
+    } catch { /* noop */ }
+  }, []);
+  const persistGroups = useCallback((next: { catalog?: boolean; clientes?: boolean; finanzas?: boolean; analisis?: boolean }) => {
+    try {
+      const cur = JSON.parse(window.localStorage.getItem("portal659-sidebar-groups") || "{}");
+      const merged = { ...cur, ...next };
+      window.localStorage.setItem("portal659-sidebar-groups", JSON.stringify(merged));
+    } catch { /* noop */ }
+  }, []);
+
   function handleTab(tab: Tab) {
     onTabChange(tab);
     onClose();
@@ -688,14 +731,69 @@ export default function VendorSidebar({
           </button>
         </div>
 
-        {/* Nav principal (siempre visible, también en la solapa Config). */}
+        {/* Nav principal. Vista "new": grupos colapsables con Ventas siempre
+            visible. Vista "classic": lista plana original. */}
         <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
-          <div>{hoyItem}</div>
-          <div>{operaciones}</div>
-          {gestion && <div>{gestion}</div>}
-          <div>{analisis}</div>
-          <div>{cuenta}</div>
+          {navView === "classic" ? (
+            <>
+              <div>{hoyItem}</div>
+              <div>{operaciones}</div>
+              {gestion && <div>{gestion}</div>}
+              <div>{analisis}</div>
+              <div>{cuenta}</div>
+            </>
+          ) : (
+            <>
+              <div>{hoyItem}</div>
+              {/* VENTAS: siempre visible, sin colapsar */}
+              <div>
+                <SectionLabel>Ventas</SectionLabel>
+                <div className="space-y-0.5">{operaciones}</div>
+              </div>
+              {/* CATÁLOGO: colapsable */}
+              {gestion && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => { setCatalogOpen((v) => { const n = !v; persistGroups({ catalog: n }); return n; }); }}
+                    className="flex w-full items-center justify-between px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <span>Catálogo</span>
+                    <span className="text-xs">{catalogOpen ? "▾" : "▸"}</span>
+                  </button>
+                  {catalogOpen && <div className="space-y-0.5">{gestion}</div>}
+                </div>
+              )}
+              {/* ANÁLISIS: colapsable */}
+              <div>
+                <button
+                  type="button"
+                  onClick={() => { setAnalisisOpen((v) => { const n = !v; persistGroups({ analisis: n }); return n; }); }}
+                  className="flex w-full items-center justify-between px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <span>Análisis</span>
+                  <span className="text-xs">{analisisOpen ? "▾" : "▸"}</span>
+                </button>
+                {analisisOpen && <div className="space-y-0.5">{analisis}</div>}
+              </div>
+              <div>{cuenta}</div>
+            </>
+          )}
         </nav>
+        {/* Toggle de vista de navegación (clásica / nueva). */}
+        <div className="border-t border-border px-3 py-2">
+          <button
+            type="button"
+            onClick={toggleNavView}
+            className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            title={navView === "new" ? "Cambiar a vista clásica" : "Cambiar a vista nueva"}
+          >
+            <span>Vista de menú</span>
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${navView === "new" ? "bg-primary-light text-primary" : "bg-muted text-muted-foreground"}`}>
+              {navView === "new" ? "Nueva" : "Clásica"}
+            </span>
+          </button>
+        </div>
       </aside>
     </>
   );

@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { QuantityInput } from "@/components/ui/quantity-input";
 import { Badge } from "@/components/ui/badge";
 import { OfferForm, OfferList, CategoryManager, apiJson, useFormDraft } from "@/components/dashboard/shared";
+import { MoreActionsMenu } from "@/components/dashboard/more-actions-menu";
 import { VolumeEditor } from "@/components/dashboard/volume-editor";
 import { MarginListsManager, type MarginList } from "@/components/dashboard/margin-lists-manager";
 import {
@@ -1009,9 +1010,43 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
         <h2 className="font-display text-xl font-semibold">{isModa || isComercio ? "Catálogo" : "Menú y catálogo"}</h2>
         {(!catalogViews || view === "productos") && (
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" onClick={() => setBulkOpen(true)}>
-              📊 Precios masivos
-            </Button>
+            <MoreActionsMenu
+              groups={[
+                {
+                  label: "Precios",
+                  items: [
+                    { label: "Precios masivos", icon: "📊", onClick: () => setBulkOpen(true) },
+                  ],
+                },
+                {
+                  label: "Catálogo",
+                  items: [
+                    { label: "Exportar (Excel)", icon: "⬇️", onClick: () => { window.location.href = "/api/vendor/products/export"; } },
+                    { label: "Importar (Excel)", icon: "⬆️", onClick: () => {} },
+                    { label: "Descargar plantilla", icon: "📄", onClick: () => { window.location.href = "/api/vendor/products/template"; } },
+                  ],
+                },
+                {
+                  label: "Importar desde",
+                  items: [
+                    { label: "Foto/PDF de carta", icon: "📸", onClick: () => {} },
+                    { label: "FUDO", icon: "📋", onClick: () => {} },
+                    { label: "WhatsApp Catalogue", icon: "💬", onClick: () => {} },
+                  ],
+                },
+                ...(canEditCost
+                  ? [
+                      {
+                        label: "Herramientas",
+                        items: [
+                          { label: "Generar códigos SKU", icon: "⚡", onClick: () => {} },
+                          { label: "Etiquetas térmicas", icon: "🖨️", onClick: () => {} },
+                        ],
+                      },
+                    ]
+                  : []),
+              ]}
+            />
             <Button size="sm" onClick={() => { if (editingId || showForm) resetForm(); else setShowForm(true); }}>
               {editingId || showForm ? "Cancelar" : `+ ${noun}`}
             </Button>
@@ -1068,7 +1103,7 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
                   onEditModifiers={(offer) => startEdit(offer)}
                   costByProduct={showCosts ? costByProduct : undefined}
                   showBuyCost={canEditCost}
-                  emptyText={`Todavía no cargaste productos.`}
+                  emptyText={`Todavía no cargaste productos. Creá uno con "+ ${noun}" o importá desde el menú ⋯.`}
                 />
               )}
             </>
@@ -1245,7 +1280,7 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
               onEditModifiers={(offer) => startEdit(offer)}
               costByProduct={showCosts ? costByProduct : undefined}
               showBuyCost={canEditCost}
-              emptyText={`Todavía no cargaste ${isComercio ? "productos" : "platos"}.`}
+              emptyText={`Todavía no cargaste ${isComercio ? "productos" : "platos"}. Creá uno con "+ ${noun}" o importá desde el menú ⋯.`}
             />
           )}
         </>

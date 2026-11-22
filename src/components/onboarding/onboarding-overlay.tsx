@@ -9,18 +9,28 @@ const STORAGE_KEY = "portal659_onboarded";
 const SLIDES = [
   {
     emoji: "🏪",
-    title: "Bienvenido a tu barrio",
-    text: "Encontrá todos los comercios de Sicardi y Garibaldi en un solo lugar.",
+    title: "Bienvenido a Portal 659",
+    text: "Todos los comercios de Sicardi y Garibaldi en una sola app. Kioscos, almacenes, gastronomía, moda y servicios.",
   },
   {
-    emoji: "📍",
-    title: "Descubrí cerca tuyo",
-    text: "Explorá por categoría, buscá lo que necesitá y pedí directo por WhatsApp.",
+    emoji: "🔍",
+    title: "Buscá lo que necesitá",
+    text: "Usá el buscador o navegá por categorías. Filtrá por rubro, zona y más.",
   },
   {
     emoji: "🛒",
     title: "Pedí en segundos",
-    text: "Armá tu pedido, revisalo y mandalo. Sin registro, sin comisiones, sin vueltas.",
+    text: "Armá tu pedido, elegí retiro o delivery y mandalo directo por WhatsApp. Sin registro, sin comisiones.",
+  },
+  {
+    emoji: "📍",
+    title: "Seguí tu pedido",
+    text: "Recibí notificaciones de estado y seguí tu pedido en tiempo real desde la app.",
+  },
+  {
+    emoji: "⭐",
+    title: "Comercios destacados",
+    text: "Descubrí los comercios mejor valorados por la comunidad del barrio.",
   },
 ];
 

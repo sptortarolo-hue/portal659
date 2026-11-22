@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { MoreActionsMenu } from "@/components/dashboard/more-actions-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PhotoPicker } from "@/components/ui/photo-picker";
@@ -1331,12 +1332,19 @@ export function MenuStudio({
               >
                 💲 Modificar precios{selected.size > 0 ? ` (${selected.size})` : ""}
               </Button>
-              <Button type="button" size="sm" variant="outline" onClick={() => setShowImport(true)}>
-                📥 <span className="hidden sm:inline">Importar </span>Excel
-              </Button>
-              <Button type="button" size="sm" variant="outline" onClick={() => setShowImportWa(true)}>
-                💬 <span className="hidden sm:inline">Importar </span>WhatsApp
-              </Button>
+              <MoreActionsMenu
+                groups={[
+                  {
+                    label: "Importar",
+                    items: [
+                      { label: "Importar Excel", icon: "📥", onClick: () => setShowImport(true) },
+                      { label: "Importar WhatsApp", icon: "💬", onClick: () => setShowImportWa(true) },
+                      { label: "Exportar (Excel)", icon: "⬇️", onClick: () => { window.location.href = "/api/vendor/products/export"; } },
+                      { label: "Descargar plantilla", icon: "📄", onClick: () => { window.location.href = "/api/vendor/products/template"; } },
+                    ],
+                  },
+                ]}
+              />
               <Button
                 type="button"
                 size="sm"

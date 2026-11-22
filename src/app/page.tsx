@@ -9,6 +9,7 @@ import { HorizontalCarousel } from "@/components/ui/horizontal-carousel";
 import { VendorCard } from "@/components/store/vendor-card";
 import { MostOrderedSection } from "@/components/home/most-ordered-section";
 import { OpenNowSection } from "@/components/home/open-now-section";
+import { BackButtonGuard } from "@/components/home/back-button-guard";
 import { fetchRankStats, rankVendors } from "@/lib/ranking";
 import { itemListJsonLd, organizationJsonLd, websiteJsonLd } from "@/lib/json-ld";
 import type { Vendor, Plan, Product } from "@/types/database";
@@ -162,6 +163,7 @@ export default async function HomePage() {
 
   return (
     <main>
+      <BackButtonGuard />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}

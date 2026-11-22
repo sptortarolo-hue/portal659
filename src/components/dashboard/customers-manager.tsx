@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { MoreActionsMenu } from "@/components/dashboard/more-actions-menu";
 import { CustomerFormTimeline } from "@/components/dashboard/customer-form-timeline";
 import { WorkOrderModal } from "@/components/dashboard/work-order-modal";
 import { customerMatches } from "@/lib/search-match";
@@ -578,12 +579,16 @@ export function CustomersManager({ serviceMode = false, vendorId = null, loyalty
           >
             ＋ Nuevo
           </button>
-          <a
-            href={`/api/vendor/customers?format=csv`}
-            className="rounded-xl border border-border bg-background text-sm font-medium py-2 px-3 hover:bg-muted transition-colors flex-shrink-0"
-          >
-            ⬇️ CSV
-          </a>
+          <MoreActionsMenu
+            groups={[
+              {
+                label: "Clientes",
+                items: [
+                  { label: "Exportar CSV", icon: "⬇️", onClick: () => { window.location.href = "/api/vendor/customers?format=csv"; } },
+                ],
+              },
+            ]}
+          />
         </div>
       </div>
 

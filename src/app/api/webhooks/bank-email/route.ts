@@ -88,6 +88,12 @@ export async function POST(request: NextRequest) {
 
   // Guardar el depósito
   try {
+    if (!vendorId) {
+      // Sin vendor no se puede guardar (vendor_id NOT NULL). Loguear y salir.
+      console.log("[bank-email] Deposito sin vendor (slug no encontrado):", toAddr, "| banco:", deposit.bank, "| monto:", deposit.amount);
+      return NextResponse.json({ ok: true, parsed: true, vendorNotFound: true });
+    }
+
     const result = await queryOne<{ id: string }>(
       `INSERT INTO bank_deposits (vendor_id, bank, amount, sender_name, operation_id, received_at, raw_subject, raw_body, match_confidence)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'unmatched')

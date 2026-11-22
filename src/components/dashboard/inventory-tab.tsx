@@ -114,7 +114,13 @@ export function InventoryTab({
     if (highlightPurchase?.nonce) setView("compras");
   }, [highlightPurchase?.nonce]);
   // Catálogo para pickers (compras) y conteos.
-  const [products, setProducts] = useState<{ id: string; name: string; cost_last?: number | null; stock?: number | null }[]>([]);
+  const [products, setProducts] = useState<{
+    id: string;
+    name: string;
+    cost_last?: number | null;
+    stock?: number | null;
+    supplier_id?: string | null;
+  }[]>([]);
   const [variants, setVariants] = useState<{ id: string; product_id: string; color: string; talle: string; price: number; stock: number; cost_last?: number | null }[]>([]);
   // Conteos.
   const [counts, setCounts] = useState<CountRow[]>([]);
@@ -150,6 +156,7 @@ export function InventoryTab({
           name: String(p.name || ""),
           cost_last: p.cost_last != null ? Number(p.cost_last) : null,
           stock: p.stock != null ? Number(p.stock) : null,
+          supplier_id: p.supplier_id != null ? String(p.supplier_id) : null,
         }))
       );
     }
@@ -443,7 +450,7 @@ export function InventoryTab({
         </button>
       )}
 
-      {view === "precios" && <SupplierPriceView />}
+      {view === "precios" && <SupplierPriceView products={products} variants={variants} />}
 
       {view === "compras" && (
         <PurchasesManager

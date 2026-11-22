@@ -27,15 +27,78 @@ export async function POST(request: NextRequest) {
   }
 
   let body: any;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+  const contentType = request.headers.get("content-type") || "";
+
+  if (contentType.includes("application/json")) {
+    // Test manual (curl) o integración JSON
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+    }
+  } else if (contentType.includes("multipart/form-data") || contentType.includes("application/x-www-form-urlencoded")) {
+    // SendGrid Inbound Parse default: campos como form-data
+    const form = await request.formData();
+    body = {
+      from: String(form.get("from") || form.get("envelope") || ""),
+      subject: String(form.get("subject") || ""),
+      text: String(form.get("text") || form.get("body_plain") || ""),
+      html: String(form.get("html") || ""),
+      to: String(form.get("to") || form.get("email") || ""),
+      date: String(form.get("Date") || form.get("date") || new Date().toISOString()),
+    };
+    // Si mandó envelope JSON, extraer el from real
+    const envelope = form.get("envelope");
+    if (envelope && typeof envelope === "string") {
+      try {
+        const env = JSON.parse(envelope);
+        if (env.from && !body.from) body.from = env.from;
+        if (env.to) body.to = env.to;
+      } catch {}
+    }
+  } else {
+    // SendGrid con "POST the raw, full MIME message": body text/plain con el email crudo
+    const raw = await request.text();
+    body = { raw_mime: raw, to: request.headers.get("x-message-recipient") || "", from: "", subject: "", text: "" };
   }
 
-  // Limpiar el body: si viene raw (con headers MIME), extraer solo el texto
+  // Si vino el email crudo (raw MIME), parsearlo manualmente
+  if (body.raw_mime) {
+    const raw = body.raw_mime;
+    const headerBodySplit = raw.split(/\r?\n\r?\n/);
+    const headerSection = headerBodySplit[0] || "";
+    const bodySection = headerBodySplit.slice(1).join("\n\n");
+
+    const headerValue = (name: string) => {
+      const m = headerSection.match(new RegExp(`^${name}:\\s*(.+)$`, "im"));
+      return m ? m[1].trim() : "";
+    };
+
+    let text = bodySection;
+    // Si es multipart, quedarnos con la parte text/plain
+    if (/Content-Type:\s*multipart/i.test(headerSection)) {
+      const plainPart = bodySection.match(/text\/plain[\s\S]*?\r?\n\r?\n([\s\S]*?)(?:\r?\n--|$)/i);
+      if (plainPart && plainPart[1]) text = plainPart[1];
+    }
+    // Limpiar quoted-printable
+    text = text.replace(/=\r?\n/g, "").replace(/=([0-9A-F]{2})/gi, (_match: string, hex: string) =>
+      String.fromCharCode(parseInt(hex, 16))
+    );
+
+    const fromHeader = headerValue("From");
+    // "Juan Perez <jp@mail.com>" → conservar tal cual (el parser bancario no usa el email del remitente)
+    body = {
+      from: fromHeader,
+      subject: headerValue("Subject"),
+      text,
+      html: "",
+      to: body.to || headerValue("To") || headerValue("X-Original-To") || "",
+      date: headerValue("Date") || new Date().toISOString(),
+    };
+  }
+
+  // Limpiar el body (JSON/form-data): si trae headers MIME, extraer solo el texto
   let rawText = body.text || body.plain || "";
-  // Si el texto contiene headers MIME, extraer solo el body
   if (rawText.includes("Content-Type:") || rawText.includes("MIME-Version:")) {
     const parts = rawText.split(/\r?\n\r?\n/);
     if (parts.length > 1) {

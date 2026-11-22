@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { gateRequest, gateError } from "@/lib/subscription-gate";
 import { queryMany, queryOne, withTransaction } from "@/lib/db";
 import { priceFromCost, clampPrice, promoFromRatio, type MarginRule } from "@/lib/cost-reprice";
+import { describeRounding, isDefaultRounding, resolveRounding, type Rounding } from "@/lib/price-rounding";
 
 export const dynamic = "force-dynamic";
 
@@ -35,10 +36,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const includePromos = body?.includePromos === true;
   const dryRun = body?.dryRun === true;
 
-  let list: { id: string; name: string; rule: string; pct: number } | undefined;
+  let list: { id: string; name: string; rule: string; pct: number; price_round_step?: number | null; price_round_mode?: string | null; price_round_tail?: number | null } | undefined;
   try {
+    // Redondeo tolerante: sin migrate-price-rounding.sql la lista no trae la regla (default neutro).
+    const roundCols = await queryMany<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'margin_lists' AND column_name = 'price_round_step'`
+    ).catch(() => [] as { column_name: string }[]);
+    const hasRoundCols = roundCols.length > 0;
     list = await queryOne(
-      `SELECT id, name, rule, pct::float8 AS pct FROM margin_lists WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+      hasRoundCols
+        ? `SELECT id, name, rule, pct::float8 AS pct,
+                  price_round_step::float8 AS price_round_step, price_round_mode, price_round_tail::float8 AS price_round_tail
+             FROM margin_lists WHERE id = $1 AND vendor_id = $2 LIMIT 1`
+        : `SELECT id, name, rule, pct::float8 AS pct FROM margin_lists WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
       [id, gate.vendor.id]
     );
   } catch {
@@ -49,6 +60,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
   const rule = list.rule as MarginRule;
   const pct = Number(list.pct);
+  const rounding: Rounding = resolveRounding({
+    step: list.price_round_step,
+    mode: list.price_round_mode,
+    tail: list.price_round_tail,
+  });
+  const roundingLabel = isDefaultRounding(rounding) ? null : describeRounding(rounding);
 
   // Tolerancia a schema parcial: sku (giftcards), is_combo y cost_last.
   const schema = await queryMany<{ table_name: string; column_name: string }>(
@@ -150,7 +167,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         continue;
       }
       const cost = p.cost_last != null ? Number(p.cost_last) : null;
-      const newPriceRaw = priceFromCost(cost, rule, pct);
+      const newPriceRaw = priceFromCost(cost, rule, pct, rounding);
       if (newPriceRaw == null) {
         skippedNoCost++;
         items.push({
@@ -160,8 +177,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         });
         continue;
       }
-      const newPrice = clampPrice(newPriceRaw);
-      const newPromo = promoFromRatio(newPrice, Number(p.price), p.promo_price, includePromos);
+      const newPrice = clampPrice(newPriceRaw, rounding);
+      const newPromo = promoFromRatio(newPrice, Number(p.price), p.promo_price, includePromos, rounding);
       prodNew.push({ id: p.id, price: newPrice, promo: newPromo, hasPromo: newPromo != null });
       if (newPromo != null && Number(p.promo_price) !== newPromo) promosUpdated++;
       items.push({
@@ -176,7 +193,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       const label = [v.color, v.talle].filter((s) => String(s || "").trim()).join(" ");
       const name = label ? `${v.product_name} — ${label}` : v.product_name;
       const cost = v.cost_last != null ? Number(v.cost_last) : null;
-      const newPriceRaw = priceFromCost(cost, rule, pct);
+      const newPriceRaw = priceFromCost(cost, rule, pct, rounding);
       if (newPriceRaw == null) {
         skippedNoCost++;
         items.push({
@@ -186,8 +203,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         });
         continue;
       }
-      const newPrice = clampPrice(newPriceRaw);
-      const newPromo = promoFromRatio(newPrice, Number(v.price), v.promo, includePromos);
+      const newPrice = clampPrice(newPriceRaw, rounding);
+      const newPromo = promoFromRatio(newPrice, Number(v.price), v.promo, includePromos, rounding);
       varNew.push({ id: v.id, price: newPrice, promo: newPromo, hasPromo: newPromo != null });
       if (newPromo != null && Number(v.promo) !== newPromo) promosUpdated++;
       items.push({
@@ -212,6 +229,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         skippedNoCost,
         skippedCombo,
         ruleLabel: RULE_LABEL[rule] ?? rule,
+        rounding: { step: rounding.step, mode: rounding.mode, tail: rounding.tail },
+        roundingLabel,
       });
     }
 
@@ -264,6 +283,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       promosUpdated,
       skippedNoCost,
       skippedCombo,
+      rounding: { step: rounding.step, mode: rounding.mode, tail: rounding.tail },
+      roundingLabel,
     });
   } catch (e) {
     console.error("[margin-lists] reprice error:", e);

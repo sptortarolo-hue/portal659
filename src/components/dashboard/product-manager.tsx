@@ -13,6 +13,13 @@ import { Badge } from "@/components/ui/badge";
 import { OfferForm, OfferList, CategoryManager, apiJson, useFormDraft } from "@/components/dashboard/shared";
 import { VolumeEditor } from "@/components/dashboard/volume-editor";
 import { MarginListsManager, type MarginList } from "@/components/dashboard/margin-lists-manager";
+import {
+  applyRounding,
+  describeRounding,
+  isDefaultRounding,
+  resolveRounding,
+  type Rounding,
+} from "@/lib/price-rounding";
 import { SuggestionsManager } from "@/components/dashboard/suggestions-manager";
 import { SupplierSelect } from "@/components/dashboard/supplier-select";
 import { clearDraft } from "@/lib/draft";
@@ -136,6 +143,29 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
   const [showForm, setShowForm] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkMode, setBulkMode] = useState<"pct" | "amount" | "markup" | "margin">("pct");
+
+  // Regla global de redondeo (vendors.price_round_*, migrate-price-rounding.sql):
+  // la muestra del modal masivo calcula igual que el server.
+  const [vendorRound, setVendorRound] = useState<Rounding>(() => resolveRounding(null));
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/vendor/me")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!alive) return;
+        setVendorRound(
+          resolveRounding({
+            step: d?.vendor?.price_round_step,
+            mode: d?.vendor?.price_round_mode,
+            tail: d?.vendor?.price_round_tail,
+          })
+        );
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
   const [bulkValue, setBulkValue] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkMsg, setBulkMsg] = useState("");
@@ -1299,6 +1329,11 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
             Se aplicará a los {offers.length} productos del catálogo. Los precios promo no se tocan salvo que tildés
             “Incluir promos”.
           </p>
+          {!isDefaultRounding(vendorRound) && (
+            <p className="text-xs text-muted-foreground">
+              🎯 Redondeo del comercio: {describeRounding(vendorRound)} (cambiálo en Catálogo → Listas).
+            </p>
+          )}
           {(() => {
             const val = Number(bulkValue);
             if (!bulkValue.trim() || !Number.isFinite(val)) return null;
@@ -1324,15 +1359,15 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
             const cost = isCostMode && sample.cost_last != null ? Number(sample.cost_last) : null;
             const newPrice = isCostMode
               ? bulkMode === "markup"
-                ? Math.round((cost as number) * (1 + val / 100))
-                : Math.round((cost as number) / (1 - val / 100))
+                ? applyRounding((cost as number) * (1 + val / 100), vendorRound)
+                : applyRounding((cost as number) / (1 - val / 100), vendorRound)
               : bulkMode === "pct"
-                ? Math.max(0, Math.round(oldPrice * (1 + val / 100)))
-                : Math.max(0, Math.round(oldPrice + val));
+                ? Math.max(0, applyRounding(oldPrice * (1 + val / 100), vendorRound))
+                : Math.max(0, applyRounding(oldPrice + val, vendorRound));
             let promoLine: string | null = null;
             if (isCostMode && bulkIncludePromos && sample.promo_price != null && oldPrice > 0) {
               const ratio = Math.min(Math.max(Number(sample.promo_price), 0), oldPrice) / oldPrice;
-              promoLine = ` · promo $${Math.min(newPrice, Math.round(newPrice * ratio)).toLocaleString("es-AR")} (mantiene −${Math.round((1 - ratio) * 100)}%)`;
+              promoLine = ` · promo $${Math.min(newPrice, applyRounding(newPrice * ratio, vendorRound)).toLocaleString("es-AR")} (mantiene −${Math.round((1 - ratio) * 100)}%)`;
             }
             return (
               <p className="text-xs rounded-lg bg-muted px-3 py-2 tabular-nums">

@@ -23,6 +23,7 @@ import { GalleryManager } from "@/components/dashboard/gallery-manager";
 import { SIZE_GUIDE_TEMPLATES, templateToText } from "@/lib/size-guides";
 import { LocationPicker } from "./location-picker";
 import { PrinterConfigSection } from "@/components/dashboard/printer-config-section";
+import { BankConciliationSettings } from "@/components/dashboard/bank-conciliation-settings";
 import { StaffManager } from "@/components/vendor/staff-manager";
 import { ConfigSaveBar, ConfigSection, ConfigSections } from "@/components/dashboard/config-sections";
 import { PushAlertCard } from "@/components/dashboard/push-alert-card";
@@ -638,6 +639,7 @@ export default function DashboardModa({
           {paymentMethods.includes("Transferencia") && (
             <TransferConfig vendor={vendor} saveVendor={saveVendor} />
           )}
+          <BankConciliationSettings vendor={vendor} saveVendor={saveVendor} />
           <MpConnectCard
             mpUserId={vendor?.mp_user_id ?? null}
             mpConnectedAt={vendor?.mp_connected_at ?? null}

@@ -22,6 +22,7 @@ import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { StripeConnectCard } from "@/components/dashboard/stripe-connect-card";
 import { FiscalTabShortcut } from "@/components/dashboard/fiscal-config-section";
 import { PrinterConfigSection } from "@/components/dashboard/printer-config-section";
+import { BankConciliationSettings } from "@/components/dashboard/bank-conciliation-settings";
 import { StaffManager } from "@/components/vendor/staff-manager";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
 import { GalleryManager } from "@/components/dashboard/gallery-manager";
@@ -521,6 +522,7 @@ export default function DashboardEstetica({
             {paymentMethods.includes("Transferencia") && (
               <TransferConfig vendor={vendor} saveVendor={saveVendor} />
             )}
+            <BankConciliationSettings vendor={vendor} saveVendor={saveVendor} />
             {paymentMethods.includes("Efectivo") && (
               <div>
                 <Label className="mb-2 block">Descuento en efectivo (%)</Label>

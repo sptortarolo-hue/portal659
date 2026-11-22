@@ -23,6 +23,13 @@ import { ProductOptionsEditor } from "@/components/dashboard/product-options-edi
 import { VolumeEditor } from "@/components/dashboard/volume-editor";
 import { PresentationGenerator } from "@/components/dashboard/presentation-generator";
 import { MarginListsManager, type MarginList } from "@/components/dashboard/margin-lists-manager";
+import {
+  applyRounding,
+  describeRounding,
+  isDefaultRounding,
+  resolveRounding,
+  type Rounding,
+} from "@/lib/price-rounding";
 import { SuggestionsManager } from "@/components/dashboard/suggestions-manager";
 import { MenuImportModal } from "@/components/dashboard/menu-import";
 import { MenuImportWaModal } from "@/components/dashboard/menu-import-wa";
@@ -217,20 +224,22 @@ const BULK_OPS: { id: BulkOp; label: string }[] = [
 /** Ops basadas en costo: solo tienen sentido con costo cargado (cost_last). */
 const COST_BULK_OPS: BulkOp[] = ["markup_pct", "margin_pct"];
 
-function applyOp(price: number, op: BulkOp, value: number, cost?: number | null): number {
+function applyOp(price: number, op: BulkOp, value: number, cost?: number | null, rounding?: Rounding): number {
   if (op === "markup_pct" || op === "margin_pct") {
     if (cost == null || !isFinite(cost) || cost < 0) return NaN;
-    return op === "markup_pct" ? Math.round((cost * (100 + value)) / 100) : Math.round(cost / (1 - value / 100));
+    return op === "markup_pct"
+      ? applyRounding((cost * (100 + value)) / 100, rounding)
+      : applyRounding(cost / (1 - value / 100), rounding);
   }
   const n =
     op === "pct_up"
-      ? Math.round((price * (100 + value)) / 100)
+      ? (price * (100 + value)) / 100
       : op === "pct_down"
-        ? Math.round((price * (100 - value)) / 100)
+        ? (price * (100 - value)) / 100
         : op === "add"
           ? price + value
           : value;
-  return Math.max(0, Math.round(n));
+  return Math.max(0, applyRounding(n, rounding));
 }
 
 /**
@@ -386,6 +395,30 @@ export function MenuStudio({
     }
   }, [canEditCost]);
   useEffect(() => { refreshMarginLists(); }, [refreshMarginLists]);
+
+  // Regla global de redondeo (vendors.price_round_*, migrate-price-rounding.sql):
+  // la muestra del modal masivo calcula igual que el server (que la aplica
+  // por defecto). Lectura tolerante: sin migración, default neutro.
+  const [vendorRound, setVendorRound] = useState<Rounding>(() => resolveRounding(null));
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/vendor/me")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!alive) return;
+        setVendorRound(
+          resolveRounding({
+            step: d?.vendor?.price_round_step,
+            mode: d?.vendor?.price_round_mode,
+            tail: d?.vendor?.price_round_tail,
+          })
+        );
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // Contexto de preparación: se carga lazy la primera vez que se abre el drawer.
   const [recipeCtx, setRecipeCtx] = useState<RecipeCtx | null>(null);
@@ -1187,7 +1220,7 @@ export function MenuStudio({
   const samplePriceNum = sample ? Number(sample.price) : NaN;
   const previewNewPrice =
     sample && bulkValue && isFinite(bulkValueNum) && bulkValueNum >= 0
-      ? applyOp(samplePriceNum, bulkOp, bulkValueNum, sampleCost)
+      ? applyOp(samplePriceNum, bulkOp, bulkValueNum, sampleCost, vendorRound)
       : NaN;
   const previewPromoRatio =
     isFinite(samplePriceNum) && samplePriceNum > 0 && samplePromo != null
@@ -1195,7 +1228,7 @@ export function MenuStudio({
       : null;
   const previewNewPromo =
     isCostBulkOp && bulkIncludePromos && previewPromoRatio != null && isFinite(previewNewPrice)
-      ? Math.min(previewNewPrice, Math.max(0, Math.round(previewNewPrice * previewPromoRatio)))
+      ? Math.min(previewNewPrice, Math.max(0, applyRounding(previewNewPrice * previewPromoRatio, vendorRound)))
       : null;
 
   return (
@@ -1781,6 +1814,11 @@ export function MenuStudio({
               className="flex-1"
             />
           </div>
+          {!isDefaultRounding(vendorRound) && (
+            <p className="text-xs text-muted-foreground">
+              🎯 Redondeo del comercio: {describeRounding(vendorRound)} (cambiálo en Catálogo → Listas).
+            </p>
+          )}
           {isCostBulkOp && (
             <div className="rounded-lg border border-border bg-card px-3 py-2">
               <label className="flex items-center gap-2 text-sm cursor-pointer select-none">

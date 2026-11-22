@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { queryMany, withTransaction } from "@/lib/db";
 import { priceFromCost, clampPrice, promoFromRatio } from "@/lib/cost-reprice";
+import { applyRounding, describeRounding, isDefaultRounding, resolveRounding, type Rounding } from "@/lib/price-rounding";
 
 type Op = "pct_up" | "pct_down" | "add" | "set" | "markup_pct" | "margin_pct";
 
@@ -14,9 +15,12 @@ type Op = "pct_up" | "pct_down" | "add" | "set" | "markup_pct" | "margin_pct";
  *   op: "pct_up" | "pct_down" | "add" | "set" | "markup_pct" | "margin_pct",
  *   value: number,
  *   includePromos?: boolean,   // propaga el precio a promo_price/variant.promo manteniendo su %
+ *   rounding?: { step, mode, tail },  // regla de redondeo (migrate-price-rounding.sql).
+ *                                     // Sin body.rounding se usa la global del comercio
+ *                                     // (vendors.price_round_*); default neutro = Math.round.
  * }
  *
- * - pct_up/pct_down: porcentaje (0–500) sobre el precio, redondeado a entero.
+ * - pct_up/pct_down: porcentaje (0–500) sobre el precio, con redondeo de la regla.
  * - add: suma/resta fija ($), admite negativo (hasta ±1e9).
  * - set: precio fijo para todos.
  * - markup_pct: RECARGO sobre costo (precio = cost_last × (1 + x\/100)); 0–1000.
@@ -29,8 +33,8 @@ type Op = "pct_up" | "pct_down" | "add" | "set" | "markup_pct" | "margin_pct";
  *   combo = armado, no costo).
  * - promos (`promo_price` / `product_variants.promo`): con includePromos=true
  *   se recalculan MANTENIENDO el % de descuento que la promo ya tenía
- *   (cociente promo\/precio previo, topeado al nuevo precio); con false
- *   (default) quedan intactas.
+ *   (cociente promo\/precio previo, topeado al nuevo precio) y heredando el
+ *   redondeo de la regla; con false (default) quedan intactas.
  */
 export async function POST(request: Request) {
   const { vendor, staffRole } = await getVendorByRequest(request);
@@ -41,7 +45,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "No autorizado" }, { status: 403 });
   }
 
-  let body: { ids?: unknown; op?: unknown; value?: unknown; includePromos?: unknown };
+  let body: { ids?: unknown; op?: unknown; value?: unknown; includePromos?: unknown; rounding?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -88,6 +92,38 @@ export async function POST(request: Request) {
 
   const isCostOp = op === "markup_pct" || op === "margin_pct";
 
+  // Regla de redondeo: body.rounding > global del comercio (vendors.price_round_*)
+  // > default neutro (entero, como siempre). Lectura tolerante a migración sin aplicar.
+  let rounding: Rounding;
+  if (body.rounding && typeof body.rounding === "object") {
+    const r = body.rounding as Record<string, unknown>;
+    rounding = resolveRounding({ step: r.step, mode: r.mode, tail: r.tail });
+  } else {
+    try {
+      const cols = await queryMany<{ column_name: string }>(
+        `SELECT column_name FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'vendors' AND column_name = 'price_round_step'`
+      );
+      if (cols.length > 0) {
+        const row = await queryMany<{ price_round_step: number; price_round_mode: string; price_round_tail: number }>(
+          `SELECT price_round_step::float8 AS price_round_step, price_round_mode, price_round_tail::float8 AS price_round_tail
+             FROM vendors WHERE id = $1 LIMIT 1`,
+          [vendor.id]
+        );
+        rounding = resolveRounding({
+          step: row[0]?.price_round_step,
+          mode: row[0]?.price_round_mode,
+          tail: row[0]?.price_round_tail,
+        });
+      } else {
+        rounding = resolveRounding(null);
+      }
+    } catch {
+      rounding = resolveRounding(null);
+    }
+  }
+  const roundingLabel = isDefaultRounding(rounding) ? null : describeRounding(rounding);
+
   // Solo las operaciones de costo requieren las columnas de
   // migrate-inventory.sql (cost_last); el resto funciona sin la migración.
   let schema: { table_name: string; column_name: string }[];
@@ -120,18 +156,18 @@ export async function POST(request: Request) {
 
   function basePrice(oldPrice: number, cost: number | null): number | null {
     if (!isCostOp) {
-      if (op === "pct_up") return Math.round((oldPrice * (100 + value)) / 100);
-      if (op === "pct_down") return Math.round((oldPrice * (100 - value)) / 100);
-      if (op === "add") return Math.round(oldPrice + value);
-      return Math.round(value);
+      if (op === "pct_up") return applyRounding((oldPrice * (100 + value)) / 100, rounding);
+      if (op === "pct_down") return applyRounding((oldPrice * (100 - value)) / 100, rounding);
+      if (op === "add") return applyRounding(oldPrice + value, rounding);
+      return applyRounding(value, rounding);
     }
     const r = op === "markup_pct" ? "markup" : "margin";
-    return priceFromCost(cost, r, value);
+    return priceFromCost(cost, r, value, rounding);
   }
 
   /** Promo manteniendo el cociente promo/precio previo (topeada al nuevo precio). */
   function promoFor(newPrice: number, oldPrice: number, oldPromo: number | null): number | null {
-    return promoFromRatio(newPrice, oldPrice, oldPromo, includePromos);
+    return promoFromRatio(newPrice, oldPrice, oldPromo, includePromos, rounding);
   }
 
   try {
@@ -180,7 +216,7 @@ export async function POST(request: Request) {
           continue;
         }
         // price es numeric(10,2): topear al máximo de la columna.
-        const finalPrice = clampPrice(newPrice);
+        const finalPrice = clampPrice(newPrice, rounding);
         const newPromo = promoFor(finalPrice, Number(r.price), r.promo_price);
         updIds.push(r.id);
         updPrices.push(finalPrice);
@@ -236,7 +272,7 @@ export async function POST(request: Request) {
           continue;
         }
         // price es numeric(10,2): topear al máximo de la columna.
-        const finalPrice = clampPrice(newPrice);
+        const finalPrice = clampPrice(newPrice, rounding);
         const newPromo = promoFor(finalPrice, Number(v.price), v.promo);
         vUpdIds.push(v.id);
         vUpdPrices.push(finalPrice);
@@ -280,7 +316,12 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({ ok: true, ...result });
+    return NextResponse.json({
+      ok: true,
+      ...result,
+      rounding: { step: rounding.step, mode: rounding.mode, tail: rounding.tail },
+      roundingLabel,
+    });
   } catch (e) {
     console.error("[bulk-price] Error:", e);
     return NextResponse.json({ ok: false, error: "No se pudieron actualizar los precios" }, { status: 500 });

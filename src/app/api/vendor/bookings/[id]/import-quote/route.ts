@@ -112,8 +112,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           // explota con "invalid input syntax for type integer: 1.00".
           // El stock de repuestos se descuenta por unidades enteras.
           const stockQty = Math.max(1, Math.round(Number(it.qty) || 1));
-          const prod = await tx.queryOne<{ name: string; price: number | null; promo_price: number | null; stock_control: boolean | null; stock: number | null; cost_last: number | null; cost_avg: number | null }>(
-            `SELECT name, price, promo_price, stock_control, stock, cost_last, cost_avg FROM products WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+          const prod = await tx.queryOne<{ name: string; price: number | null; promo_price: number | null; stock_control: boolean | null; stock: number | null; cost_last: number | null }>(
+            `SELECT name, price, promo_price, stock_control, stock, cost_last FROM products WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
             [it.product_id, vendor.id]
           );
           if (prod) {
@@ -125,7 +125,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
               if (rows.length === 0) throw new Error(`Sin stock suficiente de "${prod.name}"`);
             }
             const unitPrice = Number(it.unit_price) > 0 ? Number(it.unit_price) : Number(prod.promo_price ?? prod.price ?? 0);
-            const unitCost = Number(prod.cost_last ?? prod.cost_avg ?? 0);
+            // cost_last estricto: sin costo la fila entra en 0 (el margen de la
+            // orden queda incompleto hasta cargarlo). Nunca cae a cost_avg.
+            const unitCost = prod.cost_last != null && Number.isFinite(Number(prod.cost_last)) ? Number(prod.cost_last) : 0;
             await tx.queryVoid(
               `INSERT INTO work_order_parts (vendor_id, booking_id, product_id, variant_id, name, qty, unit_cost, unit_price, created_by)
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL)`,

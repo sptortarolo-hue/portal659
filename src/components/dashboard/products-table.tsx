@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { ProductImage } from "@/components/product-image";
 import { isGiftProductRow } from "@/lib/gift-card-share";
+import { gainFromPriceCost } from "@/lib/price-rounding";
 import { GiftcardManageButton } from "@/components/dashboard/giftcard-manage-button";
 
 type Offer = {
@@ -288,6 +289,18 @@ export function ProductsTable({
                       title="Costo de compra (último)"
                     >
                       ${Number(offer.cost_last).toLocaleString("es-AR")}
+                      {(() => {
+                        const g = gainFromPriceCost(
+                          Number(offer.promo_price ?? offer.price),
+                          Number(offer.cost_last)
+                        );
+                        if (!g) return null;
+                        return (
+                          <span className="ml-1 text-[10px] text-muted-foreground">
+                            · {g.margin.toFixed(0)}% margen
+                          </span>
+                        );
+                      })()}
                     </span>
                   ) : (
                     <span className="text-muted-foreground">—</span>

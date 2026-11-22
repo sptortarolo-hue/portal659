@@ -15,6 +15,7 @@ import { isGiftProductRow } from "@/lib/gift-card-share";
 import { GiftcardManageButton } from "@/components/dashboard/giftcard-manage-button";
 import { saveDraft, loadDraft, clearDraft } from "@/lib/draft";
 import { marginListRuleLabel } from "@/lib/cost-reprice";
+import { gainFromPriceCost } from "@/lib/price-rounding";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
 import { BankAccountsManager } from "@/components/dashboard/bank-accounts-manager";
 import { SupplierSelect } from "@/components/dashboard/supplier-select";
@@ -564,6 +565,15 @@ export function OfferForm({
             <p className="text-xs text-muted-foreground mt-0.5">
               Costo de compra manual (no toca el costo de preparación). La próxima compra lo actualiza.
             </p>
+            {(() => {
+              const g = gainFromPriceCost(Number(offPrice), Number(offCost));
+              if (!g) return null;
+              return (
+                <p className="text-xs text-muted-foreground mt-1 tabular-nums">
+                  Ganancia: <strong className="text-foreground">{g.margin.toFixed(1)}% margen</strong> · recargo {g.markup.toFixed(0)}% · food cost {g.foodCost.toFixed(1)}%
+                </p>
+              );
+            })()}
           </div>
         )}
         {!offIsCombo && showSupplier && setOffSupplierId && (

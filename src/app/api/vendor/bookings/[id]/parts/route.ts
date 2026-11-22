@@ -67,16 +67,22 @@ export async function POST(
   const customPrice = body.unit_price != null && Number(body.unit_price) > 0 ? Math.round(Number(body.unit_price) * 100) / 100 : null;
 
   try {
-    const part = await withTransaction(async (tx: Tx) => {
+    const result = await withTransaction(async (tx: Tx) => {
       let name = "";
       let unitPrice = 0;
       let unitCost = 0;
       let stockControl = false;
+      // cost_last estricto (plan "costo → ganancia → precio"): el costo del
+      // repuesto sale SIEMPRE de products/product_variants.cost_last. Sin
+      // costo queda 0, se avisa en la respuesta (`costMissing`) y queda
+      // marcado en el timeline de la orden — nunca se cae silenciosamente a
+      // cost_avg (ese es para valorización de inventario, no para pricing).
+      let costMissing = false;
       if (variantId) {
         const row = await tx.queryOne<{
-          name: string; price: number | null; promo: number | null; cost_last: number | null; cost_avg: number | null; stock: number | null;
+          name: string; price: number | null; promo: number | null; cost_last: number | null; stock: number | null;
         }>(
-          `SELECT p.name, v.price, v.promo, v.cost_last, v.cost_avg, v.stock
+          `SELECT p.name, v.price, v.promo, v.cost_last, v.stock
            FROM product_variants v JOIN products p ON p.id = v.product_id
            WHERE v.id = $1 AND v.product_id = $2 AND p.vendor_id = $3 LIMIT 1`,
           [variantId, productId, vendor.id]
@@ -84,7 +90,8 @@ export async function POST(
         if (!row) throw new Error("Repuesto no encontrado en tu catálogo");
         name = row.name;
         unitPrice = Number(row.promo ?? row.price ?? 0);
-        unitCost = Number(row.cost_last ?? row.cost_avg ?? 0);
+        unitCost = row.cost_last != null && Number.isFinite(Number(row.cost_last)) ? Number(row.cost_last) : 0;
+        costMissing = !(unitCost > 0);
       } else {
         const row = await tx.queryOne<{
           name: string; price: number | null; promo_price: number | null; stock_control: boolean | null; stock: number | null;
@@ -97,12 +104,13 @@ export async function POST(
         unitPrice = Number(row.promo_price ?? row.price ?? 0);
         stockControl = row.stock_control === true;
         const costRow = await tx
-          .queryOne<{ cost_last: number | null; cost_avg: number | null }>(
-            `SELECT cost_last, cost_avg FROM products WHERE id = $1 LIMIT 1`,
+          .queryOne<{ cost_last: number | null }>(
+            `SELECT cost_last FROM products WHERE id = $1 LIMIT 1`,
             [productId]
           )
           .catch(() => null);
-        unitCost = Number(costRow?.cost_last ?? costRow?.cost_avg ?? 0);
+        unitCost = costRow?.cost_last != null && Number.isFinite(Number(costRow.cost_last)) ? Number(costRow.cost_last) : 0;
+        costMissing = !(unitCost > 0);
       }
       if (customPrice) unitPrice = customPrice;
 
@@ -150,14 +158,25 @@ export async function POST(
         message: `Repuesto usado: ${name} × ${qty}`,
       });
 
+      if (costMissing) {
+        // Rastro visible en la orden: el margen queda incompleto hasta que el
+        // producto tenga cost_last cargado.
+        await addBookingEventTx(tx, {
+          vendorId: vendor.id,
+          bookingId: id,
+          kind: "parts",
+          message: `⚠️ "${name}" se agregó sin costo: cargale el costo en el catálogo para que el margen sea real`,
+        });
+      }
+
       // El total a cobrar es siempre la suma de la cuenta (partidas + mano
       // de obra): se recalcula acá, no hay botón para eso.
       await recalcServicePriceTx(tx, id);
 
-      return inserted;
+      return { inserted, costMissing };
     });
 
-    return NextResponse.json({ ok: true, part });
+    return NextResponse.json({ ok: true, part: result.inserted, costMissing: result.costMissing });
   } catch (e) {
     const msg = (e as Error)?.message || "";
     if (/Sin stock suficiente/i.test(msg)) {

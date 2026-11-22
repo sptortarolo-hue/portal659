@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { LivePreview, TransferConfig, DeliveryFeeConfig } from "@/components/dashboard/shared";
 import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { PrinterConfigSection } from "@/components/dashboard/printer-config-section";
+import { BankConciliationSettings } from "@/components/dashboard/bank-conciliation-settings";
 import { FiscalTabShortcut } from "@/components/dashboard/fiscal-config-section";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
 import { GalleryManager } from "@/components/dashboard/gallery-manager";
@@ -410,6 +411,7 @@ export default function DashboardGastro({
           {paymentMethods.includes("Transferencia") && (
             <TransferConfig vendor={vendor} saveVendor={saveVendor} />
           )}
+          <BankConciliationSettings vendor={vendor} saveVendor={saveVendor} />
           {paymentMethods.includes("Efectivo") && (
             <div>
               <Label className="mb-2 block">Descuento en efectivo (%)</Label>

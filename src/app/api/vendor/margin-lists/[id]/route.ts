@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { gateRequest, gateError } from "@/lib/subscription-gate";
 import { queryMany, queryOne } from "@/lib/db";
+import { resolveRounding } from "@/lib/price-rounding";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,20 @@ async function ready(): Promise<boolean> {
   }
 }
 
+/** Columnas de redondeo (migrate-price-rounding.sql). Sin migrar: null. */
+async function priceRoundColsReady(): Promise<boolean> {
+  try {
+    const rows = await queryMany<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'margin_lists'
+          AND column_name = 'price_round_step'`
+    );
+    return rows.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 /** PATCH — renombrar / cambiar regla / % de una lista propia. */
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const gate = await gateRequest(request);
@@ -43,8 +58,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ ok: false, error: "Body inválido" }, { status: 400 });
   }
 
-  const current = await queryOne<{ id: string; name: string; rule: string; pct: number }>(
-    `SELECT id, name, rule, pct::float8 AS pct FROM margin_lists WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+  const hasRoundCols = await priceRoundColsReady();
+  const current = await queryOne<{ id: string; name: string; rule: string; pct: number; price_round_step?: number; price_round_mode?: string; price_round_tail?: number }>(
+    hasRoundCols
+      ? `SELECT id, name, rule, pct::float8 AS pct,
+                price_round_step::float8 AS price_round_step, price_round_mode, price_round_tail::float8 AS price_round_tail
+           FROM margin_lists WHERE id = $1 AND vendor_id = $2 LIMIT 1`
+      : `SELECT id, name, rule, pct::float8 AS pct FROM margin_lists WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
     [id, gate.vendor.id]
   );
   if (!current) {
@@ -80,13 +100,36 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ ok: false, error: "Ya tenés una lista con ese nombre" }, { status: 409 });
   }
 
-  const updated = await queryOne<{ id: string; name: string; rule: string; pct: number }>(
-    `UPDATE margin_lists
-        SET name = $2, rule = $3, pct = $4::numeric
-      WHERE id = $1 AND vendor_id = $5
-      RETURNING id, name, rule, pct::float8 AS pct`,
-    [id, name, rule, Math.round(pct * 100) / 100, gate.vendor.id]
-  );
+  // Redondeo: parciales sobre los valores actuales (solo con la migración aplicada).
+  const hasRound = hasRoundCols;
+  const curRound = resolveRounding({
+    step: (current as any).price_round_step,
+    mode: (current as any).price_round_mode,
+    tail: (current as any).price_round_tail,
+  });
+  const rounding = resolveRounding({
+    step: body?.price_round_step !== undefined ? body.price_round_step : curRound.step,
+    mode: body?.price_round_mode !== undefined ? body.price_round_mode : curRound.mode,
+    tail: body?.price_round_tail !== undefined ? body.price_round_tail : curRound.tail,
+  });
+
+  const updated = hasRound
+    ? await queryOne<{ id: string; name: string; rule: string; pct: number }>(
+        `UPDATE margin_lists
+            SET name = $2, rule = $3, pct = $4::numeric,
+                price_round_step = $6::numeric, price_round_mode = $7, price_round_tail = $8::numeric
+          WHERE id = $1 AND vendor_id = $5
+          RETURNING id, name, rule, pct::float8 AS pct,
+                    price_round_step::float8 AS price_round_step, price_round_mode, price_round_tail::float8 AS price_round_tail`,
+        [id, name, rule, Math.round(pct * 100) / 100, gate.vendor.id, rounding.step, rounding.mode, rounding.tail]
+      )
+    : await queryOne<{ id: string; name: string; rule: string; pct: number }>(
+        `UPDATE margin_lists
+            SET name = $2, rule = $3, pct = $4::numeric
+          WHERE id = $1 AND vendor_id = $5
+          RETURNING id, name, rule, pct::float8 AS pct`,
+        [id, name, rule, Math.round(pct * 100) / 100, gate.vendor.id]
+      );
   return NextResponse.json({ ok: true, list: updated });
 }
 

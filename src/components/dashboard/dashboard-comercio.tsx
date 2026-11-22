@@ -25,6 +25,7 @@ import {
 } from "@/components/dashboard/shared";
 import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { PrinterConfigSection } from "@/components/dashboard/printer-config-section";
+import { BankConciliationSettings } from "@/components/dashboard/bank-conciliation-settings";
 import { ScaleConfigSection } from "@/components/dashboard/scale-config-section";
 import { StaffManager } from "@/components/vendor/staff-manager";
 import { FiscalTabShortcut } from "@/components/dashboard/fiscal-config-section";
@@ -562,6 +563,7 @@ export default function DashboardComercio({
           {paymentMethods.includes("Transferencia") && (
             <TransferConfig vendor={vendor} saveVendor={saveVendor} />
           )}
+          <BankConciliationSettings vendor={vendor} saveVendor={saveVendor} />
           {paymentMethods.includes("Efectivo") && (
             <div>
               <Label className="mb-2 block">Descuento en efectivo (%)</Label>

@@ -570,6 +570,12 @@ export type Vendor = {
   /** Umbrales del semáforo food-cost (NULL = defaults 30/35). */
   food_cost_warn?: number | null;
   food_cost_bad?: number | null;
+  /** Regla global de redondeo de precios calculados (migración migrate-price-rounding.sql). step 1 = sin redondeo especial. */
+  price_round_step?: number | null;
+  /** nearest (mitad abajo/mitad arriba, empate arriba) | up | down. */
+  price_round_mode?: "nearest" | "up" | "down" | null;
+  /** Offset dentro del múltiplo: 0 = múltiplo exacto; 0.99 o 99 = terminación. */
+  price_round_tail?: number | null;
   /** Días de aviso anticipado de vencimientos (0 = solo vencidos). */
   expiry_alert_days?: number | null;
   /** Opt-out de venta online: false = solo contacto aunque el plan traiga carrito. */
@@ -588,6 +594,12 @@ export type Vendor = {
   carta_visibility?: string | null;
   /** Destino del QR del cartel imprimible: "carta" (mesa) o "tienda" (micrositio). NULL = automático por vertical. */
   carta_qr_target?: "carta" | "tienda" | null;
+  /** Conciliación bancaria por email: activada. */
+  bank_conciliation_enabled?: boolean | null;
+  /** Bancos configurados para conciliación. */
+  bank_conciliation_banks?: string[] | null;
+  /** Anunciar transferencias por voz. */
+  bank_conciliation_voice?: boolean | null;
   plan_id: string | null;
   plan_status: PlanStatus;
   plan_expires_at: string | null;

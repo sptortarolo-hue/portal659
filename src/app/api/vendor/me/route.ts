@@ -4,6 +4,7 @@ import { getVendorByRequest, seedDefaultCategories } from "@/lib/vendor-utils";
 import { listVendorBankAccounts } from "@/lib/bank-accounts-server";
 import { readScaleLabelConfig } from "@/lib/scale-barcode";
 import { readLabelPrinterConfig } from "@/lib/label-spec";
+import { resolveRounding } from "@/lib/price-rounding";
 import { NextResponse } from "next/server";
 
 function slugify(text: string): string {
@@ -189,6 +190,9 @@ export async function POST(request: Request) {
     weight_min_kg,
     fiscal_auto_emit,
     accept_orders_when_closed,
+    price_round_step,
+    price_round_mode,
+    price_round_tail,
   } = body;
 
   // Limpia y valida delivery_extra_days. Devuelve el objeto podado o false
@@ -577,6 +581,15 @@ export async function POST(request: Request) {
         ? 7
         : Math.min(365, Math.max(0, Math.floor(n)));
   }
+  // Redondeo de precios calculados (migrate-price-rounding.sql): regla global
+  // del comercio. La sanea resolveRounding (basura → default neutro, que es
+  // el Math.round histórico). Tolerante a migración sin aplicar (droppable).
+  if (price_round_step !== undefined || price_round_mode !== undefined || price_round_tail !== undefined) {
+    const r = resolveRounding({ step: price_round_step, mode: price_round_mode, tail: price_round_tail });
+    payload.price_round_step = r.step;
+    payload.price_round_mode = r.mode;
+    payload.price_round_tail = r.tail;
+  }
   // Etiquetas de balanza: formato con el que imprime la balanza (jsonb). Se
   // sanea acá para que un valor basura nunca rompa el Mostrador; apagar el
   // switch conserva el formato cargado (enabled:false).
@@ -660,6 +673,9 @@ export async function POST(request: Request) {
         "scale_label_config",
         "label_printer_config",
         "accept_orders_when_closed",
+        "price_round_step",
+        "price_round_mode",
+        "price_round_tail",
       ].filter((k) => k in payload && msg.includes(k));
       if (droppable.length > 0) {
         for (const k of droppable) delete payload[k];

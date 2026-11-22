@@ -6,10 +6,27 @@
  * siempre pasa por un preview antes de escribir (dryRun).
  * Las APIs responden 503 nombrando migrate-margin-lists.sql sin la migración.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
+import {
+  ROUND_MODE_OPTIONS,
+  ROUND_STEPS,
+  describeRounding,
+  isDefaultRounding,
+  resolveRounding,
+  roundingExample,
+  tailOptionsFor,
+  type Rounding,
+  type RoundMode,
+} from "@/lib/price-rounding";
+import {
+  equivalentsFromMargin,
+  equivalentsFromMarkup,
+  gainFromPriceCost,
+} from "@/lib/price-rounding";
+import { priceFromCost } from "@/lib/cost-reprice";
 
 export type OfferLike = {
   id: string;
@@ -28,14 +45,172 @@ export type MarginList = {
   rule: "markup" | "margin";
   pct: number;
   productCount: number;
+  /** Redondeo de la lista (migrate-price-rounding.sql). undefined sin migrar = default neutro. */
+  price_round_step?: number;
+  price_round_mode?: "nearest" | "up" | "down";
+  price_round_tail?: number;
 };
 
 const money = (n: number) => `$${Number(n).toLocaleString("es-AR")}`;
+
+/** Regla de redondeo de una lista (saneada; undefined → default neutro). */
+export function listRounding(l: Pick<MarginList, "price_round_step" | "price_round_mode" | "price_round_tail"> | null | undefined): Rounding {
+  return resolveRounding({ step: l?.price_round_step, mode: l?.price_round_mode, tail: l?.price_round_tail });
+}
 
 export function marginListRuleLabel(l: Pick<MarginList, "rule" | "pct">): string {
   const pct = Number(l.pct);
   const t = Number.isInteger(pct) ? String(pct) : String(Math.round(pct * 100) / 100);
   return l.rule === "markup" ? `Recargo +${t}%` : `Margen ${t}%`;
+}
+
+/** Línea de equivalencia (Fase B: un solo vocabulario de ganancia). */
+export function gainEquivalenceLine(
+  rule: "markup" | "margin",
+  pct: number,
+  rounding?: Rounding
+): string | null {
+  if (!Number.isFinite(pct) || pct < 0) return null;
+  const eq = rule === "markup" ? equivalentsFromMarkup(pct) : equivalentsFromMargin(pct);
+  const precio = priceFromCost(1000, rule, pct, rounding);
+  if (precio == null) return null;
+  return `Recargo ${eq.markup}% · margen ${eq.margin}% · food cost ${eq.foodCost}% · costo $1.000 → ${money(precio)}`;
+}
+
+/** Selector de redondeo: múltiplo + criterio + terminación. */
+function RoundingPicker({ value, onChange }: { value: Rounding; onChange: (r: Rounding) => void }) {
+  const tails = tailOptionsFor(value.step);
+  const example = roundingExample(1234, value);
+  const cls = "h-10 rounded-md border border-input bg-background px-3 text-sm";
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <select
+        className={cls}
+        aria-label="Múltiplo de redondeo"
+        value={String(value.step)}
+        onChange={(e) => {
+          const step = Number(e.target.value);
+          onChange({ ...value, step, tail: value.tail < step ? value.tail : 0 });
+        }}
+      >
+        {ROUND_STEPS.map((s) => (
+          <option key={s} value={s}>
+            {s === 1 ? "Sin múltiplo (precio exacto)" : `Múltiplo de $${s.toLocaleString("es-AR")}`}
+          </option>
+        ))}
+      </select>
+      <select
+        className={cls}
+        aria-label="Criterio de redondeo"
+        value={value.mode}
+        onChange={(e) => onChange({ ...value, mode: e.target.value as RoundMode })}
+      >
+        {ROUND_MODE_OPTIONS.map((m) => (
+          <option key={m.id} value={m.id}>
+            {m.label}
+          </option>
+        ))}
+      </select>
+      <select
+        className={cls}
+        aria-label="Terminación del precio"
+        value={String(value.tail)}
+        onChange={(e) => onChange({ ...value, tail: Number(e.target.value) })}
+      >
+        {tails.map((t) => (
+          <option key={t.id} value={t.tail}>
+            {t.label}
+          </option>
+        ))}
+      </select>
+      {example && (
+        <span className="text-xs text-muted-foreground tabular-nums">
+          Ej.: {example}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Regla GLOBAL del comercio (vendors.price_round_*). Es el fallback para
+ * productos sin lista y la que aplican por defecto los precios masivos y el
+ * sugerido del recetario. Vive acá (Catálogo → Listas) porque es la
+ * superficie de precios; cada lista puede tener su propio redondeo.
+ */
+function VendorRoundingCard() {
+  const [rule, setRule] = useState<Rounding | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/vendor/me")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!alive) return;
+        setRule(
+          resolveRounding({
+            step: d?.vendor?.price_round_step,
+            mode: d?.vendor?.price_round_mode,
+            tail: d?.vendor?.price_round_tail,
+          })
+        );
+      })
+      .catch(() => {
+        if (alive) setRule(resolveRounding(null));
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  if (!rule) return null;
+
+  async function save() {
+    setBusy(true);
+    setMsg("");
+    try {
+      const res = await fetch("/api/vendor/me", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          price_round_step: rule!.step,
+          price_round_mode: rule!.mode,
+          price_round_tail: rule!.tail,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      setMsg(res.ok ? "✓ Guardado" : data.error || "No se pudo guardar");
+    } catch {
+      setMsg("No se pudo guardar");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const dirty = !isDefaultRounding(rule);
+  return (
+    <div className="rounded-xl border border-border bg-card p-4 space-y-2">
+      <p className="font-medium text-sm">🎯 Redondeo de precios del comercio</p>
+      <p className="text-xs text-muted-foreground">
+        Aplica a los <strong>precios masivos</strong> y al <strong>sugerido del recetario</strong>. Cada lista de margen
+        puede tener su propio redondeo (lo pisa). Default: precio exacto sin decimales (como siempre).
+      </p>
+      <RoundingPicker value={rule} onChange={(r) => { setRule(r); setMsg(""); }} />
+      <div className="flex items-center gap-3 flex-wrap">
+        <Button size="sm" type="button" onClick={save} disabled={busy}>
+          {busy ? "Guardando…" : "Guardar regla"}
+        </Button>
+        {msg && <span className="text-xs text-muted-foreground">{msg}</span>}
+      </div>
+      {dirty && (
+        <p className="text-xs text-muted-foreground">
+          {describeRounding(rule)}
+        </p>
+      )}
+    </div>
+  );
 }
 
 type PreviewItem = {
@@ -66,6 +241,7 @@ export function MarginListsManager({
   const [createName, setCreateName] = useState("");
   const [createRule, setCreateRule] = useState<"markup" | "margin">("markup");
   const [createPct, setCreatePct] = useState("");
+  const [createRound, setCreateRound] = useState<Rounding>(() => resolveRounding(null));
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState("");
 
@@ -73,6 +249,7 @@ export function MarginListsManager({
   const [editName, setEditName] = useState("");
   const [editRule, setEditRule] = useState<"markup" | "margin">("markup");
   const [editPct, setEditPct] = useState("");
+  const [editRound, setEditRound] = useState<Rounding>(() => resolveRounding(null));
   const [editBusy, setEditBusy] = useState(false);
   const [editError, setEditError] = useState("");
 
@@ -88,6 +265,7 @@ export function MarginListsManager({
     skippedNoCost?: number;
     skippedCombo?: number;
     applied?: { updated: number; variantsUpdated: number; promosUpdated: number } | null;
+    roundingLabel?: string | null;
   } | null>(null);
   const [includePromos, setIncludePromos] = useState(false);
 
@@ -117,6 +295,7 @@ export function MarginListsManager({
         skippedNoCost: data.skippedNoCost,
         skippedCombo: data.skippedCombo,
         applied: null,
+        roundingLabel: data.roundingLabel ?? null,
       });
     } catch {
       setPreview({ error: "No se pudo calcular la vista previa" });
@@ -167,7 +346,14 @@ export function MarginListsManager({
       const res = await fetch("/api/vendor/margin-lists", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: createName.trim(), rule: createRule, pct }),
+        body: JSON.stringify({
+          name: createName.trim(),
+          rule: createRule,
+          pct,
+          price_round_step: createRound.step,
+          price_round_mode: createRound.mode,
+          price_round_tail: createRound.tail,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) {
@@ -177,6 +363,7 @@ export function MarginListsManager({
       setCreateName("");
       setCreatePct("");
       setCreateRule("markup");
+      setCreateRound(resolveRounding(null));
       onRefresh();
     } finally {
       setCreateBusy(false);
@@ -188,6 +375,7 @@ export function MarginListsManager({
     setEditName(list.name);
     setEditRule(list.rule);
     setEditPct(String(Number(list.pct)));
+    setEditRound(listRounding(list));
     setEditError("");
   }
 
@@ -204,7 +392,14 @@ export function MarginListsManager({
       const res = await fetch(`/api/vendor/margin-lists/${editId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: editName.trim(), rule: editRule, pct }),
+        body: JSON.stringify({
+          name: editName.trim(),
+          rule: editRule,
+          pct,
+          price_round_step: editRound.step,
+          price_round_mode: editRound.mode,
+          price_round_tail: editRound.tail,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) {
@@ -263,6 +458,9 @@ export function MarginListsManager({
 
   return (
     <div className="space-y-4">
+      {/* Regla global del comercio */}
+      <VendorRoundingCard />
+
       {/* Alta de lista */}
       <div className="rounded-xl border border-border bg-card p-4 space-y-2">
         <p className="font-medium text-sm">Nueva lista de margen</p>
@@ -301,6 +499,11 @@ export function MarginListsManager({
             {createBusy ? "Creando…" : "Crear"}
           </Button>
         </div>
+        {(() => {
+          const line = gainEquivalenceLine(createRule, Number(createPct), createRound);
+          return line ? <p className="text-xs text-muted-foreground tabular-nums">{line}</p> : null;
+        })()}
+        <RoundingPicker value={createRound} onChange={setCreateRound} />
         {createError && <p className="text-xs text-destructive">{createError}</p>}
       </div>
 
@@ -321,6 +524,11 @@ export function MarginListsManager({
               <span className="rounded-full border border-border px-2 py-0.5 text-[11px] tabular-nums text-muted-foreground">
                 {marginListRuleLabel(list)}
               </span>
+              {!isDefaultRounding(listRounding(list)) && (
+                <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
+                  🎯 {describeRounding(listRounding(list))}
+                </span>
+              )}
               <span className="rounded-full border border-border px-2 py-0.5 text-[11px] tabular-nums text-muted-foreground">
                 {list.productCount} {list.productCount === 1 ? "producto" : "productos"}
               </span>
@@ -356,6 +564,11 @@ export function MarginListsManager({
                     Cancelar
                   </Button>
                 </div>
+                {(() => {
+                  const line = gainEquivalenceLine(editRule, Number(editPct), editRound);
+                  return line ? <p className="text-xs text-muted-foreground tabular-nums">{line}</p> : null;
+                })()}
+                <RoundingPicker value={editRound} onChange={setEditRound} />
                 {editError && <p className="text-xs text-destructive">{editError}</p>}
               </div>
             )}
@@ -413,6 +626,7 @@ export function MarginListsManager({
             <p className="text-sm text-muted-foreground">
               {marginListRuleLabel(previewList)} sobre el último costo. Los combos y las tarjetas se omiten; los
               productos/variantes sin costo se listan abajo y no se tocan.
+              {preview?.roundingLabel ? ` Redondeo: ${preview.roundingLabel}.` : ""}
             </p>
             <label className="flex items-center gap-2 text-sm cursor-pointer select-none rounded-lg border border-border px-3 py-2">
               <input
@@ -457,7 +671,21 @@ export function MarginListsManager({
                         <td className="p-2 text-right tabular-nums">{i.cost != null ? money(i.cost) : "—"}</td>
                         <td className="p-2 text-right tabular-nums">{money(i.oldPrice)}</td>
                         <td className="p-2 text-right tabular-nums font-medium">
-                          {i.newPrice != null ? money(i.newPrice) : "—"}
+                          {i.newPrice != null ? (
+                            <>
+                              {money(i.newPrice)}
+                              {(() => {
+                                const g = gainFromPriceCost(i.newPrice, i.cost);
+                                return g ? (
+                                  <span className="ml-1 text-[10px] font-normal text-muted-foreground">
+                                    {g.margin.toFixed(1)}% margen
+                                  </span>
+                                ) : null;
+                              })()}
+                            </>
+                          ) : (
+                            "—"
+                          )}
                         </td>
                         {includePromos && (
                           <td className="p-2 text-right tabular-nums">{i.newPromo != null ? money(i.newPromo) : "—"}</td>

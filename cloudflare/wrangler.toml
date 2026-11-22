@@ -1,0 +1,7 @@
+name = "portal659-email-worker"
+main = "email-worker.js"
+compatibility_date = "2024-01-01"
+
+# Para usar postal-mime (mejor parsing de email), descomentar:
+# [dependencies]
+# postal-mime = "*"

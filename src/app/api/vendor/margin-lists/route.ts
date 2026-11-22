@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { gateRequest, gateError } from "@/lib/subscription-gate";
 import { queryMany, queryOne } from "@/lib/db";
+import { resolveRounding } from "@/lib/price-rounding";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,33 @@ async function marginListsReady(): Promise<boolean> {
   }
 }
 
+/** Columnas de redondeo (migrate-price-rounding.sql). Sin migrar: null. */
+async function priceRoundColsReady(): Promise<boolean> {
+  try {
+    const rows = await queryMany<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'margin_lists'
+          AND column_name = 'price_round_step'`
+    );
+    return rows.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 type MarginListRow = { id: string; name: string; rule: string; pct: number };
+
+/** Redondeo del body (opcional). NULL = no viene → default neutro al insertar. */
+function parseRounding(body: any) {
+  if (body?.price_round_step === undefined && body?.price_round_mode === undefined && body?.price_round_tail === undefined) {
+    return null;
+  }
+  return resolveRounding({
+    step: body?.price_round_step,
+    mode: body?.price_round_mode,
+    tail: body?.price_round_tail,
+  });
+}
 
 function validateListInput(body: any):
   | { ok: true; name: string; rule: "markup" | "margin"; pct: number }
@@ -63,19 +90,38 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, error: MIGRATION_MSG }, { status: 503 });
   }
   try {
-    const lists = await queryMany<MarginListRow & { product_count: number }>(
-      `SELECT ml.id, ml.name, ml.rule, ml.pct::float8 AS pct,
-              COUNT(p.id)::int AS product_count
-         FROM margin_lists ml
-         LEFT JOIN products p ON p.margin_list_id = ml.id
-        WHERE ml.vendor_id = $1
-        GROUP BY ml.id
-        ORDER BY ml.created_at ASC`,
+    const hasRound = await priceRoundColsReady();
+    const lists = await queryMany<MarginListRow & { product_count: number; price_round_step?: number; price_round_mode?: string; price_round_tail?: number }>(
+      hasRound
+        ? `SELECT ml.id, ml.name, ml.rule, ml.pct::float8 AS pct,
+                  ml.price_round_step::float8 AS price_round_step, ml.price_round_mode, ml.price_round_tail::float8 AS price_round_tail,
+                  COUNT(p.id)::int AS product_count
+             FROM margin_lists ml
+             LEFT JOIN products p ON p.margin_list_id = ml.id
+            WHERE ml.vendor_id = $1
+            GROUP BY ml.id
+            ORDER BY ml.created_at ASC`
+        : `SELECT ml.id, ml.name, ml.rule, ml.pct::float8 AS pct,
+                  COUNT(p.id)::int AS product_count
+             FROM margin_lists ml
+             LEFT JOIN products p ON p.margin_list_id = ml.id
+            WHERE ml.vendor_id = $1
+            GROUP BY ml.id
+            ORDER BY ml.created_at ASC`,
       [gate.vendor.id]
     );
     return NextResponse.json({
       ok: true,
-      lists: lists.map((l) => ({ id: l.id, name: l.name, rule: l.rule, pct: l.pct, productCount: l.product_count })),
+      lists: lists.map((l) => ({
+        id: l.id,
+        name: l.name,
+        rule: l.rule,
+        pct: l.pct,
+        productCount: l.product_count,
+        price_round_step: l.price_round_step != null ? Number(l.price_round_step) : undefined,
+        price_round_mode: l.price_round_mode ?? undefined,
+        price_round_tail: l.price_round_tail != null ? Number(l.price_round_tail) : undefined,
+      })),
     });
   } catch (e) {
     console.error("[margin-lists] GET error:", e);
@@ -109,11 +155,24 @@ export async function POST(request: Request) {
   if (dup) {
     return NextResponse.json({ ok: false, error: "Ya tenés una lista con ese nombre" }, { status: 409 });
   }
-  const list = await queryOne<MarginListRow>(
-    `INSERT INTO margin_lists (vendor_id, name, rule, pct)
-     VALUES ($1, $2, $3, $4::numeric)
-     RETURNING id, name, rule, pct::float8 AS pct`,
-    [gate.vendor.id, parsed.name, parsed.rule, parsed.pct]
-  );
+  const rounding = parseRounding(body);
+  // Tolerante a migrate-price-rounding.sql sin aplicar: sin columnas, inserta sin redondeo.
+  const hasRound = await priceRoundColsReady();
+  let list: MarginListRow | null | undefined;
+  if (hasRound && rounding) {
+    list = await queryOne<MarginListRow>(
+      `INSERT INTO margin_lists (vendor_id, name, rule, pct, price_round_step, price_round_mode, price_round_tail)
+       VALUES ($1, $2, $3, $4::numeric, $5::numeric, $6, $7::numeric)
+       RETURNING id, name, rule, pct::float8 AS pct`,
+      [gate.vendor.id, parsed.name, parsed.rule, parsed.pct, rounding.step, rounding.mode, rounding.tail]
+    );
+  } else {
+    list = await queryOne<MarginListRow>(
+      `INSERT INTO margin_lists (vendor_id, name, rule, pct)
+       VALUES ($1, $2, $3, $4::numeric)
+       RETURNING id, name, rule, pct::float8 AS pct`,
+      [gate.vendor.id, parsed.name, parsed.rule, parsed.pct]
+    );
+  }
   return NextResponse.json({ ok: true, list: { ...list, productCount: 0 } }, { status: 201 });
 }

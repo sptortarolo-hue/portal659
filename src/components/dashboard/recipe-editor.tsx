@@ -8,6 +8,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { apiJson } from "@/components/dashboard/shared";
+import {
+  applyRounding,
+  describeRounding,
+  equivalentsFromFoodCost,
+  isDefaultRounding,
+  resolveRounding,
+  type Rounding,
+} from "@/lib/price-rounding";
 import type { Ingredient, Recipe, RecipeItem } from "@/types/database";
 import {
   FOOD_COST_STATUS_META,
@@ -222,6 +230,62 @@ export function RecipeEditor({
   const tgt = Math.min(Math.max(Number(targetPct) || 30, 1), 90);
   const belowCost = salePrice != null && preview !== null && preview.perPortion > salePrice;
 
+  // Redondeo global del comercio (vendors.price_round_*) para el precio
+  // sugerido. Lectura tolerante: sin migración, default neutro (= Math.round).
+  const [vendorRound, setVendorRound] = useState<Rounding>(() => resolveRounding(null));
+  const [applyingPrice, setApplyingPrice] = useState(false);
+  const [applyMsg, setApplyMsg] = useState("");
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/vendor/me")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!alive) return;
+        setVendorRound(
+          resolveRounding({
+            step: d?.vendor?.price_round_step,
+            mode: d?.vendor?.price_round_mode,
+            tail: d?.vendor?.price_round_tail,
+          })
+        );
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const suggestedRounded =
+    preview && preview.perPortion > 0 ? applyRounding(suggestedPrice(preview.perPortion, tgt), vendorRound) : null;
+
+  /** Fase B: escribe el precio sugerido en el producto (antes solo se mostraba). */
+  async function applySuggestedPrice() {
+    if (!("productId" in target) || !preview || preview.perPortion <= 0) return;
+    const price = applyRounding(suggestedPrice(preview.perPortion, tgt), vendorRound);
+    if (!(price > 0)) {
+      setApplyMsg("El costo es 0: nada que aplicar");
+      return;
+    }
+    setApplyingPrice(true);
+    setApplyMsg("");
+    try {
+      const res = await apiJson(`/api/vendor/offers/${target.productId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ price }),
+      });
+      if (!res.ok) {
+        setApplyMsg(res.error || "No se pudo aplicar");
+        return;
+      }
+      setApplyMsg(`✓ Precio actualizado a ${formatMoney(price)}`);
+      onSaved();
+    } catch {
+      setApplyMsg("No se pudo aplicar");
+    } finally {
+      setApplyingPrice(false);
+    }
+  }
+
   return (
     <Card className="p-4 space-y-4 overflow-hidden w-full max-w-full">
       <div>
@@ -372,20 +436,41 @@ export function RecipeEditor({
             </p>
           )}
           {salePrice != null && preview.perPortion > 0 && (
-            <div className="flex items-center justify-between gap-2 text-sm flex-wrap">
-              <span className="text-muted-foreground flex items-center gap-1 min-w-0 flex-wrap">
-                Precio sugerido (food cost
-                <Input
-                  type="number"
-                  min={1}
-                  max={90}
-                  value={targetPct}
-                  onChange={(e) => setTargetPct(e.target.value)}
-                  className="w-14 h-7 px-1 text-xs inline-block max-w-full"
-                />
-                %)
-              </span>
-              <span className="font-semibold tabular-nums shrink-0">{formatMoney(suggestedPrice(preview.perPortion, tgt))}</span>
+            <div className="pt-1 space-y-1">
+              <div className="flex items-center justify-between gap-2 text-sm flex-wrap">
+                <span className="text-muted-foreground flex items-center gap-1 min-w-0 flex-wrap">
+                  Precio sugerido (food cost
+                  <Input
+                    type="number"
+                    min={1}
+                    max={90}
+                    value={targetPct}
+                    onChange={(e) => setTargetPct(e.target.value)}
+                    className="w-14 h-7 px-1 text-xs inline-block max-w-full"
+                  />
+                  %)
+                </span>
+                <span className="font-semibold tabular-nums shrink-0">
+                  {formatMoney(suggestedRounded ?? suggestedPrice(preview.perPortion, tgt))}
+                </span>
+              </div>
+              {(() => {
+                const eq = equivalentsFromFoodCost(Number(targetPct));
+                return (
+                  <p className="text-xs text-muted-foreground tabular-nums">
+                    Equivale a margen {eq.margin}% · recargo {eq.markup}%
+                    {!isDefaultRounding(vendorRound) ? ` · redondeo: ${describeRounding(vendorRound)}` : ""}
+                  </p>
+                );
+              })()}
+              {"productId" in target && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button size="sm" variant="outline" type="button" disabled={applyingPrice} onClick={applySuggestedPrice}>
+                    {applyingPrice ? "Aplicando…" : "Aplicar al producto"}
+                  </Button>
+                  {applyMsg && <span className="text-xs text-muted-foreground">{applyMsg}</span>}
+                </div>
+              )}
             </div>
           )}
           {preview.warnings.length > 0 && (

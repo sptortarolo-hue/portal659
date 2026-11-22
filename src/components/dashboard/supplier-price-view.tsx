@@ -235,7 +235,7 @@ export function SupplierPriceView({ products, variants }: { products: Product[];
     const q = search.trim().toLowerCase();
     return groups.filter((g) => {
       if (q && !g.name.toLowerCase().includes(q)) return false;
-      if (supplierFilter && !g.rows.some((r) => r.supplier_name === supplierFilter)) return false;
+      if (supplierFilter && !g.rows.some((r) => r.supplier_name === supplierFilter) && g.supplierName !== supplierFilter) return false;
       if (onlyNoCost && g.costCurrent != null) return false;
       return true;
     });
@@ -470,6 +470,15 @@ export function SupplierPriceView({ products, variants }: { products: Product[];
                   <strong className="text-foreground tabular-nums">{money(g.bestPrice)}</strong>
                   {g.bestSupplier ? ` · ${g.bestSupplier}` : ""}
                 </span>
+                {g.supplierName ? (
+                  <span className="text-xs text-muted-foreground">
+                    Proveedor habitual: <strong className="text-foreground">{g.supplierName}</strong>
+                  </span>
+                ) : g.supplierId ? (
+                  <span className="text-xs text-amber-700 dark:text-amber-400">
+                    Proveedor habitual no encontrado (id inválido)
+                  </span>
+                ) : null}
                 <span className="text-xs text-muted-foreground">
                   Costo actual:{" "}
                   <strong className={g.costCurrent != null ? "text-foreground tabular-nums" : "text-amber-700"}>

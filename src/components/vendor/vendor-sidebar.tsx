@@ -293,32 +293,18 @@ export default function VendorSidebar({
   rail = false,
   onToggleRail,
 }: VendorSidebarProps) {
-  // Grupos colapsables del sidebar.
-  const [catalogOpen, setCatalogOpen] = useState(true);
-  const [marketingOpen, setMarketingOpen] = useState(true);
-  const [herramientasOpen, setHerramientasOpen] = useState(true);
-  const [clientesOpen, setClientesOpen] = useState(true);
-  const [finanzasOpen, setFinanzasOpen] = useState(true);
-  const [analisisOpen, setAnalisisOpen] = useState(true);
+  // Grupo abierto en el sidebar (acordeón: solo uno a la vez, null = todos cerrados).
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
   useEffect(() => {
     try {
-      const c = window.localStorage.getItem("portal659-sidebar-groups");
-      if (c) {
-        const o = JSON.parse(c);
-        if (typeof o.catalog === "boolean") setCatalogOpen(o.catalog);
-        if (typeof o.marketing === "boolean") setMarketingOpen(o.marketing);
-        if (typeof o.herramientas === "boolean") setHerramientasOpen(o.herramientas);
-        if (typeof o.clientes === "boolean") setClientesOpen(o.clientes);
-        if (typeof o.finanzas === "boolean") setFinanzasOpen(o.finanzas);
-        if (typeof o.analisis === "boolean") setAnalisisOpen(o.analisis);
-      }
+      const c = window.localStorage.getItem("portal659-sidebar-group");
+      if (c) setOpenGroup(c);
     } catch { /* noop */ }
   }, []);
-  const persistGroups = useCallback((next: { catalog?: boolean; marketing?: boolean; herramientas?: boolean; clientes?: boolean; finanzas?: boolean; analisis?: boolean }) => {
+  const persistGroup = useCallback((next: string | null) => {
     try {
-      const cur = JSON.parse(window.localStorage.getItem("portal659-sidebar-groups") || "{}");
-      const merged = { ...cur, ...next };
-      window.localStorage.setItem("portal659-sidebar-groups", JSON.stringify(merged));
+      if (next === null) window.localStorage.removeItem("portal659-sidebar-group");
+      else window.localStorage.setItem("portal659-sidebar-group", next);
     } catch { /* noop */ }
   }, []);
 
@@ -549,13 +535,13 @@ export default function VendorSidebar({
                 <div>
                   <button
                     type="button"
-                    onClick={() => { setCatalogOpen((v) => { const n = !v; persistGroups({ catalog: n }); return n; }); }}
+                    onClick={() => { setOpenGroup(openGroup === 'catalogo' ? null : 'catalogo'); persistGroup(openGroup === 'catalogo' ? null : 'catalogo'); }}
                     className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
                     <span>📦 Catálogo</span>
-                    <span className="text-xs">{catalogOpen ? "▾" : "▸"}</span>
+                    <span className="text-xs">{openGroup === 'catalogo' ? "▾" : "▸"}</span>
                   </button>
-                  {catalogOpen && (
+                  {openGroup === 'catalogo' && (
                     <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
                       <NavButton active={currentTab === "menu"} onClick={() => handleTab("menu")} icon={ShoppingBag} label="Catálogo" badge={menuCount} />
                       <NavButton active={currentTab === "servicios"} onClick={() => handleTab("servicios")} icon={CalendarDays} label="Servicios" />
@@ -571,13 +557,13 @@ export default function VendorSidebar({
                 <div>
                   <button
                     type="button"
-                    onClick={() => { setMarketingOpen((v) => { const n = !v; persistGroups({ marketing: n }); return n; }); }}
+                    onClick={() => { setOpenGroup(openGroup === 'marketing' ? null : 'marketing'); persistGroup(openGroup === 'marketing' ? null : 'marketing'); }}
                     className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
                     <span>🎯 Marketing</span>
-                    <span className="text-xs">{marketingOpen ? "▾" : "▸"}</span>
+                    <span className="text-xs">{openGroup === 'marketing' ? "▾" : "▸"}</span>
                   </button>
-                  {marketingOpen && (
+                  {openGroup === 'marketing' && (
                     <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
                       <NavButton active={currentTab === "promos"} onClick={() => handleTab("promos")} icon={Share} label="Promos" />
                       {isEstetica && (
@@ -593,13 +579,13 @@ export default function VendorSidebar({
                 <div>
                   <button
                     type="button"
-                    onClick={() => { setHerramientasOpen((v) => { const n = !v; persistGroups({ herramientas: n }); return n; }); }}
+                    onClick={() => { setOpenGroup(openGroup === 'herramientas' ? null : 'herramientas'); persistGroup(openGroup === 'herramientas' ? null : 'herramientas'); }}
                     className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
                     <span>🛠️ Herramientas</span>
-                    <span className="text-xs">{herramientasOpen ? "▾" : "▸"}</span>
+                    <span className="text-xs">{openGroup === 'herramientas' ? "▾" : "▸"}</span>
                   </button>
-                  {herramientasOpen && (
+                  {openGroup === 'herramientas' && (
                     <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
                       {botLinks}
                       <NavButton active={currentTab === "galeria"} onClick={() => handleTab("galeria")} icon={Image} label="Galería" />
@@ -612,13 +598,13 @@ export default function VendorSidebar({
                 <div>
                   <button
                     type="button"
-                    onClick={() => { setClientesOpen((v) => { const n = !v; persistGroups({ clientes: n }); return n; }); }}
+                    onClick={() => { setOpenGroup(openGroup === 'clientes' ? null : 'clientes'); persistGroup(openGroup === 'clientes' ? null : 'clientes'); }}
                     className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
                     <span>👥 Clientes</span>
-                    <span className="text-xs">{clientesOpen ? "▾" : "▸"}</span>
+                    <span className="text-xs">{openGroup === 'clientes' ? "▾" : "▸"}</span>
                   </button>
-                  {clientesOpen && (
+                  {openGroup === 'clientes' && (
                     <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
                       <NavButton active={currentTab === "clientes"} onClick={() => handleTab("clientes")} icon={Users} label="Clientes" />
                     </div>
@@ -630,13 +616,13 @@ export default function VendorSidebar({
                 <div>
                   <button
                     type="button"
-                    onClick={() => { setFinanzasOpen((v) => { const n = !v; persistGroups({ finanzas: n }); return n; }); }}
+                    onClick={() => { setOpenGroup(openGroup === 'finanzas' ? null : 'finanzas'); persistGroup(openGroup === 'finanzas' ? null : 'finanzas'); }}
                     className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
                     <span>💰 Finanzas</span>
-                    <span className="text-xs">{finanzasOpen ? "▾" : "▸"}</span>
+                    <span className="text-xs">{openGroup === 'finanzas' ? "▾" : "▸"}</span>
                   </button>
-                  {finanzasOpen && (
+                  {openGroup === 'finanzas' && (
                     <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
                       {canPos && (
                         <NavButton active={currentTab === "gastos"} onClick={() => handleTab("gastos")} icon={Receipt} label="Gastos" />
@@ -653,13 +639,13 @@ export default function VendorSidebar({
               <div>
                 <button
                   type="button"
-                  onClick={() => { setAnalisisOpen((v) => { const n = !v; persistGroups({ analisis: n }); return n; }); }}
+                  onClick={() => { setOpenGroup(openGroup === 'analisis' ? null : 'analisis'); persistGroup(openGroup === 'analisis' ? null : 'analisis'); }}
                   className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                 >
                   <span>📈 Estadísticas</span>
-                  <span className="text-xs">{analisisOpen ? "▾" : "▸"}</span>
+                  <span className="text-xs">{openGroup === 'analisis' ? "▾" : "▸"}</span>
                 </button>
-                {analisisOpen && (
+                {openGroup === 'analisis' && (
                   <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
                     {ANALISIS_ITEMS.filter((i) => i.tab !== "reviews" && (!isEmployee || i.tab === "history")).map((item) => (
                       <NavButton key={item.tab} active={currentTab === item.tab} onClick={() => handleTab(item.tab)} icon={item.icon} label={item.label} />
@@ -707,13 +693,13 @@ export default function VendorSidebar({
                 <div>
                   <button
                     type="button"
-                    onClick={() => { setCatalogOpen((v) => { const n = !v; persistGroups({ catalog: n }); return n; }); }}
+                    onClick={() => { setOpenGroup(openGroup === 'catalogo' ? null : 'catalogo'); persistGroup(openGroup === 'catalogo' ? null : 'catalogo'); }}
                     className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
                     <span>📦 Catálogo</span>
-                    <span className="text-xs">{catalogOpen ? "▾" : "▸"}</span>
+                    <span className="text-xs">{openGroup === 'catalogo' ? "▾" : "▸"}</span>
                   </button>
-                  {catalogOpen && (
+                  {openGroup === 'catalogo' && (
                     <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
                       {GESTION_ITEMS.filter((i) => ["menu", "recetas"].includes(i.tab) && i.show(isGastro, isModa, isComercio, canScreens)).map((item) => (
                         <NavButton
@@ -737,13 +723,13 @@ export default function VendorSidebar({
                 <div>
                   <button
                     type="button"
-                    onClick={() => { setMarketingOpen((v) => { const n = !v; persistGroups({ marketing: n }); return n; }); }}
+                    onClick={() => { setOpenGroup(openGroup === 'marketing' ? null : 'marketing'); persistGroup(openGroup === 'marketing' ? null : 'marketing'); }}
                     className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
                     <span>🎯 Marketing</span>
-                    <span className="text-xs">{marketingOpen ? "▾" : "▸"}</span>
+                    <span className="text-xs">{openGroup === 'marketing' ? "▾" : "▸"}</span>
                   </button>
-                  {marketingOpen && (
+                  {openGroup === 'marketing' && (
                     <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
                       {GESTION_ITEMS.filter((i) => ["promos", "tarjetas"].includes(i.tab) && i.show(isGastro, isModa, isComercio, canScreens)).map((item) => (
                         <NavButton
@@ -764,13 +750,13 @@ export default function VendorSidebar({
                 <div>
                   <button
                     type="button"
-                    onClick={() => { setHerramientasOpen((v) => { const n = !v; persistGroups({ herramientas: n }); return n; }); }}
+                    onClick={() => { setOpenGroup(openGroup === 'herramientas' ? null : 'herramientas'); persistGroup(openGroup === 'herramientas' ? null : 'herramientas'); }}
                     className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
                     <span>🛠️ Herramientas</span>
-                    <span className="text-xs">{herramientasOpen ? "▾" : "▸"}</span>
+                    <span className="text-xs">{openGroup === 'herramientas' ? "▾" : "▸"}</span>
                   </button>
-                  {herramientasOpen && (
+                  {openGroup === 'herramientas' && (
                     <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
                       {GESTION_ITEMS.filter((i) => i.tab === "pantalla" && i.show(isGastro, isModa, isComercio, canScreens)).map((item) => (
                         <NavButton
@@ -791,13 +777,13 @@ export default function VendorSidebar({
                 <div>
                   <button
                     type="button"
-                    onClick={() => { setClientesOpen((v) => { const n = !v; persistGroups({ clientes: n }); return n; }); }}
+                    onClick={() => { setOpenGroup(openGroup === 'clientes' ? null : 'clientes'); persistGroup(openGroup === 'clientes' ? null : 'clientes'); }}
                     className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
                     <span>👥 Clientes</span>
-                    <span className="text-xs">{clientesOpen ? "▾" : "▸"}</span>
+                    <span className="text-xs">{openGroup === 'clientes' ? "▾" : "▸"}</span>
                   </button>
-                  {clientesOpen && (
+                  {openGroup === 'clientes' && (
                     <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
                       {GESTION_ITEMS.filter((i) => i.tab === "clientes" && i.show(isGastro, isModa, isComercio, canScreens)).map((item) => (
                         <NavButton
@@ -817,13 +803,13 @@ export default function VendorSidebar({
                 <div>
                   <button
                     type="button"
-                    onClick={() => { setFinanzasOpen((v) => { const n = !v; persistGroups({ finanzas: n }); return n; }); }}
+                    onClick={() => { setOpenGroup(openGroup === 'finanzas' ? null : 'finanzas'); persistGroup(openGroup === 'finanzas' ? null : 'finanzas'); }}
                     className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
                     <span>💰 Finanzas</span>
-                    <span className="text-xs">{finanzasOpen ? "▾" : "▸"}</span>
+                    <span className="text-xs">{openGroup === 'finanzas' ? "▾" : "▸"}</span>
                   </button>
-                  {finanzasOpen && (
+                  {openGroup === 'finanzas' && (
                     <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
                       {GESTION_ITEMS.filter((i) => i.tab === "gastos" && i.show(isGastro, isModa, isComercio, canScreens)).map((item) => (
                         <NavButton
@@ -846,13 +832,13 @@ export default function VendorSidebar({
               <div>
                 <button
                   type="button"
-                  onClick={() => { setAnalisisOpen((v) => { const n = !v; persistGroups({ analisis: n }); return n; }); }}
+                  onClick={() => { setOpenGroup(openGroup === 'analisis' ? null : 'analisis'); persistGroup(openGroup === 'analisis' ? null : 'analisis'); }}
                   className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                 >
                   <span>📈 Estadísticas</span>
-                  <span className="text-xs">{analisisOpen ? "▾" : "▸"}</span>
+                  <span className="text-xs">{openGroup === 'analisis' ? "▾" : "▸"}</span>
                 </button>
-                {analisisOpen && (
+                {openGroup === 'analisis' && (
                   <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
                     {ANALISIS_ITEMS.filter((i) => i.tab !== "reviews" && (!isEmployee || i.tab === "history")).map((item) => (
                       <NavButton key={item.tab} active={currentTab === item.tab} onClick={() => handleTab(item.tab)} icon={item.icon} label={item.label} />

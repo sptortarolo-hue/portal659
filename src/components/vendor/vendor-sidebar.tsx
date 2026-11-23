@@ -429,7 +429,9 @@ export default function VendorSidebar({
 
   const operaciones = (
     <>
-      <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Operaciones</p>
+      {navView === "classic" && (
+        <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Operaciones</p>
+      )}
       <div className="space-y-0.5">
         {isService ? (
           <>
@@ -568,7 +570,7 @@ export default function VendorSidebar({
 
   const gestion = !isEmployee && (
     <>
-      <SectionLabel>Gestión</SectionLabel>
+      {navView === "classic" && <SectionLabel>Gestión</SectionLabel>}
       <div className="space-y-0.5">
         {isService ? (
           <>
@@ -603,7 +605,7 @@ export default function VendorSidebar({
 
   const analisis = (
     <>
-      <SectionLabel>Análisis</SectionLabel>
+      {navView === "classic" && <SectionLabel>Análisis</SectionLabel>}
       <div className="space-y-0.5">
         {ANALISIS_ITEMS.filter((i) => !isEmployee || i.tab === "history").map((item) => (
           <NavButton

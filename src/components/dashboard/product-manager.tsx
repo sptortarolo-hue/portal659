@@ -1061,25 +1061,6 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
                     { label: "Descargar plantilla", icon: "📄", onClick: () => { window.location.href = "/api/vendor/products/template"; } },
                   ],
                 },
-                {
-                  label: "Importar desde",
-                  items: [
-                    { label: "Foto/PDF de carta", icon: "📸", onClick: () => {} },
-                    { label: "FUDO", icon: "📋", onClick: () => {} },
-                    { label: "WhatsApp Catalogue", icon: "💬", onClick: () => {} },
-                  ],
-                },
-                ...(canEditCost
-                  ? [
-                      {
-                        label: "Herramientas",
-                        items: [
-                          { label: "Generar códigos SKU", icon: "⚡", onClick: () => {} },
-                          { label: "Etiquetas térmicas", icon: "🖨️", onClick: () => {} },
-                        ],
-                      },
-                    ]
-                  : []),
               ]}
             />
             <Button size="sm" onClick={() => { if (editingId || showForm) resetForm(); else setShowForm(true); }}>

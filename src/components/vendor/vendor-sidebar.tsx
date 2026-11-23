@@ -13,7 +13,6 @@ import {
   BarChart3,
   History,
   Star,
-  ExternalLink,
   LogOut,
   Home,
   Sparkles,
@@ -24,7 +23,6 @@ import {
   Users,
   MessageSquare,
   CalendarDays,
-  ClipboardList,
   Boxes,
   Image,
   BookOpen,
@@ -32,7 +30,6 @@ import {
   Gift,
   Monitor,
   ChevronLeft,
-  ChevronRight,
   Wrench,
 } from "lucide-react";
 import type { ConfigSectionStatus } from "@/components/dashboard/config-nav";
@@ -296,25 +293,10 @@ export default function VendorSidebar({
   rail = false,
   onToggleRail,
 }: VendorSidebarProps) {
-  // Vista de navegación: "classic" (lista plana original) o "new" (grupos
-  // colapsables). Persiste por navegador; default "new".
-  const [navView, setNavView] = useState<"classic" | "new">("new");
-  useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem("portal659-nav-view");
-      if (saved === "classic" || saved === "new") setNavView(saved);
-    } catch { /* noop */ }
-  }, []);
-  const toggleNavView = useCallback(() => {
-    setNavView((v) => {
-      const next = v === "new" ? "classic" : "new";
-      try { window.localStorage.setItem("portal659-nav-view", next); } catch { /* noop */ }
-      return next;
-    });
-  }, []);
-
-  // Grupos colapsables del sidebar (solo en vista "new").
+  // Grupos colapsables del sidebar.
   const [catalogOpen, setCatalogOpen] = useState(true);
+  const [marketingOpen, setMarketingOpen] = useState(true);
+  const [herramientasOpen, setHerramientasOpen] = useState(true);
   const [clientesOpen, setClientesOpen] = useState(true);
   const [finanzasOpen, setFinanzasOpen] = useState(true);
   const [analisisOpen, setAnalisisOpen] = useState(true);
@@ -324,13 +306,15 @@ export default function VendorSidebar({
       if (c) {
         const o = JSON.parse(c);
         if (typeof o.catalog === "boolean") setCatalogOpen(o.catalog);
+        if (typeof o.marketing === "boolean") setMarketingOpen(o.marketing);
+        if (typeof o.herramientas === "boolean") setHerramientasOpen(o.herramientas);
         if (typeof o.clientes === "boolean") setClientesOpen(o.clientes);
         if (typeof o.finanzas === "boolean") setFinanzasOpen(o.finanzas);
         if (typeof o.analisis === "boolean") setAnalisisOpen(o.analisis);
       }
     } catch { /* noop */ }
   }, []);
-  const persistGroups = useCallback((next: { catalog?: boolean; clientes?: boolean; finanzas?: boolean; analisis?: boolean }) => {
+  const persistGroups = useCallback((next: { catalog?: boolean; marketing?: boolean; herramientas?: boolean; clientes?: boolean; finanzas?: boolean; analisis?: boolean }) => {
     try {
       const cur = JSON.parse(window.localStorage.getItem("portal659-sidebar-groups") || "{}");
       const merged = { ...cur, ...next };
@@ -427,226 +411,23 @@ export default function VendorSidebar({
     />
   );
 
-  const operaciones = (
-    <>
-      {navView === "classic" && (
-        <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Operaciones</p>
-      )}
-      <div className="space-y-0.5">
-        {isService ? (
-          <>
-            {/* Taller: el tablero primero; luego agenda, presupuestos y caja.
-                Estética mantiene su orden actual. */}
-            {isTaller && (
-              <NavButton
-                active={currentTab === "taller" as any}
-                onClick={() => handleTab("taller" as any)}
-                icon={Wrench}
-                label="Taller"
-                badge={openOrdersCount}
-              />
-            )}
-            <NavButton
-              active={currentTab === "pos"}
-              onClick={() => handleTab("pos")}
-              icon={CalendarDays}
-              label="Turnos"
-              badge={pendingBookingsCount}
-            />
-            {!isTaller && (
-              <NavButton
-                active={currentTab === "orders"}
-                onClick={() => handleTab("orders")}
-                icon={MessageSquare}
-                label={isEstetica ? "Consultas" : "Presupuestos"}
-                badge={pendingQuotesCount}
-              />
-            )}
-            {isTaller && (
-              <NavButton
-                active={currentTab === "orders"}
-                onClick={() => handleTab("orders")}
-                icon={MessageSquare}
-                label="Presupuestos"
-                badge={pendingQuotesCount}
-              />
-            )}
-            <NavButton
-              active={currentTab === "caja"}
-              onClick={() => handleTab("caja")}
-              icon={DollarSign}
-              label="Caja"
-            />
-            {isEstetica && (
-              <>
-                <NavButton
-                  active={currentTab === "pedidos"}
-                  onClick={() => handleTab("pedidos")}
-                  icon={Package}
-                  label="Pedidos"
-                  badge={orderCount}
-                />
-                <NavButton
-                  active={currentTab === "mostrador"}
-                  onClick={() => handleTab("mostrador")}
-                  icon={ShoppingBag}
-                  label="Mostrador"
-                />
-              </>
-            )}
-            {isEstetica && canFiscal && (
-              <NavButton
-                active={currentTab === "fiscal"}
-                onClick={() => handleTab("fiscal")}
-                icon={Receipt}
-                label="Facturación"
-              />
-            )}
-            {isEstetica && canInventory && (
-              <NavButton
-                active={currentTab === "inventario"}
-                onClick={() => handleTab("inventario")}
-                icon={Boxes}
-                label="Inventario"
-              />
-            )}
-            {isEstetica && (
-              <>
-                <NavButton
-                  active={currentTab === "menu"}
-                  onClick={() => handleTab("menu")}
-                  icon={ShoppingBag}
-                  label="Catalogo"
-                  badge={menuCount}
-                />
-                <NavButton
-                  active={currentTab === "servicios"}
-                  onClick={() => handleTab("servicios")}
-                  icon={CalendarDays}
-                  label="Servicios"
-                />
-              </>
-            )}
-          </>
-        ) : (
-          OPERACION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio)).map((item) => {
-            const count = item.badge ? item.badge(orderCount, kitchenCount) : 0;
-            const sync =
-              item.tab === "pos" ? pendingPosCount ?? 0
-              : item.tab === "mesas" ? pendingMesasCount ?? 0
-              : 0;
-            return (
-              <NavButton
-                key={item.tab}
-                active={currentTab === item.tab}
-                onClick={() => handleTab(item.tab)}
-                icon={item.icon}
-                label={item.label}
-                badge={count}
-                syncBadge={sync}
-              />
-            );
-          })
-        )}
-        {!isService && canFiscal && (
-          <NavButton
-            active={currentTab === "fiscal"}
-            onClick={() => handleTab("fiscal")}
-            icon={Receipt}
-            label="Facturación"
-          />
-        )}
-        {!isService && canInventory && (
-          <NavButton
-            active={currentTab === "inventario"}
-            onClick={() => handleTab("inventario")}
-            icon={Boxes}
-            label="Inventario"
-          />
-        )}
-      </div>
-    </>
-  );
+  // Los links de cuenta se descomponen en piezas: Plan → Finanzas, Bot →
+  // Herramientas, Manuales y Volver al final, preferencias de UI en el footer.
+  const planLink = planSlug && !isEmployee ? (
+    <NavLink href="/vendor/suscripcion" icon={Sparkles} label={`Plan ${planName ?? planSlug}`}>
+      <span className="text-primary">→</span>
+    </NavLink>
+  ) : null;
 
-  const gestion = !isEmployee && (
+  const botLinks = !isEmployee ? (
     <>
-      {navView === "classic" && <SectionLabel>Gestión</SectionLabel>}
-      <div className="space-y-0.5">
-        {isService ? (
-          <>
-            <NavButton active={currentTab === "galeria"} onClick={() => handleTab("galeria")} icon={Image} label="Galería" />
-            <NavButton active={currentTab === "config"} onClick={() => handleTab("config")} icon={ClipboardList} label="Configuración" />
-            <NavButton active={currentTab === "clientes"} onClick={() => handleTab("clientes")} icon={Users} label="Clientes" />
-            <NavButton active={currentTab === "promos"} onClick={() => handleTab("promos")} icon={Share} label="Promos" />
-            {/* Gastos: mismo gate que Caja (plan Gestión). El tab se renderiza
-                para todo vertical de servicios (ver page.tsx). */}
-            {canPos && (
-              <NavButton active={currentTab === "gastos"} onClick={() => handleTab("gastos")} icon={Receipt} label="Gastos" />
-            )}
-            {isEstetica && (
-              <NavButton active={currentTab === "tarjetas"} onClick={() => handleTab("tarjetas")} icon={Gift} label="Tarjetas" />
-            )}
-          </>
-        ) : (
-          GESTION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio, canScreens)).map((item) => (
-            <NavButton
-              key={item.tab}
-              active={currentTab === item.tab}
-              onClick={() => handleTab(item.tab)}
-              icon={item.tab === "menu" && (isComercio || isModa) ? ShoppingBag : item.icon}
-              label={item.tab === "menu" && (isComercio || isModa) ? "Catalogo" : item.label}
-              suffix={item.tab === "menu" ? item.suffix?.(menuCount) : undefined}
-            />
-          ))
-        )}
-      </div>
+      <NavLink href="/vendor/wa-bot" icon={Bot} label="Bot de WhatsApp" />
+      <NavLink href="/vendor/wa-bot/conversaciones" icon={MessageSquare} label="Conversaciones" />
     </>
-  );
+  ) : null;
 
-  const analisis = (
-    <>
-      {navView === "classic" && <SectionLabel>Análisis</SectionLabel>}
-      <div className="space-y-0.5">
-        {ANALISIS_ITEMS.filter((i) => !isEmployee || i.tab === "history").map((item) => (
-          <NavButton
-            key={item.tab}
-            active={currentTab === item.tab}
-            onClick={() => handleTab(item.tab)}
-            icon={item.icon}
-            label={item.label}
-          />
-        ))}
-      </div>
-    </>
-  );
-
-  // Los links que estaban en el footer pasan al menú como secciones propias
-  // (así no queda un footer larguísimo y no hace scroll en la primera vista).
-  const cuenta = (
-    <>
-      <SectionLabel>Mi cuenta</SectionLabel>
-      <div className="space-y-0.5">
-        {planSlug && !isEmployee && (
-          <NavLink href="/vendor/suscripcion" icon={Sparkles} label={`Plan ${planName ?? planSlug}`}>
-            <span className="text-primary">→</span>
-          </NavLink>
-        )}
-        {!isEmployee && (
-          <>
-            <NavLink href="/vendor/wa-bot" icon={Bot} label="Bot de WhatsApp" />
-            <NavLink href="/vendor/wa-bot/conversaciones" icon={MessageSquare} label="Conversaciones" />
-          </>
-        )}
-        <NavLink href="/manuales" icon={BookOpen} label="Manuales" external />
-        <div className="pt-1">
-          <PanelUiSwitch />
-        </div>
-        {!isStaffMember && (
-          <NavLink href="/" icon={LogOut} label="Volver al sitio" />
-        )}
-      </div>
-    </>
-  );
+  const manualesLink = <NavLink href="/manuales" icon={BookOpen} label="Manuales" external />;
+  const volverLink = !isStaffMember ? <NavLink href="/" icon={LogOut} label="Volver al sitio" /> : null;
 
   // ---- Modo riel (desktop) ----
   if (!wide) {
@@ -736,17 +517,11 @@ export default function VendorSidebar({
         {/* Nav principal. Vista "new": grupos colapsables con Ventas siempre
             visible. Vista "classic": lista plana original. */}
         <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
-          {navView === "classic" ? (
+          {isService ? (
             <>
               <div>{hoyItem}</div>
-              <div>{operaciones}</div>
-              {gestion && <div>{gestion}</div>}
-              <div>{analisis}</div>
-              <div>{cuenta}</div>
-            </>
-          ) : isService ? (
-            <>
-              <div>{hoyItem}</div>
+              {/* OPERACIÓN DIARIA: sin tocar (sin Facturación ni Inventario,
+                  que se mueven a Finanzas y Catálogo). */}
               <div>
                 <SectionLabel><span className="text-sm">⚡</span> Ventas</SectionLabel>
                 <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
@@ -767,15 +542,10 @@ export default function VendorSidebar({
                       <NavButton active={currentTab === "mostrador"} onClick={() => handleTab("mostrador")} icon={ShoppingBag} label="Mostrador" />
                     </>
                   )}
-                  {isEstetica && canFiscal && (
-                    <NavButton active={currentTab === "fiscal"} onClick={() => handleTab("fiscal")} icon={Receipt} label="Facturación" />
-                  )}
-                  {isEstetica && canInventory && (
-                    <NavButton active={currentTab === "inventario"} onClick={() => handleTab("inventario")} icon={Boxes} label="Inventario" />
-                  )}
                 </div>
               </div>
-              {isEstetica && (
+              {/* CATÁLOGO */}
+              {isEstetica && !isEmployee && (
                 <div>
                   <button
                     type="button"
@@ -789,58 +559,126 @@ export default function VendorSidebar({
                     <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
                       <NavButton active={currentTab === "menu"} onClick={() => handleTab("menu")} icon={ShoppingBag} label="Catálogo" badge={menuCount} />
                       <NavButton active={currentTab === "servicios"} onClick={() => handleTab("servicios")} icon={CalendarDays} label="Servicios" />
+                      {canInventory && (
+                        <NavButton active={currentTab === "inventario"} onClick={() => handleTab("inventario")} icon={Boxes} label="Inventario" />
+                      )}
                     </div>
                   )}
                 </div>
               )}
-              {!isEstetica && (
+              {/* MARKETING */}
+              {!isEmployee && (
                 <div>
                   <button
                     type="button"
-                    onClick={() => { setCatalogOpen((v) => { const n = !v; persistGroups({ catalog: n }); return n; }); }}
+                    onClick={() => { setMarketingOpen((v) => { const n = !v; persistGroups({ marketing: n }); return n; }); }}
                     className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
-                    <span>🗂️ Gestión</span>
-                    <span className="text-xs">{catalogOpen ? "▾" : "▸"}</span>
+                    <span>🎯 Marketing</span>
+                    <span className="text-xs">{marketingOpen ? "▾" : "▸"}</span>
                   </button>
-                  {catalogOpen && (
+                  {marketingOpen && (
                     <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
-                      <NavButton active={currentTab === "galeria"} onClick={() => handleTab("galeria")} icon={Image} label="Galería" />
-                      <NavButton active={currentTab === "config"} onClick={() => handleTab("config")} icon={ClipboardList} label="Configuración" />
-                      <NavButton active={currentTab === "clientes"} onClick={() => handleTab("clientes")} icon={Users} label="Clientes" />
                       <NavButton active={currentTab === "promos"} onClick={() => handleTab("promos")} icon={Share} label="Promos" />
-                      {canPos && (
-                        <NavButton active={currentTab === "gastos"} onClick={() => handleTab("gastos")} icon={Receipt} label="Gastos" />
-                      )}
                       {isEstetica && (
                         <NavButton active={currentTab === "tarjetas"} onClick={() => handleTab("tarjetas")} icon={Gift} label="Tarjetas" />
                       )}
+                      <NavButton active={currentTab === "reviews"} onClick={() => handleTab("reviews")} icon={Star} label="Reseñas" />
                     </div>
                   )}
                 </div>
               )}
+              {/* HERRAMIENTAS */}
+              {!isEmployee && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => { setHerramientasOpen((v) => { const n = !v; persistGroups({ herramientas: n }); return n; }); }}
+                    className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
+                  >
+                    <span>🛠️ Herramientas</span>
+                    <span className="text-xs">{herramientasOpen ? "▾" : "▸"}</span>
+                  </button>
+                  {herramientasOpen && (
+                    <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
+                      {botLinks}
+                      <NavButton active={currentTab === "galeria"} onClick={() => handleTab("galeria")} icon={Image} label="Galería" />
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* CLIENTES */}
+              {!isEmployee && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => { setClientesOpen((v) => { const n = !v; persistGroups({ clientes: n }); return n; }); }}
+                    className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
+                  >
+                    <span>👥 Clientes</span>
+                    <span className="text-xs">{clientesOpen ? "▾" : "▸"}</span>
+                  </button>
+                  {clientesOpen && (
+                    <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
+                      <NavButton active={currentTab === "clientes"} onClick={() => handleTab("clientes")} icon={Users} label="Clientes" />
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* FINANZAS */}
+              {!isEmployee && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => { setFinanzasOpen((v) => { const n = !v; persistGroups({ finanzas: n }); return n; }); }}
+                    className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
+                  >
+                    <span>💰 Finanzas</span>
+                    <span className="text-xs">{finanzasOpen ? "▾" : "▸"}</span>
+                  </button>
+                  {finanzasOpen && (
+                    <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
+                      {canPos && (
+                        <NavButton active={currentTab === "gastos"} onClick={() => handleTab("gastos")} icon={Receipt} label="Gastos" />
+                      )}
+                      {isEstetica && canFiscal && (
+                        <NavButton active={currentTab === "fiscal"} onClick={() => handleTab("fiscal")} icon={Receipt} label="Facturación" />
+                      )}
+                      {planLink}
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* ESTADÍSTICAS */}
               <div>
                 <button
                   type="button"
                   onClick={() => { setAnalisisOpen((v) => { const n = !v; persistGroups({ analisis: n }); return n; }); }}
                   className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                 >
-                  <span>📊 Análisis</span>
+                  <span>📈 Estadísticas</span>
                   <span className="text-xs">{analisisOpen ? "▾" : "▸"}</span>
                 </button>
                 {analisisOpen && (
                   <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
-                    {ANALISIS_ITEMS.filter((i) => !isEmployee || i.tab === "history").map((item) => (
+                    {ANALISIS_ITEMS.filter((i) => i.tab !== "reviews" && (!isEmployee || i.tab === "history")).map((item) => (
                       <NavButton key={item.tab} active={currentTab === item.tab} onClick={() => handleTab(item.tab)} icon={item.icon} label={item.label} />
                     ))}
                   </div>
                 )}
               </div>
-              <div>{cuenta}</div>
+              {/* Accesos directos */}
+              {!isEmployee && (
+                <NavButton active={currentTab === "config"} onClick={() => handleTab("config")} icon={Settings} label="Configuración" />
+              )}
+              {manualesLink}
+              {volverLink}
             </>
           ) : (
             <>
               <div>{hoyItem}</div>
+              {/* OPERACIÓN DIARIA: sin tocar (sin Facturación ni Inventario,
+                  que se mueven a Finanzas y Catálogo). */}
               <div>
                 <SectionLabel><span className="text-sm">⚡</span> Ventas</SectionLabel>
                 <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
@@ -862,14 +700,9 @@ export default function VendorSidebar({
                       />
                     );
                   })}
-                  {!isService && canFiscal && (
-                    <NavButton active={currentTab === "fiscal"} onClick={() => handleTab("fiscal")} icon={Receipt} label="Facturación" />
-                  )}
-                  {!isService && canInventory && (
-                    <NavButton active={currentTab === "inventario"} onClick={() => handleTab("inventario")} icon={Boxes} label="Inventario" />
-                  )}
                 </div>
               </div>
+              {/* CATÁLOGO */}
               {!isEmployee && (
                 <div>
                   <button
@@ -882,7 +715,7 @@ export default function VendorSidebar({
                   </button>
                   {catalogOpen && (
                     <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
-                      {GESTION_ITEMS.filter((i) => ["menu", "promos", "recetas", "pantalla"].includes(i.tab) && i.show(isGastro, isModa, isComercio, canScreens)).map((item) => (
+                      {GESTION_ITEMS.filter((i) => ["menu", "recetas"].includes(i.tab) && i.show(isGastro, isModa, isComercio, canScreens)).map((item) => (
                         <NavButton
                           key={item.tab}
                           active={currentTab === item.tab}
@@ -892,10 +725,68 @@ export default function VendorSidebar({
                           suffix={item.tab === "menu" ? item.suffix?.(menuCount) : undefined}
                         />
                       ))}
+                      {canInventory && (
+                        <NavButton active={currentTab === "inventario"} onClick={() => handleTab("inventario")} icon={Boxes} label="Inventario" />
+                      )}
                     </div>
                   )}
                 </div>
               )}
+              {/* MARKETING */}
+              {!isEmployee && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => { setMarketingOpen((v) => { const n = !v; persistGroups({ marketing: n }); return n; }); }}
+                    className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
+                  >
+                    <span>🎯 Marketing</span>
+                    <span className="text-xs">{marketingOpen ? "▾" : "▸"}</span>
+                  </button>
+                  {marketingOpen && (
+                    <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
+                      {GESTION_ITEMS.filter((i) => ["promos", "tarjetas"].includes(i.tab) && i.show(isGastro, isModa, isComercio, canScreens)).map((item) => (
+                        <NavButton
+                          key={item.tab}
+                          active={currentTab === item.tab}
+                          onClick={() => handleTab(item.tab)}
+                          icon={item.icon}
+                          label={item.label}
+                        />
+                      ))}
+                      <NavButton active={currentTab === "reviews"} onClick={() => handleTab("reviews")} icon={Star} label="Reseñas" />
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* HERRAMIENTAS */}
+              {!isEmployee && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => { setHerramientasOpen((v) => { const n = !v; persistGroups({ herramientas: n }); return n; }); }}
+                    className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
+                  >
+                    <span>🛠️ Herramientas</span>
+                    <span className="text-xs">{herramientasOpen ? "▾" : "▸"}</span>
+                  </button>
+                  {herramientasOpen && (
+                    <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
+                      {GESTION_ITEMS.filter((i) => i.tab === "pantalla" && i.show(isGastro, isModa, isComercio, canScreens)).map((item) => (
+                        <NavButton
+                          key={item.tab}
+                          active={currentTab === item.tab}
+                          onClick={() => handleTab(item.tab)}
+                          icon={item.icon}
+                          label={item.label}
+                        />
+                      ))}
+                      {botLinks}
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* CLIENTES */}
               {!isEmployee && (
                 <div>
                   <button
@@ -921,6 +812,7 @@ export default function VendorSidebar({
                   )}
                 </div>
               )}
+              {/* FINANZAS */}
               {!isEmployee && (
                 <div>
                   <button
@@ -933,7 +825,7 @@ export default function VendorSidebar({
                   </button>
                   {finanzasOpen && (
                     <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
-                      {GESTION_ITEMS.filter((i) => ["gastos", "tarjetas"].includes(i.tab) && i.show(isGastro, isModa, isComercio, canScreens)).map((item) => (
+                      {GESTION_ITEMS.filter((i) => i.tab === "gastos" && i.show(isGastro, isModa, isComercio, canScreens)).map((item) => (
                         <NavButton
                           key={item.tab}
                           active={currentTab === item.tab}
@@ -942,10 +834,33 @@ export default function VendorSidebar({
                           label={item.label}
                         />
                       ))}
+                      {canFiscal && (
+                        <NavButton active={currentTab === "fiscal"} onClick={() => handleTab("fiscal")} icon={Receipt} label="Facturación" />
+                      )}
+                      {planLink}
                     </div>
                   )}
                 </div>
               )}
+              {/* ESTADÍSTICAS */}
+              <div>
+                <button
+                  type="button"
+                  onClick={() => { setAnalisisOpen((v) => { const n = !v; persistGroups({ analisis: n }); return n; }); }}
+                  className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
+                >
+                  <span>📈 Estadísticas</span>
+                  <span className="text-xs">{analisisOpen ? "▾" : "▸"}</span>
+                </button>
+                {analisisOpen && (
+                  <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
+                    {ANALISIS_ITEMS.filter((i) => i.tab !== "reviews" && (!isEmployee || i.tab === "history")).map((item) => (
+                      <NavButton key={item.tab} active={currentTab === item.tab} onClick={() => handleTab(item.tab)} icon={item.icon} label={item.label} />
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* Accesos directos */}
               {!isEmployee && GESTION_ITEMS.filter((i) => i.tab === "config" && i.show(isGastro, isModa, isComercio, canScreens)).map((item) => (
                 <NavButton
                   key={item.tab}
@@ -955,40 +870,14 @@ export default function VendorSidebar({
                   label={item.label}
                 />
               ))}
-              <div>
-                <button
-                  type="button"
-                  onClick={() => { setAnalisisOpen((v) => { const n = !v; persistGroups({ analisis: n }); return n; }); }}
-                  className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
-                >
-                  <span>📊 Análisis</span>
-                  <span className="text-xs">{analisisOpen ? "▾" : "▸"}</span>
-                </button>
-                {analisisOpen && (
-                  <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
-                    {ANALISIS_ITEMS.filter((i) => !isEmployee || i.tab === "history").map((item) => (
-                      <NavButton key={item.tab} active={currentTab === item.tab} onClick={() => handleTab(item.tab)} icon={item.icon} label={item.label} />
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div>{cuenta}</div>
+              {manualesLink}
+              {volverLink}
             </>
           )}
         </nav>
-        {/* Toggle de vista de navegación (clásica / nueva). */}
+        {/* Footer: preferencia de diseño del panel. */}
         <div className="border-t border-border px-3 py-2">
-          <button
-            type="button"
-            onClick={toggleNavView}
-            className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-            title={navView === "new" ? "Cambiar a vista clásica" : "Cambiar a vista nueva"}
-          >
-            <span>Vista de menú</span>
-            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${navView === "new" ? "bg-primary-light text-primary" : "bg-muted text-muted-foreground"}`}>
-              {navView === "new" ? "Nueva" : "Clásica"}
-            </span>
-          </button>
+          <PanelUiSwitch />
         </div>
       </aside>
     </>

@@ -77,11 +77,14 @@ export const CONFIG_SECTION_GROUPS: Array<{
   label: string;
   sections: string[];
 }> = [
-  { id: "negocio", label: "Local", sections: ["perfil", "ubicacion", "contacto"] },
-  { id: "ventas", label: "Ventas", sections: ["pagos", "menu", "catalogo", "carta"] },
+  // Agrupación alineada con el sidebar: el usuario ve las mismas cosas con
+  // los mismos nombres en ambos lugares (antes "Ventas" ≠ "Ventas" y "Gestión"
+  // era un cajón de sastre).
+  { id: "negocio", label: "Tu negocio", sections: ["perfil", "ubicacion", "contacto", "menu", "catalogo"] },
+  { id: "cobros", label: "Cobros y venta online", sections: ["pagos", "carta"] },
+  { id: "tienda", label: "Tu tienda", sections: ["preparacion", "equipo", "impresora", "balanza", "alertas", "fiscal"] },
   { id: "turnera", label: "Turnera", sections: ["turnera", "fichas", "packs"] },
-  { id: "servicio", label: "Servicio", sections: ["servicios", "urgencia"] },
-  { id: "operacion", label: "Operación", sections: ["preparacion", "equipo", "impresora", "balanza", "alertas", "fiscal"] },
+  { id: "servicio", label: "Servicios", sections: ["servicios", "urgencia"] },
 ];
 
 export const CONFIG_SECTION_FALLBACK_ICON: LucideIcon = Settings2;

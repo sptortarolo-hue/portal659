@@ -167,7 +167,12 @@ export async function POST(request: Request) {
       sku: skuRaw || null,
       description: String(col(r, "descripcion", "description") || "").trim() || null,
       category: String(col(r, "categoria", "category") || "").trim() || "otras",
-      type: String(col(r, "tipo", "type") || "").trim() || "product",
+      type: (() => {
+        const raw = String(col(r, "tipo", "type") || "").trim().toLowerCase();
+        if (raw === "comida" || raw === "food") return "food";
+        if (raw === "servicio" || raw === "service") return "service";
+        return "product";
+      })(),
       promo_price: numVal(col(r, "precio_promo", "promo_price")),
       promo_only: boolVal(col(r, "promo_solo", "promo_only")) === true,
       currency: String(col(r, "moneda", "currency") || "").trim() || "ARS",

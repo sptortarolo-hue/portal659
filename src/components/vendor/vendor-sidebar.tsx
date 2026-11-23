@@ -509,7 +509,7 @@ export default function VendorSidebar({
               {/* OPERACIÓN DIARIA: sin tocar (sin Facturación ni Inventario,
                   que se mueven a Finanzas y Catálogo). */}
               <div>
-                <SectionLabel><span className="text-sm">⚡</span> Ventas</SectionLabel>
+                <SectionLabel>Ventas</SectionLabel>
                 <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
                   {isTaller && (
                     <NavButton active={currentTab === "taller" as any} onClick={() => handleTab("taller" as any)} icon={Wrench} label="Taller" badge={openOrdersCount} />
@@ -538,7 +538,7 @@ export default function VendorSidebar({
                     onClick={() => { setOpenGroup(openGroup === 'catalogo' ? null : 'catalogo'); persistGroup(openGroup === 'catalogo' ? null : 'catalogo'); }}
                     className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
-                    <span>📦 Catálogo</span>
+                    <span>Catálogo</span>
                     <span className="text-xs">{openGroup === 'catalogo' ? "▾" : "▸"}</span>
                   </button>
                   {openGroup === 'catalogo' && (
@@ -560,7 +560,7 @@ export default function VendorSidebar({
                     onClick={() => { setOpenGroup(openGroup === 'marketing' ? null : 'marketing'); persistGroup(openGroup === 'marketing' ? null : 'marketing'); }}
                     className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
-                    <span>🎯 Marketing</span>
+                    <span>Marketing</span>
                     <span className="text-xs">{openGroup === 'marketing' ? "▾" : "▸"}</span>
                   </button>
                   {openGroup === 'marketing' && (
@@ -582,7 +582,7 @@ export default function VendorSidebar({
                     onClick={() => { setOpenGroup(openGroup === 'herramientas' ? null : 'herramientas'); persistGroup(openGroup === 'herramientas' ? null : 'herramientas'); }}
                     className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
-                    <span>🛠️ Herramientas</span>
+                    <span>Herramientas</span>
                     <span className="text-xs">{openGroup === 'herramientas' ? "▾" : "▸"}</span>
                   </button>
                   {openGroup === 'herramientas' && (
@@ -601,7 +601,7 @@ export default function VendorSidebar({
                     onClick={() => { setOpenGroup(openGroup === 'clientes' ? null : 'clientes'); persistGroup(openGroup === 'clientes' ? null : 'clientes'); }}
                     className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
-                    <span>👥 Clientes</span>
+                    <span>Clientes</span>
                     <span className="text-xs">{openGroup === 'clientes' ? "▾" : "▸"}</span>
                   </button>
                   {openGroup === 'clientes' && (
@@ -619,7 +619,7 @@ export default function VendorSidebar({
                     onClick={() => { setOpenGroup(openGroup === 'finanzas' ? null : 'finanzas'); persistGroup(openGroup === 'finanzas' ? null : 'finanzas'); }}
                     className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
-                    <span>💰 Finanzas</span>
+                    <span>Finanzas</span>
                     <span className="text-xs">{openGroup === 'finanzas' ? "▾" : "▸"}</span>
                   </button>
                   {openGroup === 'finanzas' && (
@@ -642,7 +642,7 @@ export default function VendorSidebar({
                   onClick={() => { setOpenGroup(openGroup === 'analisis' ? null : 'analisis'); persistGroup(openGroup === 'analisis' ? null : 'analisis'); }}
                   className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                 >
-                  <span>📈 Estadísticas</span>
+                  <span>Estadísticas</span>
                   <span className="text-xs">{openGroup === 'analisis' ? "▾" : "▸"}</span>
                 </button>
                 {openGroup === 'analisis' && (
@@ -666,7 +666,7 @@ export default function VendorSidebar({
               {/* OPERACIÓN DIARIA: sin tocar (sin Facturación ni Inventario,
                   que se mueven a Finanzas y Catálogo). */}
               <div>
-                <SectionLabel><span className="text-sm">⚡</span> Ventas</SectionLabel>
+                <SectionLabel>Ventas</SectionLabel>
                 <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
                   {OPERACION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio)).map((item) => {
                     const count = item.badge ? item.badge(orderCount, kitchenCount) : 0;
@@ -696,7 +696,7 @@ export default function VendorSidebar({
                     onClick={() => { setOpenGroup(openGroup === 'catalogo' ? null : 'catalogo'); persistGroup(openGroup === 'catalogo' ? null : 'catalogo'); }}
                     className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
-                    <span>📦 Catálogo</span>
+                    <span>Catálogo</span>
                     <span className="text-xs">{openGroup === 'catalogo' ? "▾" : "▸"}</span>
                   </button>
                   {openGroup === 'catalogo' && (
@@ -726,7 +726,7 @@ export default function VendorSidebar({
                     onClick={() => { setOpenGroup(openGroup === 'marketing' ? null : 'marketing'); persistGroup(openGroup === 'marketing' ? null : 'marketing'); }}
                     className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
-                    <span>🎯 Marketing</span>
+                    <span>Marketing</span>
                     <span className="text-xs">{openGroup === 'marketing' ? "▾" : "▸"}</span>
                   </button>
                   {openGroup === 'marketing' && (
@@ -753,7 +753,7 @@ export default function VendorSidebar({
                     onClick={() => { setOpenGroup(openGroup === 'herramientas' ? null : 'herramientas'); persistGroup(openGroup === 'herramientas' ? null : 'herramientas'); }}
                     className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
-                    <span>🛠️ Herramientas</span>
+                    <span>Herramientas</span>
                     <span className="text-xs">{openGroup === 'herramientas' ? "▾" : "▸"}</span>
                   </button>
                   {openGroup === 'herramientas' && (
@@ -780,7 +780,7 @@ export default function VendorSidebar({
                     onClick={() => { setOpenGroup(openGroup === 'clientes' ? null : 'clientes'); persistGroup(openGroup === 'clientes' ? null : 'clientes'); }}
                     className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
-                    <span>👥 Clientes</span>
+                    <span>Clientes</span>
                     <span className="text-xs">{openGroup === 'clientes' ? "▾" : "▸"}</span>
                   </button>
                   {openGroup === 'clientes' && (
@@ -806,7 +806,7 @@ export default function VendorSidebar({
                     onClick={() => { setOpenGroup(openGroup === 'finanzas' ? null : 'finanzas'); persistGroup(openGroup === 'finanzas' ? null : 'finanzas'); }}
                     className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
-                    <span>💰 Finanzas</span>
+                    <span>Finanzas</span>
                     <span className="text-xs">{openGroup === 'finanzas' ? "▾" : "▸"}</span>
                   </button>
                   {openGroup === 'finanzas' && (
@@ -835,7 +835,7 @@ export default function VendorSidebar({
                   onClick={() => { setOpenGroup(openGroup === 'analisis' ? null : 'analisis'); persistGroup(openGroup === 'analisis' ? null : 'analisis'); }}
                   className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                 >
-                  <span>📈 Estadísticas</span>
+                  <span>Estadísticas</span>
                   <span className="text-xs">{openGroup === 'analisis' ? "▾" : "▸"}</span>
                 </button>
                 {openGroup === 'analisis' && (

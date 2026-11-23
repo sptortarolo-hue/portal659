@@ -106,7 +106,7 @@ import { PrepTimeControl } from "@/components/vendor/prep-time-control";
 import { PrinterStatus } from "@/components/vendor/printer-status";
 import { CashShiftPill } from "@/components/vendor/cash-shift-pill";
 import { StoreSwitcher, type OwnerStore } from "@/components/vendor/store-switcher";
-import { GlobalSearch } from "@/components/dashboard/global-search";
+
 import { OfflineBanner } from "@/components/vendor/offline-banner";
 import { OfflineConflicts } from "@/components/vendor/offline-conflicts";
 import { usePendingSyncCount } from "@/hooks/use-online-status";
@@ -1993,11 +1993,6 @@ function VendorDashboardInner() {
                   <span className="hidden sm:inline">{todayLabel}</span>
                 </p>
               </div>
-              {/* Búsqueda global (solo desktop) */}
-              <div className="hidden md:block">
-                <GlobalSearch onNavigate={(tab) => handleTabChange(tab as any)} />
-              </div>
-
               {/* Controles operativos en desktop (fila 1). El empleado no toca config: solo caja. */}
               <div className="hidden sm:flex items-center gap-3">
                 {!isEmployee && (

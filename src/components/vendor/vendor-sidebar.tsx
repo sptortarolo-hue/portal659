@@ -33,7 +33,6 @@ import {
   Wrench,
 } from "lucide-react";
 import type { ConfigSectionStatus } from "@/components/dashboard/config-nav";
-import { PanelUiSwitch } from "@/components/panel-ui/panel-ui-switch";
 import { useState, useEffect, useCallback } from "react";
 
 type Tab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "gastos" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario" | "galeria" | "promos" | "tarjetas" | "pantalla" | "servicios" | "taller";
@@ -861,10 +860,6 @@ export default function VendorSidebar({
             </>
           )}
         </nav>
-        {/* Footer: preferencia de diseño del panel. */}
-        <div className="border-t border-border px-3 py-2">
-          <PanelUiSwitch />
-        </div>
       </aside>
     </>
   );

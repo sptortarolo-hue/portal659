@@ -255,7 +255,7 @@ function NavLink({
   );
 }
 
-function SectionLabel({ children }: { children: string }) {
+function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
       {children}
@@ -747,10 +747,9 @@ export default function VendorSidebar({
           ) : isService ? (
             <>
               <div>{hoyItem}</div>
-              {/* VENTAS: siempre visible, sin colapsar */}
               <div>
-                <SectionLabel>Ventas</SectionLabel>
-                <div className="space-y-0.5">
+                <SectionLabel><span className="flex items-center gap-2"><span className="text-sm">⚡</span> Ventas</span></SectionLabel>
+                <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
                   {isTaller && (
                     <NavButton active={currentTab === "taller" as any} onClick={() => handleTab("taller" as any)} icon={Wrench} label="Taller" badge={openOrdersCount} />
                   )}
@@ -776,19 +775,18 @@ export default function VendorSidebar({
                   )}
                 </div>
               </div>
-              {/* CATÁLOGO: colapsable */}
               {isEstetica && (
                 <div>
                   <button
                     type="button"
                     onClick={() => { setCatalogOpen((v) => { const n = !v; persistGroups({ catalog: n }); return n; }); }}
-                    className="flex w-full items-center justify-between px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+                    className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
-                    <span>Catálogo</span>
+                    <span className="flex items-center gap-2"><span className="text-sm">📦</span> Catálogo</span>
                     <span className="text-xs">{catalogOpen ? "▾" : "▸"}</span>
                   </button>
                   {catalogOpen && (
-                    <div className="space-y-0.5">
+                    <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
                       <NavButton active={currentTab === "menu"} onClick={() => handleTab("menu")} icon={ShoppingBag} label="Catálogo" badge={menuCount} />
                       <NavButton active={currentTab === "servicios"} onClick={() => handleTab("servicios")} icon={CalendarDays} label="Servicios" />
                     </div>
@@ -800,13 +798,13 @@ export default function VendorSidebar({
                   <button
                     type="button"
                     onClick={() => { setCatalogOpen((v) => { const n = !v; persistGroups({ catalog: n }); return n; }); }}
-                    className="flex w-full items-center justify-between px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+                    className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
-                    <span>Gestión</span>
+                    <span className="flex items-center gap-2"><span className="text-sm">🗂️</span> Gestión</span>
                     <span className="text-xs">{catalogOpen ? "▾" : "▸"}</span>
                   </button>
                   {catalogOpen && (
-                    <div className="space-y-0.5">
+                    <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
                       <NavButton active={currentTab === "galeria"} onClick={() => handleTab("galeria")} icon={Image} label="Galería" />
                       <NavButton active={currentTab === "config"} onClick={() => handleTab("config")} icon={ClipboardList} label="Configuración" />
                       <NavButton active={currentTab === "clientes"} onClick={() => handleTab("clientes")} icon={Users} label="Clientes" />
@@ -821,18 +819,17 @@ export default function VendorSidebar({
                   )}
                 </div>
               )}
-              {/* ANÁLISIS: colapsable */}
               <div>
                 <button
                   type="button"
                   onClick={() => { setAnalisisOpen((v) => { const n = !v; persistGroups({ analisis: n }); return n; }); }}
-                  className="flex w-full items-center justify-between px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+                  className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                 >
-                  <span>Análisis</span>
+                  <span className="flex items-center gap-2"><span className="text-sm">📊</span> Análisis</span>
                   <span className="text-xs">{analisisOpen ? "▾" : "▸"}</span>
                 </button>
                 {analisisOpen && (
-                  <div className="space-y-0.5">
+                  <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
                     {ANALISIS_ITEMS.filter((i) => !isEmployee || i.tab === "history").map((item) => (
                       <NavButton key={item.tab} active={currentTab === item.tab} onClick={() => handleTab(item.tab)} icon={item.icon} label={item.label} />
                     ))}
@@ -844,10 +841,9 @@ export default function VendorSidebar({
           ) : (
             <>
               <div>{hoyItem}</div>
-              {/* VENTAS: siempre visible, sin colapsar */}
               <div>
-                <SectionLabel>Ventas</SectionLabel>
-                <div className="space-y-0.5">
+                <SectionLabel><span className="flex items-center gap-2"><span className="text-sm">⚡</span> Ventas</span></SectionLabel>
+                <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
                   {OPERACION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio)).map((item) => {
                     const count = item.badge ? item.badge(orderCount, kitchenCount) : 0;
                     const sync =
@@ -874,19 +870,18 @@ export default function VendorSidebar({
                   )}
                 </div>
               </div>
-              {/* CATÁLOGO: colapsable */}
               {!isEmployee && (
                 <div>
                   <button
                     type="button"
                     onClick={() => { setCatalogOpen((v) => { const n = !v; persistGroups({ catalog: n }); return n; }); }}
-                    className="flex w-full items-center justify-between px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+                    className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
-                    <span>Catálogo</span>
+                    <span className="flex items-center gap-2"><span className="text-sm">📦</span> Catálogo</span>
                     <span className="text-xs">{catalogOpen ? "▾" : "▸"}</span>
                   </button>
                   {catalogOpen && (
-                    <div className="space-y-0.5">
+                    <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
                       {GESTION_ITEMS.filter((i) => ["menu", "promos", "recetas", "pantalla"].includes(i.tab) && i.show(isGastro, isModa, isComercio, canScreens)).map((item) => (
                         <NavButton
                           key={item.tab}
@@ -901,19 +896,18 @@ export default function VendorSidebar({
                   )}
                 </div>
               )}
-              {/* CLIENTES: colapsable */}
               {!isEmployee && (
                 <div>
                   <button
                     type="button"
                     onClick={() => { setClientesOpen((v) => { const n = !v; persistGroups({ clientes: n }); return n; }); }}
-                    className="flex w-full items-center justify-between px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+                    className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
-                    <span>Clientes</span>
+                    <span className="flex items-center gap-2"><span className="text-sm">👥</span> Clientes</span>
                     <span className="text-xs">{clientesOpen ? "▾" : "▸"}</span>
                   </button>
                   {clientesOpen && (
-                    <div className="space-y-0.5">
+                    <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
                       {GESTION_ITEMS.filter((i) => i.tab === "clientes" && i.show(isGastro, isModa, isComercio, canScreens)).map((item) => (
                         <NavButton
                           key={item.tab}
@@ -927,19 +921,18 @@ export default function VendorSidebar({
                   )}
                 </div>
               )}
-              {/* FINANZAS: colapsable */}
               {!isEmployee && (
                 <div>
                   <button
                     type="button"
                     onClick={() => { setFinanzasOpen((v) => { const n = !v; persistGroups({ finanzas: n }); return n; }); }}
-                    className="flex w-full items-center justify-between px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+                    className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
-                    <span>Finanzas</span>
+                    <span className="flex items-center gap-2"><span className="text-sm">💰</span> Finanzas</span>
                     <span className="text-xs">{finanzasOpen ? "▾" : "▸"}</span>
                   </button>
                   {finanzasOpen && (
-                    <div className="space-y-0.5">
+                    <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
                       {GESTION_ITEMS.filter((i) => ["gastos", "tarjetas", "pantalla"].includes(i.tab) && i.show(isGastro, isModa, isComercio, canScreens)).map((item) => (
                         <NavButton
                           key={item.tab}
@@ -953,7 +946,6 @@ export default function VendorSidebar({
                   )}
                 </div>
               )}
-              {/* CONFIGURACIÓN: link directo */}
               {!isEmployee && GESTION_ITEMS.filter((i) => i.tab === "config" && i.show(isGastro, isModa, isComercio, canScreens)).map((item) => (
                 <NavButton
                   key={item.tab}
@@ -963,18 +955,17 @@ export default function VendorSidebar({
                   label={item.label}
                 />
               ))}
-              {/* ANÁLISIS: colapsable */}
               <div>
                 <button
                   type="button"
                   onClick={() => { setAnalisisOpen((v) => { const n = !v; persistGroups({ analisis: n }); return n; }); }}
-                  className="flex w-full items-center justify-between px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+                  className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                 >
-                  <span>Análisis</span>
+                  <span className="flex items-center gap-2"><span className="text-sm">📊</span> Análisis</span>
                   <span className="text-xs">{analisisOpen ? "▾" : "▸"}</span>
                 </button>
                 {analisisOpen && (
-                  <div className="space-y-0.5">
+                  <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
                     {ANALISIS_ITEMS.filter((i) => !isEmployee || i.tab === "history").map((item) => (
                       <NavButton key={item.tab} active={currentTab === item.tab} onClick={() => handleTab(item.tab)} icon={item.icon} label={item.label} />
                     ))}

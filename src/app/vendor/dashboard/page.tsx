@@ -192,10 +192,10 @@ function ConfigDesktopNav({
         if (items.length === 0) return null;
         return (
           <div key={g.id}>
-            <p className="px-2 mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <p className="px-2 mb-1 text-[10px] font-bold uppercase tracking-wider text-foreground/70">
               {g.label}
             </p>
-            <div className="space-y-0.5">
+            <div className="space-y-0.5 border-l-2 border-border/40 ml-2 pl-2">
               {items.map((id) => {
                 const Icon = configSectionIcon(id);
                 const st = getConfigSectionStatus(id, vendor);
@@ -388,18 +388,20 @@ function VendorDashboardInner() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // Modo riel (desktop): la sidebar izquierda se estrecha a íconos y los
   // grupos abren en flyout. Persiste por navegadora; default = riel.
-  const [rail, setRail] = useState(true);
+  const [rail, setRail] = useState(false);
   useEffect(() => {
     try {
-      const saved = window.localStorage.getItem("portal659-sidebar-rail");
-      if (saved === "0") setRail(false);
+      // Forzar expandido por defecto para que se vea la reorganización.
+      // El usuario puede colapsar manualmente con el botón del sidebar.
+      const saved = window.localStorage.getItem("portal659-sidebar-rail-v2");
       if (saved === "1") setRail(true);
-    } catch { /* storage bloqueado: default riel */ }
+      else setRail(false);
+    } catch { /* storage bloqueado: default expandido */ }
   }, []);
   const toggleRail = useCallback(() => {
     setRail((v) => {
       const next = !v;
-      try { window.localStorage.setItem("portal659-sidebar-rail", next ? "1" : "0"); } catch { /* noop */ }
+      try { window.localStorage.setItem("portal659-sidebar-rail-v2", next ? "1" : "0"); } catch { /* noop */ }
       return next;
     });
   }, []);

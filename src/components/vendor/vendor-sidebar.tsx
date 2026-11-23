@@ -257,7 +257,7 @@ function NavLink({
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+    <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
       {children}
     </p>
   );
@@ -748,7 +748,7 @@ export default function VendorSidebar({
             <>
               <div>{hoyItem}</div>
               <div>
-                <SectionLabel><span className="flex items-center gap-2"><span className="text-sm">⚡</span> Ventas</span></SectionLabel>
+                <SectionLabel><span className="text-sm">⚡</span> Ventas</SectionLabel>
                 <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
                   {isTaller && (
                     <NavButton active={currentTab === "taller" as any} onClick={() => handleTab("taller" as any)} icon={Wrench} label="Taller" badge={openOrdersCount} />
@@ -782,7 +782,7 @@ export default function VendorSidebar({
                     onClick={() => { setCatalogOpen((v) => { const n = !v; persistGroups({ catalog: n }); return n; }); }}
                     className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
-                    <span className="flex items-center gap-2"><span className="text-sm">📦</span> Catálogo</span>
+                    <span>📦 Catálogo</span>
                     <span className="text-xs">{catalogOpen ? "▾" : "▸"}</span>
                   </button>
                   {catalogOpen && (
@@ -800,7 +800,7 @@ export default function VendorSidebar({
                     onClick={() => { setCatalogOpen((v) => { const n = !v; persistGroups({ catalog: n }); return n; }); }}
                     className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
-                    <span className="flex items-center gap-2"><span className="text-sm">🗂️</span> Gestión</span>
+                    <span>🗂️ Gestión</span>
                     <span className="text-xs">{catalogOpen ? "▾" : "▸"}</span>
                   </button>
                   {catalogOpen && (
@@ -825,7 +825,7 @@ export default function VendorSidebar({
                   onClick={() => { setAnalisisOpen((v) => { const n = !v; persistGroups({ analisis: n }); return n; }); }}
                   className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                 >
-                  <span className="flex items-center gap-2"><span className="text-sm">📊</span> Análisis</span>
+                  <span>📊 Análisis</span>
                   <span className="text-xs">{analisisOpen ? "▾" : "▸"}</span>
                 </button>
                 {analisisOpen && (
@@ -842,7 +842,7 @@ export default function VendorSidebar({
             <>
               <div>{hoyItem}</div>
               <div>
-                <SectionLabel><span className="flex items-center gap-2"><span className="text-sm">⚡</span> Ventas</span></SectionLabel>
+                <SectionLabel><span className="text-sm">⚡</span> Ventas</SectionLabel>
                 <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
                   {OPERACION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio)).map((item) => {
                     const count = item.badge ? item.badge(orderCount, kitchenCount) : 0;
@@ -877,7 +877,7 @@ export default function VendorSidebar({
                     onClick={() => { setCatalogOpen((v) => { const n = !v; persistGroups({ catalog: n }); return n; }); }}
                     className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
-                    <span className="flex items-center gap-2"><span className="text-sm">📦</span> Catálogo</span>
+                    <span>📦 Catálogo</span>
                     <span className="text-xs">{catalogOpen ? "▾" : "▸"}</span>
                   </button>
                   {catalogOpen && (
@@ -903,7 +903,7 @@ export default function VendorSidebar({
                     onClick={() => { setClientesOpen((v) => { const n = !v; persistGroups({ clientes: n }); return n; }); }}
                     className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
-                    <span className="flex items-center gap-2"><span className="text-sm">👥</span> Clientes</span>
+                    <span>👥 Clientes</span>
                     <span className="text-xs">{clientesOpen ? "▾" : "▸"}</span>
                   </button>
                   {clientesOpen && (
@@ -928,12 +928,12 @@ export default function VendorSidebar({
                     onClick={() => { setFinanzasOpen((v) => { const n = !v; persistGroups({ finanzas: n }); return n; }); }}
                     className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                   >
-                    <span className="flex items-center gap-2"><span className="text-sm">💰</span> Finanzas</span>
+                    <span>💰 Finanzas</span>
                     <span className="text-xs">{finanzasOpen ? "▾" : "▸"}</span>
                   </button>
                   {finanzasOpen && (
                     <div className="space-y-0.5 border-l-2 border-border/40 ml-3 pl-2">
-                      {GESTION_ITEMS.filter((i) => ["gastos", "tarjetas", "pantalla"].includes(i.tab) && i.show(isGastro, isModa, isComercio, canScreens)).map((item) => (
+                      {GESTION_ITEMS.filter((i) => ["gastos", "tarjetas"].includes(i.tab) && i.show(isGastro, isModa, isComercio, canScreens)).map((item) => (
                         <NavButton
                           key={item.tab}
                           active={currentTab === item.tab}
@@ -961,7 +961,7 @@ export default function VendorSidebar({
                   onClick={() => { setAnalisisOpen((v) => { const n = !v; persistGroups({ analisis: n }); return n; }); }}
                   className="flex w-full items-center justify-between px-3 py-1.5 mb-1 text-[11px] font-bold uppercase tracking-wider text-foreground/70 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                 >
-                  <span className="flex items-center gap-2"><span className="text-sm">📊</span> Análisis</span>
+                  <span>📊 Análisis</span>
                   <span className="text-xs">{analisisOpen ? "▾" : "▸"}</span>
                 </button>
                 {analisisOpen && (

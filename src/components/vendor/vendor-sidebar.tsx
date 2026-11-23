@@ -744,16 +744,40 @@ export default function VendorSidebar({
               <div>{analisis}</div>
               <div>{cuenta}</div>
             </>
-          ) : (
+          ) : isService ? (
             <>
               <div>{hoyItem}</div>
               {/* VENTAS: siempre visible, sin colapsar */}
               <div>
                 <SectionLabel>Ventas</SectionLabel>
-                <div className="space-y-0.5">{operaciones}</div>
+                <div className="space-y-0.5">
+                  {isTaller && (
+                    <NavButton active={currentTab === "taller" as any} onClick={() => handleTab("taller" as any)} icon={Wrench} label="Taller" badge={openOrdersCount} />
+                  )}
+                  <NavButton active={currentTab === "pos"} onClick={() => handleTab("pos")} icon={CalendarDays} label="Turnos" badge={pendingBookingsCount} />
+                  {!isTaller && (
+                    <NavButton active={currentTab === "orders"} onClick={() => handleTab("orders")} icon={MessageSquare} label={isEstetica ? "Consultas" : "Presupuestos"} badge={pendingQuotesCount} />
+                  )}
+                  {isTaller && (
+                    <NavButton active={currentTab === "orders"} onClick={() => handleTab("orders")} icon={MessageSquare} label="Presupuestos" badge={pendingQuotesCount} />
+                  )}
+                  <NavButton active={currentTab === "caja"} onClick={() => handleTab("caja")} icon={DollarSign} label="Caja" />
+                  {isEstetica && (
+                    <>
+                      <NavButton active={currentTab === "pedidos"} onClick={() => handleTab("pedidos")} icon={Package} label="Pedidos" badge={orderCount} />
+                      <NavButton active={currentTab === "mostrador"} onClick={() => handleTab("mostrador")} icon={ShoppingBag} label="Mostrador" />
+                    </>
+                  )}
+                  {isEstetica && canFiscal && (
+                    <NavButton active={currentTab === "fiscal"} onClick={() => handleTab("fiscal")} icon={Receipt} label="Facturación" />
+                  )}
+                  {isEstetica && canInventory && (
+                    <NavButton active={currentTab === "inventario"} onClick={() => handleTab("inventario")} icon={Boxes} label="Inventario" />
+                  )}
+                </div>
               </div>
               {/* CATÁLOGO: colapsable */}
-              {gestion && (
+              {isEstetica && (
                 <div>
                   <button
                     type="button"
@@ -763,7 +787,38 @@ export default function VendorSidebar({
                     <span>Catálogo</span>
                     <span className="text-xs">{catalogOpen ? "▾" : "▸"}</span>
                   </button>
-                  {catalogOpen && <div className="space-y-0.5">{gestion}</div>}
+                  {catalogOpen && (
+                    <div className="space-y-0.5">
+                      <NavButton active={currentTab === "menu"} onClick={() => handleTab("menu")} icon={ShoppingBag} label="Catálogo" badge={menuCount} />
+                      <NavButton active={currentTab === "servicios"} onClick={() => handleTab("servicios")} icon={CalendarDays} label="Servicios" />
+                    </div>
+                  )}
+                </div>
+              )}
+              {!isEstetica && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => { setCatalogOpen((v) => { const n = !v; persistGroups({ catalog: n }); return n; }); }}
+                    className="flex w-full items-center justify-between px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <span>Gestión</span>
+                    <span className="text-xs">{catalogOpen ? "▾" : "▸"}</span>
+                  </button>
+                  {catalogOpen && (
+                    <div className="space-y-0.5">
+                      <NavButton active={currentTab === "galeria"} onClick={() => handleTab("galeria")} icon={Image} label="Galería" />
+                      <NavButton active={currentTab === "config"} onClick={() => handleTab("config")} icon={ClipboardList} label="Configuración" />
+                      <NavButton active={currentTab === "clientes"} onClick={() => handleTab("clientes")} icon={Users} label="Clientes" />
+                      <NavButton active={currentTab === "promos"} onClick={() => handleTab("promos")} icon={Share} label="Promos" />
+                      {canPos && (
+                        <NavButton active={currentTab === "gastos"} onClick={() => handleTab("gastos")} icon={Receipt} label="Gastos" />
+                      )}
+                      {isEstetica && (
+                        <NavButton active={currentTab === "tarjetas"} onClick={() => handleTab("tarjetas")} icon={Gift} label="Tarjetas" />
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
               {/* ANÁLISIS: colapsable */}
@@ -776,7 +831,155 @@ export default function VendorSidebar({
                   <span>Análisis</span>
                   <span className="text-xs">{analisisOpen ? "▾" : "▸"}</span>
                 </button>
-                {analisisOpen && <div className="space-y-0.5">{analisis}</div>}
+                {analisisOpen && (
+                  <div className="space-y-0.5">
+                    {ANALISIS_ITEMS.filter((i) => !isEmployee || i.tab === "history").map((item) => (
+                      <NavButton key={item.tab} active={currentTab === item.tab} onClick={() => handleTab(item.tab)} icon={item.icon} label={item.label} />
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div>{cuenta}</div>
+            </>
+          ) : (
+            <>
+              <div>{hoyItem}</div>
+              {/* VENTAS: siempre visible, sin colapsar */}
+              <div>
+                <SectionLabel>Ventas</SectionLabel>
+                <div className="space-y-0.5">
+                  {OPERACION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio)).map((item) => {
+                    const count = item.badge ? item.badge(orderCount, kitchenCount) : 0;
+                    const sync =
+                      item.tab === "pos" ? pendingPosCount ?? 0
+                      : item.tab === "mesas" ? pendingMesasCount ?? 0
+                      : 0;
+                    return (
+                      <NavButton
+                        key={item.tab}
+                        active={currentTab === item.tab}
+                        onClick={() => handleTab(item.tab)}
+                        icon={item.icon}
+                        label={item.label}
+                        badge={count}
+                        syncBadge={sync}
+                      />
+                    );
+                  })}
+                  {!isService && canFiscal && (
+                    <NavButton active={currentTab === "fiscal"} onClick={() => handleTab("fiscal")} icon={Receipt} label="Facturación" />
+                  )}
+                  {!isService && canInventory && (
+                    <NavButton active={currentTab === "inventario"} onClick={() => handleTab("inventario")} icon={Boxes} label="Inventario" />
+                  )}
+                </div>
+              </div>
+              {/* CATÁLOGO: colapsable */}
+              {!isEmployee && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => { setCatalogOpen((v) => { const n = !v; persistGroups({ catalog: n }); return n; }); }}
+                    className="flex w-full items-center justify-between px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <span>Catálogo</span>
+                    <span className="text-xs">{catalogOpen ? "▾" : "▸"}</span>
+                  </button>
+                  {catalogOpen && (
+                    <div className="space-y-0.5">
+                      {GESTION_ITEMS.filter((i) => ["menu", "promos", "recetas", "pantalla"].includes(i.tab) && i.show(isGastro, isModa, isComercio, canScreens)).map((item) => (
+                        <NavButton
+                          key={item.tab}
+                          active={currentTab === item.tab}
+                          onClick={() => handleTab(item.tab)}
+                          icon={item.tab === "menu" && (isComercio || isModa) ? ShoppingBag : item.icon}
+                          label={item.tab === "menu" && (isComercio || isModa) ? "Catálogo" : item.label}
+                          suffix={item.tab === "menu" ? item.suffix?.(menuCount) : undefined}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* CLIENTES: colapsable */}
+              {!isEmployee && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => { setClientesOpen((v) => { const n = !v; persistGroups({ clientes: n }); return n; }); }}
+                    className="flex w-full items-center justify-between px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <span>Clientes</span>
+                    <span className="text-xs">{clientesOpen ? "▾" : "▸"}</span>
+                  </button>
+                  {clientesOpen && (
+                    <div className="space-y-0.5">
+                      {GESTION_ITEMS.filter((i) => i.tab === "clientes" && i.show(isGastro, isModa, isComercio, canScreens)).map((item) => (
+                        <NavButton
+                          key={item.tab}
+                          active={currentTab === item.tab}
+                          onClick={() => handleTab(item.tab)}
+                          icon={item.icon}
+                          label={item.label}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* FINANZAS: colapsable */}
+              {!isEmployee && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => { setFinanzasOpen((v) => { const n = !v; persistGroups({ finanzas: n }); return n; }); }}
+                    className="flex w-full items-center justify-between px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <span>Finanzas</span>
+                    <span className="text-xs">{finanzasOpen ? "▾" : "▸"}</span>
+                  </button>
+                  {finanzasOpen && (
+                    <div className="space-y-0.5">
+                      {GESTION_ITEMS.filter((i) => ["gastos", "tarjetas", "pantalla"].includes(i.tab) && i.show(isGastro, isModa, isComercio, canScreens)).map((item) => (
+                        <NavButton
+                          key={item.tab}
+                          active={currentTab === item.tab}
+                          onClick={() => handleTab(item.tab)}
+                          icon={item.icon}
+                          label={item.label}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* CONFIGURACIÓN: link directo */}
+              {!isEmployee && GESTION_ITEMS.filter((i) => i.tab === "config" && i.show(isGastro, isModa, isComercio, canScreens)).map((item) => (
+                <NavButton
+                  key={item.tab}
+                  active={currentTab === item.tab}
+                  onClick={() => handleTab(item.tab)}
+                  icon={item.icon}
+                  label={item.label}
+                />
+              ))}
+              {/* ANÁLISIS: colapsable */}
+              <div>
+                <button
+                  type="button"
+                  onClick={() => { setAnalisisOpen((v) => { const n = !v; persistGroups({ analisis: n }); return n; }); }}
+                  className="flex w-full items-center justify-between px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <span>Análisis</span>
+                  <span className="text-xs">{analisisOpen ? "▾" : "▸"}</span>
+                </button>
+                {analisisOpen && (
+                  <div className="space-y-0.5">
+                    {ANALISIS_ITEMS.filter((i) => !isEmployee || i.tab === "history").map((item) => (
+                      <NavButton key={item.tab} active={currentTab === item.tab} onClick={() => handleTab(item.tab)} icon={item.icon} label={item.label} />
+                    ))}
+                  </div>
+                )}
               </div>
               <div>{cuenta}</div>
             </>

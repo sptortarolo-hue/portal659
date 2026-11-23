@@ -1556,15 +1556,19 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
   // tipeo humano normal (pausas >250ms o teclas no-código) resetea la
   // ventana y no se ve afectado.
   const SCAN_BURST_MS = 250; // pausa máxima entre teclas de una misma lectura
+  // Gap máximo entre teclas de un escáner REAL: un lector USB tipea a ~5-30ms.
+  // Un humano escribiendo rápido va a ~100-150ms, así que no se confunde con scan.
+  const SCAN_MAX_GAP_MS = 100;
   const scanBurstRef = useRef({
     code: "",
     lastAt: 0,
     started: null as null | { el: HTMLInputElement | HTMLTextAreaElement; value: string },
+    maxGap: 0,
   });
   const resolveScanRef = useRef<(code: string, fromScan: boolean) => void>(() => {});
   resolveScanRef.current = resolveScanCode;
   function resetScanBurst() {
-    scanBurstRef.current = { code: "", lastAt: 0, started: null };
+    scanBurstRef.current = { code: "", lastAt: 0, started: null, maxGap: 0 };
   }
   /** Restaura el valor de un campo donde aterrizó una ráfaga, vía setter
    * nativo + evento input para que React (controlado) también lo registre. */
@@ -1599,7 +1603,17 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         const now = Date.now();
         const b = scanBurstRef.current;
         if (b.code && now - b.lastAt <= SCAN_BURST_MS) {
-          // Ráfaga en curso: el carácter no debe ensuciar el campo enfocado.
+          const gap = now - b.lastAt;
+          if (gap > b.maxGap) b.maxGap = gap;
+          if (isField) {
+            // NO preventDefault: la escritura humana debe llegar al campo.
+            // El escáner sigue acumulando en paralelo; al Enter se restaura
+            // el campo solo si es un scan real (ver rama Enter).
+            b.code += e.key;
+            b.lastAt = now;
+            return;
+          }
+          // Sin campo enfocado: evitar que el código ensucie el body (como antes).
           e.preventDefault();
           b.code += e.key;
           b.lastAt = now;
@@ -1611,6 +1625,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           started: isField
             ? { el: t as HTMLInputElement | HTMLTextAreaElement, value: (t as HTMLInputElement | HTMLTextAreaElement).value }
             : null,
+          maxGap: 0,
         };
         return;
       }
@@ -1619,13 +1634,20 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         const now = Date.now();
         // ≥4 chars: un EAN/ SKU real (un monto o teléfono tipeado a mano nunca
         // entra completo dentro de 250ms entre teclas).
-        if (b.code.length >= 4 && now - b.lastAt <= SCAN_BURST_MS) {
+        if (
+          b.code.length >= 4 &&
+          now - b.lastAt <= SCAN_BURST_MS &&
+          // Solo se considera scan real si los gaps entre teclas son de escáner
+          // (humano escribe más lento, así que su texto no se borra).
+          b.maxGap < SCAN_MAX_GAP_MS
+        ) {
           e.preventDefault();
           if (b.started) restoreFieldValue(b.started.el, b.started.value);
           const code = b.code;
           resetScanBurst();
           resolveScanRef.current(code, true);
         } else {
+          // No es un scan real: dejar el texto/Enter tal cual (escritura humana).
           resetScanBurst();
         }
         return;

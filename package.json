@@ -8,7 +8,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "test": "jest",
     "check:receipt": "node scripts/check-receipt-image.mjs && node scripts/check-share-receipt.mjs",
     "capture:manuales": "node scripts/capture-manuales.mjs"

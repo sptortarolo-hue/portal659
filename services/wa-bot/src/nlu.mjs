@@ -838,6 +838,7 @@ function buildItem(p, qty, norm, said) {
   return {
     offerId: p.id,
     name: p.name,
+    price: p.price != null ? Number(p.price) : null,
     qty: Math.max(1, qty),
     modifiers: [],
     variant: Object.keys(variant).length ? variant : undefined,

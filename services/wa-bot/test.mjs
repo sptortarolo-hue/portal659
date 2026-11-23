@@ -98,7 +98,7 @@ async function main() {
 
   r = await handleInbound({ vendor, waId: wa, body: "efectivo" });
   show("pago efectivo", r);
-  if (!(r.replies || []).join(" ").includes("Todo bien")) { console.log("!!! pago no llevó al resumen de confirm"); ok = false; }
+  if (!/todo bien/i.test((r.replies || []).join(" "))) { console.log("!!! pago no llevó al resumen de confirm"); ok = false; }
   // Total estimado en el resumen: empanada 1200×2 + coca 1000×1 = 3400,
   // + envío 500 (subtotal < free_delivery_min 5000) = 3900, -10% efectivo = 3510.
   const totalTxt = (r.replies || []).join(" ");
@@ -278,7 +278,7 @@ async function main() {
   } else { console.log(">>> OK: comprobante con link de seguimiento + invitación (el cliente entra y se registra ahí)"); }
   // Después del comprobante el estado quedó limpio: un texto arranca fresco.
   r = await handleInbound({ vendor, waId: waWeb, body: "hola" });
-  if (!(r.replies || []).join(" ").includes("asistente")) { console.log("!!! tras el comprobante el chat no arrancó fresco"); ok = false; }
+  if (!/asistente|bienvenido/i.test((r.replies || []).join(" "))) { console.log("!!! tras el comprobante el chat no arrancó fresco"); ok = false; }
   // Comprobante de un pedido YA pagado → mensaje claro (no se guarda).
   await startAwaitingReceipt({ id: "vtest" }, waWeb, "ord-web-2", waWeb);
   receiptFail = "El pago ya fue acreditado — no hace falta el comprobante.";

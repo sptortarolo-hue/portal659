@@ -113,6 +113,7 @@ function resolveOfferIds(products, items) {
       return {
         offerId: prod?.id || p.offerId || p.id,
         variantId: variant?.id,
+        price: prod?.price != null ? Number(prod.price) : (p.price != null ? Number(p.price) : null),
         name: p.name,
         qty: normalized.qty,
         unit: normalized.unit,
@@ -826,9 +827,10 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
       applyContactFields(state, parsed);
       const options = matchAllProducts(products, bareName(pp.said) || pp.said);
       if (options.length === 1) {
-        // Si el producto tiene variantes, preguntar cuál quiere antes de agregar
-        if (options[0].variants && options[0].variants.length > 0) {
-          if (askVariant(state, options[0], replies)) return;
+        // Si el producto tiene variantes y no se resolvió una, preguntar cuál quiere antes de agregar
+        const matchedVar = matchVariant(options[0], pp);
+        if (options[0].variants && options[0].variants.length > 0 && !matchedVar) {
+          if (askVariant(state, options[0], replies, vendor)) return await persist(state, vendor.id, waId, replies);
         }
         attachChosen(state, options[0], pp.qty, soloAmbiguo && !shouldMerge0, pp);
         state.handoffCount = 0;
@@ -916,7 +918,7 @@ async function pendingDetailAdd(state, vendor, waId, replies, qty) {
   state.welcomed = true;
   // Variantes primero: preguntar (qty conservada).
   if (Array.isArray(p.variants) && p.variants.length > 0) {
-    if (askVariant(state, p, replies)) {
+    if (askVariant(state, p, replies, vendor)) {
       state.pendingVariant.qty = qty;
       return await persist(state, vendor.id, waId, replies);
     }
@@ -1714,6 +1716,7 @@ async function handleStep({ vendor, text, state, replies, waId }) {
     } else {
       state.items = parsed.items.map((p) => ({
         offerId: p.offerId || p.id,
+        price: p.price,
         name: p.name,
         qty: Math.max(1, Number(p.qty) || 1),
         modifiers: p.modifiers || [],
@@ -1914,7 +1917,6 @@ function missingFields(state, vendor) {
   }
   if (state.method === "delivery") {
     if (!state.customerAddress) out.push("address");
-    if (!state.deliveryWindow) out.push("deliveryWindow");
   }
   if (!state.customerName) out.push("name");
   if (!state.payment && acceptsTransfer(vendor)) out.push("payment");
@@ -1980,12 +1982,12 @@ function attachChosen(state, chosen, qty, fromRedeclare, origItem) {
   const variant = origItem ? matchVariant(chosen, origItem) : null;
   const vid = variant?.id || null;
   if (fromRedeclare) {
-    state.items = [{ offerId: chosen.id, variantId: vid, name: chosen.name, qty: q, unit: chosen.unit || "unidad", weightKg: chosen.unit === "kg" ? q : null, modifiers: [] }];
+    state.items = [{ offerId: chosen.id, variantId: vid, price: chosen.price, name: chosen.name, qty: q, unit: chosen.unit || "unidad", weightKg: chosen.unit === "kg" ? q : null, modifiers: [] }];
     return;
   }
   const inCart = state.items.find((i) => i.offerId === chosen.id && (i.variantId || null) === vid);
   if (inCart) inCart.qty = q;
-  else mergeItems(state, [{ offerId: chosen.id, variantId: vid, name: chosen.name, qty: q, unit: chosen.unit || "unidad", weightKg: chosen.unit === "kg" ? q : null, modifiers: [] }]);
+  else mergeItems(state, [{ offerId: chosen.id, variantId: vid, price: chosen.price, name: chosen.name, qty: q, unit: chosen.unit || "unidad", weightKg: chosen.unit === "kg" ? q : null, modifiers: [] }]);
 }
 
 // Items EXACTOS de un mensaje mixto (exacto + genérico): se agregan igual,
@@ -1997,6 +1999,7 @@ function applyExactItems(state, items, shouldMerge) {
     return {
       offerId: p.offerId || p.id,
       variantId: p.variantId,
+      price: p.price ?? existing?.price ?? null,
       name: p.name,
       qty: normalized.qty,
       unit: normalized.unit,
@@ -2020,7 +2023,7 @@ function pendingProductAsk(state) {
 /** Pregunta al cliente qué variante quiere cuando un producto tiene varias.
  *  Devuelve true si preguntó y quedó esperando respuesta (state.pendingVariant).
  *  Si no hay variantes o ya eligió una, devuelve false. */
-function askVariant(state, product, replies) {
+function askVariant(state, product, replies, vendor) {
   const variants = Array.isArray(product.variants) ? product.variants : [];
   if (!variants.length) return false;
 
@@ -2184,6 +2187,7 @@ function applyParsed(state, parsed, waId) {
     return {
       offerId: p.offerId || p.id,
       variantId: p.variantId,
+      price: p.price ?? existing?.price ?? null,
       name: p.name,
       qty: normalized.qty,
       unit: normalized.unit,
@@ -2215,7 +2219,7 @@ function mergeItems(state, newItems, vendorId) {
     );
     if (existing) existing.qty = Math.max(1, Number(existing.qty || 0) + it.qty);
     else {
-      state.items.push({ name: it.name, offerId: it.offerId, variantId: it.variantId, qty: it.qty, unit: it.unit, weightKg: it.weightKg, modifiers: it.modifiers, comboMembers: it.comboMembers, note: it.note });
+      state.items.push({ name: it.name, offerId: it.offerId, variantId: it.variantId, price: it.price, qty: it.qty, unit: it.unit, weightKg: it.weightKg, modifiers: it.modifiers, comboMembers: it.comboMembers, note: it.note });
       // aggregate: ítem agregado al carrito (waId no está al alcance acá)
       try {
         trackEvent(vendorId, "funnel_item_added", undefined, { offerId: it.offerId, name: it.name, qty: it.qty });

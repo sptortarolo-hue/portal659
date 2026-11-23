@@ -99,7 +99,8 @@ export function pendingQuestionsTone(state) {
   if (state.pendingFields.includes("payment")) lines.push(`${n + 1}️⃣ ¿Pagás en efectivo o por transferencia?`), n++;
   const DOT = ["method", "address", "name", "payment"];
   const stepNum = DOT.findIndex((f) => state.pendingFields.includes(f)) + 1 || 1;
-  const stepLabel = { method: "Entrega", address: "Dirección", name: "Nombre", payment: "Pago" }[state.pendingFields[0] || "method"];
+  const stepLabel =
+    { method: "Entrega", address: "Dirección", name: "Nombre", payment: "Pago" }[state.pendingFields[0] || "method"] || "Datos";
   const itemCount = (state.items || []).reduce((s, i) => s + Number(i.qty || 1), 0);
   const sticky = `🧭 *Paso ${stepNum} de 4 · ${stepLabel}* · 🛒 *${itemCount} ${itemCount === 1 ? "item" : "items"}*\n`;
   const cart = state.items.length

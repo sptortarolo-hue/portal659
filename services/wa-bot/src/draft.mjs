@@ -50,6 +50,7 @@ export function normalizeDraftItem(item) {
     name: item.name || null,
     offerId: item.offerId || item.id || null,
     variantId: item.variantId || null,
+    price: item.price != null ? Number(item.price) : null,
     qty,
     unit,
     weightKg: unit === UNIT_KG ? weightKg : null,
@@ -82,7 +83,7 @@ export function applyDraftToCart(stateItems, draftItem) {
     existing.qty = Math.max(1, Number(existing.qty || 0) + it.qty);
     return items;
   }
-  items.push({ name: it.name, offerId: it.offerId, variantId: it.variantId, qty: it.qty, unit: it.unit, weightKg: it.weightKg, modifiers: it.modifiers, comboMembers: it.comboMembers, note: it.note });
+  items.push({ name: it.name, offerId: it.offerId, variantId: it.variantId, price: it.price, qty: it.qty, unit: it.unit, weightKg: it.weightKg, modifiers: it.modifiers, comboMembers: it.comboMembers, note: it.note });
   return items;
 }
 

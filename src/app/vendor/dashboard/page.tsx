@@ -26,14 +26,11 @@ import {
   Shirt,
   ShoppingBag,
   Utensils,
-  UtensilsCrossed,
   FileText,
   BarChart,
-  BarChart3,
   History,
   Star,
   Banknote,
-  Calculator,
   MessageSquare,
   DollarSign,
   Users,
@@ -43,9 +40,6 @@ import {
   BookOpen,
   Share,
   Gift,
-  Bot,
-  LogOut,
-  Settings,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 // Modal de recorte: solo se carga cuando se abre (fuera del bundle inicial).
@@ -106,7 +100,6 @@ import { PrepTimeControl } from "@/components/vendor/prep-time-control";
 import { PrinterStatus } from "@/components/vendor/printer-status";
 import { CashShiftPill } from "@/components/vendor/cash-shift-pill";
 import { StoreSwitcher, type OwnerStore } from "@/components/vendor/store-switcher";
-
 import { OfflineBanner } from "@/components/vendor/offline-banner";
 import { OfflineConflicts } from "@/components/vendor/offline-conflicts";
 import { usePendingSyncCount } from "@/hooks/use-online-status";
@@ -1299,22 +1292,6 @@ function VendorDashboardInner() {
   const isModa = vendor?.vertical === "moda";
   // Retail (moda y comercio): flow de pedido con aceptación explícita y sin cocina.
   const isRetail = isModa || isComercio;
-  // Items de gestión reutilizados en el sheet móvil "Más" (mismos que el sidebar).
-  const GESTION_ITEMS_LOCAL = [
-    { tab: "menu", label: "Catálogo", icon: UtensilsCrossed, show: (_g: boolean, _m: boolean, _c: boolean) => true },
-    { tab: "promos", label: "Promos", icon: Share, show: () => true },
-    { tab: "recetas", label: "Preparación y Costo", icon: Calculator, show: (g: boolean) => g },
-    { tab: "pantalla", label: "Pantalla TV", icon: Monitor, show: (_g: boolean, _m: boolean, _c: boolean, screens?: boolean) => !!screens },
-    { tab: "gastos", label: "Gastos", icon: Receipt, show: (g: boolean) => g },
-    { tab: "tarjetas", label: "Tarjetas", icon: Gift, show: (_g: boolean, m: boolean, c: boolean) => c || m },
-    { tab: "clientes", label: "Clientes", icon: Users, show: (g: boolean, m: boolean, c: boolean) => g || c || m },
-    { tab: "config", label: "Configuración", icon: Settings, show: () => true },
-  ] as const;
-  const ANALISIS_ITEMS_LOCAL = [
-    { tab: "analytics", label: "Estadísticas", icon: BarChart3 },
-    { tab: "history", label: "Histórico", icon: History },
-    { tab: "reviews", label: "Reseñas", icon: Star },
-  ] as const;
   // Destino del QR (carta de mesa vs micrositio): lo elige el comercio en el
   // generador del cartel; por defecto los servicios van a la vidriera.
   const shareToTienda = cartelTarget(vendor?.vertical, (vendor as any)?.carta_qr_target) === "tienda";
@@ -1424,10 +1401,6 @@ function VendorDashboardInner() {
   const effectivePlan = resolveVendorPlan(vendor, plans);
   const overLimit =
     effectivePlan.maxProducts != null && offers.length > effectivePlan.maxProducts;
-  const canInventory = effectivePlan.can("inventory");
-  const canScreens = effectivePlan.can("screens");
-  const planSlug = effectivePlan.plan?.slug ?? null;
-  const isStaffMember = staffRole === "staff";
   const planBannerData = {
     slug: effectivePlan.slug,
     status: effectivePlan.status,
@@ -2629,165 +2602,171 @@ function VendorDashboardInner() {
           <div className="lg:hidden fixed inset-0 z-40 bg-black/50" onClick={() => setMoreOpen(false)} />
           <div className="lg:hidden fixed bottom-0 inset-x-0 z-50 bg-card rounded-t-2xl border-t border-border p-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] shadow-xl">
             <button onClick={() => setMoreOpen(false)} className="mx-auto block w-10 h-1.5 bg-muted rounded-full mb-4" aria-label="Cerrar" />
-            {/* CATÁLOGO */}
-            {!isEmployee && (
-              <>
-                <p className="px-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">📦 Catálogo</p>
-                <div className="grid grid-cols-2 gap-1">
+            <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide mb-2">Administración</p>
+            <div className="grid grid-cols-2 gap-2">
+              {isService ? (
+                <>
+                  {isTaller && (
+                    <button onClick={() => { setTab("taller"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "taller" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                      <Wrench className="h-5 w-5" />Taller
+                    </button>
+                  )}
                   {!isEmployee && (
-                    <button onClick={() => { setTab("menu"); setMoreOpen(false); }} className={`flex flex-col items-center gap-1 p-2 rounded-xl border text-sm font-medium ${tab === "menu" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
-                      {isModa ? <Shirt className="h-5 w-5" /> : isComercio ? <ShoppingBag className="h-5 w-5" /> : <Utensils className="h-5 w-5" />}
-                      <span className="text-[10px]">{isRetail ? "Catálogo" : "Menú"} ({menuCount})</span>
+                    <button onClick={() => { setTab("galeria"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "galeria" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                      <Image className="h-5 w-5" />Galería
                     </button>
                   )}
-                  {(isGastro || isComercio) && !isEmployee && (
-                    <button onClick={() => { setTab("recetas"); setMoreOpen(false); }} className={`flex flex-col items-center gap-1 p-2 rounded-xl border text-sm font-medium ${tab === "recetas" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
-                      <FileText className="h-5 w-5" />
-                      <span className="text-[10px]">Preparación y Costo</span>
-                    </button>
+                  {!isEmployee && (
+                  <button onClick={() => { enterConfigTab(); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "config" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                    <Wrench className="h-5 w-5" />Configuración
+                  </button>
                   )}
-                  {canInventory && !isEmployee && (
-                    <button onClick={() => { setTab("inventario"); setMoreOpen(false); }} className={`flex flex-col items-center gap-1 p-2 rounded-xl border text-sm font-medium ${tab === "inventario" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
-                      <Boxes className="h-5 w-5" />
-                      <span className="text-[10px]">Inventario</span>
-                    </button>
+                  {!isEmployee && (
+                  <button onClick={() => { setTab("promos"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "promos" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                    <Share className="h-5 w-5" />Promos
+                  </button>
+                  )}
+                  {isHybrid && (
+                  <button onClick={() => { setTab("tarjetas"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "tarjetas" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                    <Gift className="h-5 w-5" />Tarjetas
+                  </button>
+                  )}
+                  {isHybrid && (
+                    <>
+                      <button onClick={() => { setTab("pedidos"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "pedidos" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                        <Package className="h-5 w-5" />Pedidos
+                      </button>
+                      <button onClick={() => { setTab("mostrador"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "mostrador" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                        <Monitor className="h-5 w-5" />Mostrador
+                      </button>
+                      {!isEmployee && (
+                      <button onClick={() => { setTab("menu"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "menu" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                        <ShoppingBag className="h-5 w-5" />Catálogo ({menuCount})
+                      </button>
+                      )}
+                      {!isEmployee && (
+                      <button onClick={() => { setTab("servicios"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "servicios" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                        <Sparkles className="h-5 w-5" />Servicios
+                      </button>
+                      )}
+                    </>
                   )}
                   {isHybrid && !isEmployee && (
-                    <button onClick={() => { setTab("galeria"); setMoreOpen(false); }} className={`flex flex-col items-center gap-1 p-2 rounded-xl border text-sm font-medium ${tab === "galeria" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
-                      <Image className="h-5 w-5" />
-                      <span className="text-[10px]">Galería</span>
+                    <button onClick={() => { setTab("gastos"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "gastos" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                      <Receipt className="h-5 w-5" />Gastos
                     </button>
                   )}
-                </div>
-              </>
-            )}
-            {/* MARKETING */}
-            {!isEmployee && (
-              <>
-                <p className="px-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1 mt-3">🎯 Marketing</p>
-                <div className="grid grid-cols-2 gap-1">
-                  {(isGastro || isComercio || isModa) && (
-                    <button onClick={() => { setTab("promos"); setMoreOpen(false); }} className={`flex flex-col items-center gap-1 p-2 rounded-xl border text-sm font-medium ${tab === "promos" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
-                      <Share className="h-5 w-5" />
-                      <span className="text-[10px]">Promos</span>
+                  {isHybrid && effectivePlan.can("fiscal") && !isEmployee && (
+                    <button onClick={() => { setTab("fiscal"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "fiscal" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                      <Receipt className="h-5 w-5" />Facturación
                     </button>
                   )}
-                  {(isGastro || isComercio || isModa) && !isEmployee && (
-                    <button onClick={() => { setTab("tarjetas"); setMoreOpen(false); }} className={`flex flex-col items-center gap-1 p-2 rounded-xl border text-sm font-medium ${tab === "tarjetas" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
-                      <Gift className="h-5 w-5" />
-                      <span className="text-[10px]">Tarjetas</span>
+                  {isHybrid && effectivePlan.can("inventory") && !isEmployee && (
+                    <button onClick={() => { setTab("inventario"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "inventario" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                      <Boxes className="h-5 w-5" />Inventario
                     </button>
                   )}
                   {!isEmployee && (
-                    <button onClick={() => { setTab("reviews"); setMoreOpen(false); }} className={`flex flex-col items-center gap-1 p-2 rounded-xl border text-sm font-medium ${tab === "reviews" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
-                      <Star className="h-5 w-5" />
-                      <span className="text-[10px]">Reseñas</span>
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
-            {/* HERRAMIENTAS */}
-            {!isEmployee && (
-              <>
-                <p className="px-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1 mt-3">🛠️ Herramientas</p>
-                <div className="grid grid-cols-2 gap-1">
-                  {(isHybrid || isGastro || isComercio || isModa) && !isEmployee && (
-                    <button onClick={() => { setTab("pantalla"); setMoreOpen(false); }} className={`flex flex-col items-center gap-1 p-2 rounded-xl border text-sm font-medium ${tab === "pantalla" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
-                      <Monitor className="h-5 w-5" />
-                      <span className="text-[10px]">Pantalla TV</span>
-                    </button>
-                  )}
-                  <button onClick={() => { router.push("/vendor/wa-bot"); setMoreOpen(false); }} className={`flex flex-col items-center gap-1 p-2 rounded-xl border text-sm font-medium border-border bg-background`}>
-                    <Bot className="h-5 w-5" />
-                    <span className="text-[10px]">Bot WA</span>
+                  <button onClick={() => { setTab("reviews"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "reviews" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                    <Star className="h-5 w-5" />Reseñas
                   </button>
-                  <button onClick={() => { router.push("/vendor/wa-bot/conversaciones"); setMoreOpen(false); }} className={`flex flex-col items-center gap-1 p-2 rounded-xl border text-sm font-medium border-border bg-background`}>
-                    <MessageSquare className="h-5 w-5" />
-                    <span className="text-[10px]">Conversaciones</span>
-                  </button>
-                </div>
-              </>
-            )}
-            {/* CLIENTES */}
-            {!isEmployee && (
-              <>
-                <p className="px-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1 mt-3">👥 Clientes</p>
-                <div className="grid grid-cols-2 gap-1">
+                  )}
+                  {/* Clientes (CRM): taller/estética/servicio con el plan que lo trae. */}
                   {canFeature("crm") && (
-                    <button onClick={() => { setTab("clientes"); setMoreOpen(false); }} className={`flex flex-col items-center gap-1 p-2 rounded-xl border text-sm font-medium ${tab === "clientes" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
-                      <Users className="h-5 w-5" />
-                      <span className="text-[10px]">Clientes</span>
+                    <button onClick={() => { setTab("clientes"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "clientes" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                      <Users className="h-5 w-5" />Clientes
                     </button>
                   )}
-                </div>
-              </>
-            )}
-            {/* FINANZAS */}
-            {!isEmployee && (
-              <>
-                <p className="px-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1 mt-3">💰 Finanzas</p>
-                <div className="grid grid-cols-2 gap-1">
-                  {(isGastro || isComercio || isModa) && !isEmployee && (
-                    <button onClick={() => { setTab("gastos"); setMoreOpen(false); }} className={`flex flex-col items-center gap-1 p-2 rounded-xl border text-sm font-medium ${tab === "gastos" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
-                      <Receipt className="h-5 w-5" />
-                      <span className="text-[10px]">Gastos</span>
-                    </button>
-                  )}
-                  {(isGastro || isComercio || isModa) && effectivePlan.can("fiscal") && !isEmployee && (
-                    <button onClick={() => { setTab("fiscal"); setMoreOpen(false); }} className={`flex flex-col items-center gap-1 p-2 rounded-xl border text-sm font-medium ${tab === "fiscal" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
-                      <Receipt className="h-5 w-5" />
-                      <span className="text-[10px]">Facturación</span>
-                    </button>
-                  )}
-                  {planSlug && !isEmployee && (
-                    <button onClick={() => { router.push("/vendor/suscripcion"); setMoreOpen(false); }} className={`flex flex-col items-center gap-1 p-2 rounded-xl border text-sm font-medium border-border bg-background`}>
-                      <Sparkles className="h-5 w-5" />
-                      <span className="text-[10px]">Plan</span>
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
-            {/* ESTADÍSTICAS */}
-            {!isEmployee && (
-              <>
-                <p className="px-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1 mt-3">📈 Estadísticas</p>
-                <div className="grid grid-cols-2 gap-1">
-                  {!isEmployee && (
-                    <button onClick={() => { setTab("analytics"); setMoreOpen(false); }} className={`flex flex-col items-center gap-1 p-2 rounded-xl border text-sm font-medium ${tab === "analytics" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
-                      <BarChart className="h-5 w-5" />
-                      <span className="text-[10px]">Estadísticas</span>
-                    </button>
-                  )}
-                  <button onClick={() => { setTab("history"); setMoreOpen(false); }} className={`flex flex-col items-center gap-1 p-2 rounded-xl border text-sm font-medium ${tab === "history" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
-                    <History className="h-5 w-5" />
-                    <span className="text-[10px]">Histórico</span>
+                  <button onClick={() => { setTab("history"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "history" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                    <History className="h-5 w-5" />Historial
                   </button>
-                </div>
-              </>
-            )}
-            {/* Accesos directos */}
-            <div className="mt-3">
+                  {isHybrid && !isEmployee && (
+                    <button onClick={() => { setTab("analytics"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "analytics" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                      <BarChart className="h-5 w-5" />Estadísticas
+                    </button>
+                  )}
+                </>
+              ) : (
+                <>
               {!isEmployee && (
-                <button onClick={() => { enterConfigTab(); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border border-primary/30 bg-primary/5 text-sm font-medium text-primary col-span-2`}>
-                  <Settings className="h-5 w-5" />Configuración
+              <button onClick={() => { setTab("menu"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "menu" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                {isModa ? <Shirt className="h-5 w-5" /> : isComercio ? <ShoppingBag className="h-5 w-5" /> : <Utensils className="h-5 w-5" />}
+                {isRetail ? "Catálogo" : "Menú"} ({menuCount})
+              </button>
+              )}
+              {isComercio && !isEmployee && (
+                <button onClick={() => { setTab("galeria"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "galeria" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                  <Image className="h-5 w-5" />Galería
                 </button>
               )}
-              <Link
-                href="/manuales"
-                onClick={() => setMoreOpen(false)}
-                className="mt-2 flex items-center gap-2 p-3 rounded-xl border border-primary/30 bg-primary/5 text-sm font-medium text-primary col-span-2"
-              >
-                <BookOpen className="h-5 w-5" />📘 Manuales — Guías por rubro
-              </Link>
-              {!isStaffMember && (
-                <button onClick={() => { setMoreOpen(false); router.push("/"); }} className="mt-2 flex items-center gap-2 p-3 rounded-xl border border-border text-sm font-medium text-muted-foreground col-span-2">
-                  <LogOut className="h-5 w-5" />
-                  <span>Volver al sitio</span>
+              {(isGastro || isComercio) && !isEmployee && (
+                <button onClick={() => { setTab("recetas"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "recetas" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                  <FileText className="h-5 w-5" />Preparación y Costo
                 </button>
+              )}
+              {(isGastro || isComercio || isModa) && (
+                <button onClick={() => { setTab("caja"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "caja" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                  <DollarSign className="h-5 w-5" />Caja
+                </button>
+              )}
+              {(isGastro || isComercio || isModa) && !isEmployee && (
+                <button onClick={() => { setTab("gastos"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "gastos" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                  <Receipt className="h-5 w-5" />Gastos
+                </button>
+              )}
+              {(isGastro || isComercio || isModa) && !isEmployee && (
+                <button onClick={() => { setTab("clientes"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "clientes" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                  <Users className="h-5 w-5" />Clientes
+                </button>
+              )}
+              {(isComercio || isModa) && (
+                <button onClick={() => { setTab("tarjetas"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "tarjetas" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                  <Gift className="h-5 w-5" />Tarjetas
+                </button>
+              )}
+              {!isEmployee && (
+              <button onClick={() => { setTab("promos"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "promos" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                <Share className="h-5 w-5" />Promos
+              </button>
+              )}
+              {(isGastro || isComercio || isModa) && !isEmployee && (
+                <button onClick={() => { setTab("fiscal"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "fiscal" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                  <Receipt className="h-5 w-5" />Facturación
+                </button>
+              )}
+              {(isGastro || isComercio || isModa) && !isEmployee && (
+                <button onClick={() => { setTab("inventario"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "inventario" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                  <Boxes className="h-5 w-5" />Inventario
+                </button>
+              )}
+              {!isEmployee && (
+              <button onClick={() => { enterConfigTab(); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "config" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                <Wrench className="h-5 w-5" />Configuración
+              </button>
+              )}
+              {!isEmployee && (
+              <button onClick={() => { setTab("analytics"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "analytics" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                <BarChart className="h-5 w-5" />Estadísticas
+              </button>
+              )}
+              <button onClick={() => { setTab("history"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "history" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                <History className="h-5 w-5" />Histórico de ventas
+              </button>
+              {!isEmployee && (
+              <button onClick={() => { setTab("reviews"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "reviews" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                <Star className="h-5 w-5" />Reseñas
+              </button>
+              )}
+                </>
               )}
             </div>
+            <Link
+              href="/manuales"
+              onClick={() => setMoreOpen(false)}
+              className="mt-2 flex items-center gap-2 p-3 rounded-xl border border-primary/30 bg-primary/5 text-sm font-medium text-primary col-span-2"
+            >
+              <BookOpen className="h-5 w-5" />📘 Manuales — Guías por rubro
+            </Link>
           </div>
           </div>
         )}

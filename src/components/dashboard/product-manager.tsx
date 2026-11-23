@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -366,6 +366,8 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
     hadFile: boolean;
   };
   const [photoNotice, setPhotoNotice] = useState(false);
+  const importFileRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
   const productDraft = useFormDraft<ProductDraft>({
     vendorId,
     key: "product-manager",
@@ -1004,8 +1006,41 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
     </div>
   );
 
+  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setMsg("");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("action", "import");
+      const res = await fetch("/api/vendor/products/import", { method: "POST", body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (data.error) {
+        setMsg(`Error: ${data.error}`);
+      } else {
+        setMsg(`✅ Importados: ${data.imported ?? 0} nuevos, ${data.updated ?? 0} actualizados`);
+        load();
+        onChanged?.();
+      }
+    } catch {
+      setMsg("Error al importar el archivo");
+    } finally {
+      setImporting(false);
+      if (importFileRef.current) importFileRef.current.value = "";
+    }
+  }
+
   return (
     <div className="space-y-4">
+      <input
+        ref={importFileRef}
+        type="file"
+        accept=".xlsx,.xls"
+        className="hidden"
+        onChange={handleImportFile}
+      />
       <div className="flex items-center justify-between">
         <h2 className="font-display text-xl font-semibold">{isModa || isComercio ? "Catálogo" : "Menú y catálogo"}</h2>
         {(!catalogViews || view === "productos") && (
@@ -1022,7 +1057,7 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
                   label: "Catálogo",
                   items: [
                     { label: "Exportar (Excel)", icon: "⬇️", onClick: () => { window.location.href = "/api/vendor/products/export"; } },
-                    { label: "Importar (Excel)", icon: "⬆️", onClick: () => {} },
+                    { label: "Importar (Excel)", icon: "⬆️", onClick: () => { importFileRef.current?.click(); } },
                     { label: "Descargar plantilla", icon: "📄", onClick: () => { window.location.href = "/api/vendor/products/template"; } },
                   ],
                 },

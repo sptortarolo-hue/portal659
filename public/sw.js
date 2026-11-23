@@ -46,7 +46,16 @@ self.addEventListener("install", (event) => {
       ]).catch(() => {})
     )
   );
-  self.skipWaiting();
+  // No skipWaiting: el nuevo SW espera a que el usuario confirme
+  // ("Actualizar") para tomar control. Así se puede mostrar el banner
+  // "Nueva versión disponible" sin recargar a ciegas.
+});
+
+// Mensaje del cliente: aplicar la actualización pendiente.
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener("activate", (event) => {

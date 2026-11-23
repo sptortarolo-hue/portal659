@@ -6,7 +6,7 @@ import { Navigation } from "@/components/nav/navigation";
 import { CartProvider } from "@/lib/cart";
 import { CartDrawer } from "@/components/cart/cart-drawer";
 import { CartFooter } from "@/components/cart/cart-footer";
-import { ServiceWorkerRegistration } from "@/components/pwa/service-worker-registration";
+import { UpdateAvailableBanner } from "@/components/pwa/update-available-banner";
 import { PushSubscribe } from "@/components/pwa/push-subscribe";
 import { ToastProvider } from "@/lib/toast";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
@@ -170,7 +170,7 @@ export default function RootLayout({
           <ThemeColorSync />
           <CartProvider>
             <ToastProvider>
-              <ServiceWorkerRegistration />
+              <UpdateAvailableBanner />
               <PushSubscribe />
               <AnalyticsBeacon />
               <OnboardingOverlay />

@@ -23,7 +23,20 @@ import {
 // Compras: formulario de carga rápida (proveedor + líneas con costo neto).
 // Al guardar, cada insumo actualiza su costo al ÚLTIMO precio (la API).
 // ---------------------------------------------------------------------------
-type BuyLine = { key: number; kind: "ing" | "prod" | "var"; ingredient_id: string; product_id: string; variant_id: string; qty: string; unit: string; unit_cost: string; total_paid: string; expires_at: string };
+type BuyLine = {
+  key: number;
+  kind: "ing" | "prod" | "var";
+  ingredient_id: string;
+  product_id: string;
+  variant_id: string;
+  qty: string;
+  unit: string;
+  unit_cost: string;
+  total_paid: string;
+  expires_at: string;
+  skip?: boolean;
+  extracted?: { description: string; unit_price: number; unit: string };
+};
 
 /** Mezcla lo creado en el momento con la lista del padre, sin duplicar IDs. */
 function mergeById<T extends { id: string }>(base: T[], extra: T[]): T[] {
@@ -56,24 +69,31 @@ type CostProposalList = {
 function QuickCreateSheet({
   kind,
   products,
+  initial,
+  supplierId,
   onClose,
   onCreated,
 }: {
   kind: BuyLine["kind"];
   products: { id: string; name: string }[];
+  initial?: { name: string; cost: string; unit: string };
+  supplierId?: string | null;
   onClose: () => void;
   onCreated: (created: CreatedItem) => void;
 }) {
   // Insumo.
-  const [name, setName] = useState("");
-  const [baseUnit, setBaseUnit] = useState("g");
-  const [cost, setCost] = useState("");
+  const initUnit = initial?.unit || "";
+  const [name, setName] = useState(initial?.name || "");
+  const [baseUnit, setBaseUnit] = useState(
+    kind === "ing" ? (["g", "ml", "u"].includes(initUnit) ? initUnit : "g") : "g"
+  );
+  const [cost, setCost] = useState(initial?.cost || "");
   const [waste, setWaste] = useState("0");
   const [buyPrice, setBuyPrice] = useState("");
   const [buyQty, setBuyQty] = useState("");
   // Producto.
   const [price, setPrice] = useState("");
-  const [unit, setUnit] = useState("unidad");
+  const [unit, setUnit] = useState(initUnit === "kg" ? "kg" : "unidad");
   // Variante.
   const [productId, setProductId] = useState("");
   const [color, setColor] = useState("");
@@ -115,12 +135,22 @@ function QuickCreateSheet({
     }
     if (kind === "prod") {
       if (!name.trim()) return setError("Indicá el nombre del producto");
-      if (!(Number(price) > 0)) return setError("Indicá el precio de venta");
+      // Desde una factura se crea con precio 0 y se completa en el catálogo.
+      if (price !== "" && !(Number(price) >= 0)) return setError("Indicá el precio de venta");
       setSaving(true);
       const res = await fetch("/api/vendor/offers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), price: Number(price), unit, stock: 0, stock_control: true }),
+        body: JSON.stringify({
+          name: name.trim(),
+          price: Number(price) || 0,
+          unit,
+          stock: 0,
+          stock_control: true,
+          from_invoice: true,
+          cost_last: cost !== "" ? Number(cost) : undefined,
+          supplier_id: supplierId || undefined,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       setSaving(false);
@@ -241,8 +271,12 @@ function QuickCreateSheet({
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div>
-                <Label className="text-xs">Precio de venta</Label>
+                <Label className="text-xs">Precio de venta (opcional)</Label>
                 <Input type="number" min={0} step="any" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0" />
+              </div>
+              <div>
+                <Label className="text-xs">Costo del proveedor</Label>
+                <Input type="number" min={0} step="any" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0" />
               </div>
               <div>
                 <Label className="text-xs">Unidad de venta</Label>
@@ -257,7 +291,7 @@ function QuickCreateSheet({
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              Nace con stock 0: la compra suma las unidades que cargues en la línea. Después podés completar foto, categoría y descripción en el catálogo.
+              Nace con stock 0 y el costo de la factura; el precio de venta, foto y categoría se completan en el catálogo.
             </p>
           </>
         )}
@@ -395,6 +429,7 @@ function PurchaseForm({
   }
 
   const preview = lines.map((l) => {
+    if (l.skip) return { ing: null, factor: 1, badUnit: false, unitNet: 0, lineTotal: 0 };
     if (l.kind !== "ing") {
       const qty = Math.floor(Number(l.qty)) || 0;
       const unitCost = Number(l.unit_cost) || 0;
@@ -434,11 +469,13 @@ function PurchaseForm({
       sid = data.supplier.id;
       onSupplierCreated();
     }
-    const clean = lines.filter((l) =>
-      l.kind === "ing"
-        ? l.ingredient_id && Number(l.qty) > 0 && l.unit_cost !== "" && Number(l.unit_cost) >= 0
-        : (l.kind === "prod" ? !!l.product_id : !!l.variant_id) &&
-          Math.floor(Number(l.qty)) > 0 && l.unit_cost !== "" && Number(l.unit_cost) >= 0
+    const clean = lines.filter(
+      (l) =>
+        !l.skip &&
+        (l.kind === "ing"
+          ? !!l.ingredient_id && Number(l.qty) > 0 && l.unit_cost !== "" && Number(l.unit_cost) >= 0
+          : (l.kind === "prod" ? !!l.product_id : !!l.variant_id) &&
+            Math.floor(Number(l.qty)) > 0 && l.unit_cost !== "" && Number(l.unit_cost) >= 0)
     );
     if (clean.length === 0) return setError("Agregá al menos una línea con cantidad y costo");
     if (preview.some((p) => p.badUnit)) return setError("Hay líneas con unidad incompatible");
@@ -611,6 +648,22 @@ function PurchaseForm({
             const pv = preview[idx];
             return (
               <div key={l.key} className="rounded-xl border border-border p-2 space-y-1.5">
+                {l.extracted && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[11px] text-muted-foreground truncate flex-1 min-w-0" title={l.extracted.description}>
+                      📄 {l.extracted.description}
+                    </span>
+                    <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={!!l.skip}
+                        onChange={(e) => patchLine(l.key, { skip: e.target.checked })}
+                        className="h-3.5 w-3.5 accent-lime-500"
+                      />
+                      Ignorar línea
+                    </label>
+                  </div>
+                )}
                 <div className="flex gap-1.5">
                   {allowMerchandise && (
                     <select
@@ -670,9 +723,13 @@ function PurchaseForm({
                     size="sm"
                     className="px-2 text-primary font-bold"
                     onClick={() => setCreating({ lineKey: l.key, kind: l.kind })}
-                    title={`Crear ${l.kind === "ing" ? "insumo" : l.kind === "prod" ? "producto" : "variante"} sin salir de la compra`}
+                    title={
+                      l.extracted
+                        ? `Crear ${l.kind === "ing" ? "insumo" : "producto"} «${l.extracted.description}»`
+                        : `Crear ${l.kind === "ing" ? "insumo" : l.kind === "prod" ? "producto" : "variante"} sin salir de la compra`
+                    }
                   >
-                    +
+                    {l.extracted ? "＋ Crear" : "+"}
                   </Button>
                   <Button
                     type="button"
@@ -779,6 +836,17 @@ function PurchaseForm({
           <QuickCreateSheet
             kind={creating.kind}
             products={products.map((p) => ({ id: p.id, name: p.name }))}
+            initial={(() => {
+              const l = lines.find((x) => x.key === creating.lineKey);
+              if (!l?.extracted) return undefined;
+              const unit = l.extracted.unit;
+              return {
+                name: l.extracted.description,
+                cost: String(l.extracted.unit_price),
+                unit: unit === "kg" ? "g" : unit === "g" || unit === "ml" || unit === "l" || unit === "u" ? unit : "u",
+              };
+            })()}
+            supplierId={supplierId || null}
             onClose={() => setCreating(null)}
             onCreated={(created) => {
               if (created.kind === "ing") {
@@ -1161,7 +1229,7 @@ export function PurchasesManager({
                 kind = "ing";
                 ingredient_id = String(best.id);
               } else {
-                kind = ingredients && ingredients.length > 0 ? "ing" : allowMerchandise ? "prod" : "ing";
+                kind = allowMerchandise ? "prod" : "ing";
               }
               return {
                 key: idx,
@@ -1174,6 +1242,11 @@ export function PurchasesManager({
                 unit_cost: it?.unit_price != null ? String(it.unit_price) : "",
                 total_paid: it?.line_total != null ? String(it.line_total) : "",
                 expires_at: "",
+                extracted: {
+                  description: String(it?.description || ""),
+                  unit_price: Number(it?.unit_price) || 0,
+                  unit: String(it?.unit || "u"),
+                },
               };
             })
           : [

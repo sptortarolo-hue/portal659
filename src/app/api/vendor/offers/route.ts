@@ -109,9 +109,12 @@ export async function POST(request: Request) {
         .map((x: any) => ({ product_id: String(x.product_id), qty: Math.max(1, Math.round(Number(x.qty) || 1)) }))
     : [];
 
-  if (!name || !price) {
+  // Alta desde comprobante de proveedor: se crea con nombre y costo, y el
+  // precio de venta se completa después en el catálogo.
+  if (!name || (!price && body?.from_invoice !== true)) {
     return NextResponse.json({ error: "El nombre y el precio son obligatorios" }, { status: 400 });
   }
+  const effectivePrice = Number(price) || 0;
 
   // Tolerante a migración de packs sin aplicar: sin la columna, se ignora.
   const hasPack = await queryOne<{ exists: boolean }>(
@@ -482,7 +485,7 @@ export async function POST(request: Request) {
       vendor.id,
       name,
       description || null,
-      parseFloat(price),
+      parseFloat(String(effectivePrice)),
       await resolveCategoryName(vendor.id, category),
       fullVendor?.neighborhood || null,
       !!featured_today,

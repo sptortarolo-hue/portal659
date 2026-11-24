@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isAdmin } from "@/lib/admin-utils";
 import { queryOne, queryMany, query } from "@/lib/db";
 import { SYSTEM_PROMPT } from "../../../../../../../services/wa-bot/src/system-prompt.mjs";
+import llmModels from "../../../../../../../services/wa-bot/src/llm-models.json";
 
 /** System prompt real del motor — fuente única compartida con el cerebro. */
 function basePrompt(): string { return SYSTEM_PROMPT; }
@@ -35,7 +36,8 @@ export async function GET(
   const { key } = await params;
   const a = await queryOne<Record<string, unknown>>(
     `SELECT b.key, b.vendor_id, b.name, b.mode, b.enabled, b.tone, b.greeting,
-            b.handoff_phone, b.brief, b.model, v.store_name, v.slug,
+            b.handoff_phone, b.brief, b.model, b.temperature, b.max_tokens, b.memory_limit,
+            v.store_name, v.slug,
             vb.status AS link_status, vb.wa_phone
      FROM bot_agents b LEFT JOIN vendors v ON v.id = b.vendor_id
      LEFT JOIN vendor_wa_bots vb ON vb.vendor_id = b.vendor_id
@@ -51,6 +53,7 @@ export async function GET(
     basePrompt: basePrompt(),
     prompt: basePrompt() + agentBlock,
     agentBlock,
+    models: llmModels.models,
     promptChars: basePrompt().length + agentBlock.length,
   });
 }
@@ -85,8 +88,11 @@ export async function PATCH(
   if (typeof body.greeting === "string") put("greeting", body.greeting.slice(0, 500) || null);
   if (typeof body.handoff_phone === "string") put("handoff_phone", body.handoff_phone.slice(0, 40) || null);
   if (body.brief && typeof body.brief === "object") put("brief", JSON.stringify(body.brief));
-  if (typeof body.model === "string" && body.model.trim()) put("model", body.model.trim().slice(0, 120));
+  if (typeof body.model === "string") put("model", body.model.trim().slice(0, 120) || null);
   if (body.model === null) put("model", null);
+  if (typeof body.temperature === "number") put("temperature", Math.max(0, Math.min(2, body.temperature)));
+  if (typeof body.max_tokens === "number") put("max_tokens", Math.max(100, Math.min(4000, Math.round(body.max_tokens))));
+  if (typeof body.memory_limit === "number") put("memory_limit", Math.max(0, Math.min(100, Math.round(body.memory_limit))));
 
   if (fields.length === 0) {
     return NextResponse.json({ error: "Sin campos válidos" }, { status: 400 });

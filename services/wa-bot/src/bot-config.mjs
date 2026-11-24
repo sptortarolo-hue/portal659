@@ -17,7 +17,8 @@ export async function getBotConfig(vendorId, isPortal) {
   let value = null;
   try {
     const row = await queryOne(
-      `SELECT key, vendor_id, name, mode, enabled, tone, greeting, handoff_phone, brief, model
+      `SELECT key, vendor_id, name, mode, enabled, tone, greeting, handoff_phone, brief, model,
+              temperature, max_tokens, memory_limit
        FROM bot_agents WHERE key = $1 LIMIT 1`,
       [key]
     );
@@ -38,6 +39,9 @@ export async function getBotConfig(vendorId, isPortal) {
         handoffPhone: row.handoff_phone || null,
         brief: row.brief && typeof row.brief === "object" ? row.brief : {},
         model: row.model || null,
+        temperature: Number(row.temperature ?? 0),
+        maxTokens: Number(row.max_tokens ?? 600),
+        memoryLimit: Number(row.memory_limit ?? 16),
         faqs: (faqs || []).map((f) => ({ question: f.question, answer: f.answer })),
       };
     }

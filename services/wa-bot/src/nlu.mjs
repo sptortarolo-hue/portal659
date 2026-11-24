@@ -3,6 +3,13 @@ import { config } from "./config.mjs";
 import { matchProduct } from "./menu.mjs";
 import { loadCorrections, formatFewShot } from "./learning.mjs";
 import { toolSchemasForLlm, dispatchTool } from "./tools.mjs";
+import llmModels from "./llm-models.json" with { type: "json" };
+
+/** Resuelve el override de modelo por agente (slug completo → proveedor). */
+function resolveAgentModel(requested) {
+  if (!requested) return null;
+  return llmModels.models.find((m) => m.model === requested) || null;
+}
 
 // NVIDIA rota el catálogo /models (410 Gone) sin aviso. El auto-descubrimiento
 // no confía en la lista — la prueba real (POST chat/completions) decide: el
@@ -263,10 +270,13 @@ export async function llmChat(messages, opts = {}) {
   const maxTokens = opts.max_tokens || 400;
   const temperature = opts.temperature ?? 0;
   const timeout = opts.timeout;
+  const agentModel = resolveAgentModel(opts.agentModel);
 
   for (const provider of providers) {
     if (!provider.apiKey) continue;
     if (providerCooled(provider)) continue;
+    // Si el agente pidió un modelo específico, sólo su proveedor puede usarlo.
+    if (agentModel && agentModel.provider !== provider.name) continue;
 
     const headers = {
       "Content-Type": "application/json",
@@ -278,13 +288,14 @@ export async function llmChat(messages, opts = {}) {
     }
 
     const body = {
-      model: provider.model,
+      model: agentModel ? agentModel.model : provider.model,
       temperature,
       max_tokens: maxTokens,
       messages,
     };
-    // Function calling: en vez de pedir JSON libre, proveemos tools y forzamos tool_choice
-    if (opts.tools && providerSupportsTools(`${provider.name}:${provider.model}`)) {
+    // Un modelo sin function-calling no puede usar tools: caemos a JSON mode.
+    const toolsAllowed = !agentModel || agentModel.supportsTools !== false;
+    if (toolsAllowed && opts.tools && providerSupportsTools(`${provider.name}:${provider.model}`)) {
       body.tools = opts.tools;
       body.tool_choice = opts.tool_choice || 'required';
     }
@@ -456,7 +467,9 @@ async function callOnce(message, products, ctx = null) {
     parts.push(`Le acabás de preguntar (extraé SOLO lo que falta): ${ctx.pending.join(", ")}`);
   }
   if (ctx?.history?.length) {
-    parts.push(`Últimos mensajes del chat:\n${ctx.history.map((h) => `${h.role === "bot" ? "BOT" : "CLIENTE"}: ${h.text}`).join("\n")}`);
+    const mem = Math.max(0, Math.min(100, Number(ctx?.agentMemoryLimit ?? 16)));
+    const hist = mem > 0 ? ctx.history.slice(-mem) : [];
+    if (hist.length) parts.push(`Últimos mensajes del chat:\n${hist.map((h) => `${h.role === "bot" ? "BOT" : "CLIENTE"}: ${h.text}`).join("\n")}`);
   }
   const contextBlock = parts.length ? `\n\n${parts.join("\n\n")}` : "";
 
@@ -488,7 +501,8 @@ async function callOnce(message, products, ctx = null) {
       { role: "system", content: systemWithVertical + fewShot },
       { role: "user", content: `Productos disponibles:\n${menu}\n\nMensaje del cliente: "${message}"${contextBlock}` },
     ],
-    { max_tokens: 600, temperature: 0, timeout: 25000, response_format: "json", tools: TOOLS, tool_choice: 'required' }
+    { max_tokens: Number(ctx?.agentMaxTokens) || 600, temperature: Number(ctx?.agentTemperature) ?? 0,
+      timeout: 25000, response_format: "json", tools: TOOLS, tool_choice: 'required', agentModel: ctx?.agentModel }
   );
   if (!llmResult) return null;
 

@@ -192,14 +192,20 @@ export async function handleInbound({ vendor, waId, body, waPhone, timestamp }) 
     return await persist(state, vendor.id, waId, replies);
   }
   if (isPortal) {
-    return await handlePortalInbound({ vendor, waId, body, waPhone, timestamp, agentPrompt: buildAgentPrompt(cfg) });
+    return await handlePortalInbound({ vendor, waId, body, waPhone, timestamp, agentConfig: cfg });
   }
   // Comercio: la config "orders" equivale al BOT_TAKE_ORDERS=1 de hoy.
   // (El resto del handleInbound queda intacto: ordersEnabled gobierna el gate.)
   const ordersEnabled = cfg?.mode === "orders" || config.takeOrders;
   const text = String(body || "").trim();
   const state = (await getState(vendor.id, waId)) || { ...DEFAULT_STATE };
-  if (cfg) state._agentPrompt = buildAgentPrompt(cfg);
+  if (cfg) {
+    state._agentPrompt = buildAgentPrompt(cfg);
+    state._agentModel = cfg.model || null;
+    state._agentTemperature = cfg.temperature;
+    state._agentMaxTokens = cfg.maxTokens;
+    state._agentMemoryLimit = cfg.memoryLimit;
+  }
   if (!Array.isArray(state.history)) state.history = [];
   // El teléfono real del relay actualiza un lid: previo (el primer mensaje
   // puede no haberlo traído).
@@ -353,6 +359,10 @@ function llmCtx(state, vendor) {
     pending: missingFields(state, vendor),
     history: state.history,
     agentPrompt: state._agentPrompt || "",
+    agentModel: state._agentModel || null,
+    agentTemperature: state._agentTemperature,
+    agentMaxTokens: state._agentMaxTokens,
+    agentMemoryLimit: state._agentMemoryLimit,
     vendorId: vendor?.id || vendor?.vendorId || null,
     vertical: vendor?.vertical || null,
     storeName: vendor?.store_name || vendor?.storeName || vendor?.slug || vendor?.vendorId || 'el comercio',
@@ -3200,10 +3210,16 @@ function portalB2BText() {
   ].join("\n");
 }
 
-async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp, agentPrompt }) {
+async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp, agentConfig }) {
   const text = String(body || "").trim();
   let state = (await getState(vendor.id, waId)) || { ...DEFAULT_STATE };
-  if (agentPrompt) state._agentPrompt = agentPrompt;
+  if (agentConfig) {
+    state._agentPrompt = buildAgentPrompt(agentConfig);
+    state._agentModel = agentConfig.model || null;
+    state._agentTemperature = agentConfig.temperature;
+    state._agentMaxTokens = agentConfig.maxTokens;
+    state._agentMemoryLimit = agentConfig.memoryLimit;
+  }
   if (!Array.isArray(state.history)) state.history = [];
   const ph = phoneFor(waId, waPhone);
   if (!state.customerPhone || (String(state.customerPhone).startsWith("lid:") && !ph.startsWith("lid:"))) {

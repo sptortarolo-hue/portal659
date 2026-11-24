@@ -16,6 +16,9 @@ type Agent = {
   greeting: string | null; handoff_phone: string | null; store_name: string | null;
   link_status: string | null; wa_phone: string | null; brief: Record<string, unknown>;
   model: string | null;
+  temperature: number;
+  max_tokens: number;
+  memory_limit: number;
 };
 
 const toForm = (a: Agent | null, def: any): Form => ({
@@ -57,6 +60,7 @@ function buildAgentBlock(form: Form, faqs: FAQ[]): string {
 
 const TABS = [
   { id: "basics", label: "✏️ Básicos" },
+  { id: "model", label: "🧠 Modelo" },
   { id: "knowledge", label: "📚 Conocimiento" },
   { id: "channel", label: "📱 Canal" },
   { id: "playground", label: "💬 Playground" },
@@ -73,6 +77,8 @@ export function BotAgentEditor({ agentKey }: { agentKey: string }) {
   const [tab, setTab] = useState<Tab>("basics");
   const [msg, setMsg] = useState("");
   const [saving, setSaving] = useState(false);
+  const [models, setModels] = useState<{ provider: string; model: string; label: string; tier: string; supportsTools: boolean }[]>([]);
+  const [modelTest, setModelTest] = useState("");
   const [faqForm, setFaqForm] = useState({ question: "", answer: "" });
 
   const load = useCallback(async () => {
@@ -82,6 +88,7 @@ export function BotAgentEditor({ agentKey }: { agentKey: string }) {
     const a: Agent = d.agent;
     setAgent(a);
     setBasePrompt(d.basePrompt || "");
+    setModels(d.models || []);
     const f = await fetch(`/api/admin/bots/agents/${encodeURIComponent(agentKey)}/faqs`);
     setFaqs(f.ok ? (await f.json()).faqs || [] : []);
     const defR = await fetch(`/api/admin/bots/agents/${encodeURIComponent(agentKey)}/defaults`);
@@ -253,6 +260,72 @@ export function BotAgentEditor({ agentKey }: { agentKey: string }) {
                 {preview || "(sin configuración — el bot usa solo el motor fijo)"}
               </pre>
             </div>
+          </Card>
+        </div>
+      )}
+
+      {tab === "model" && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <Card padding="md" className="space-y-3">
+            <CardHeader><CardTitle>Proveedor y modelo</CardTitle></CardHeader>
+            <p className="ts-body text-muted-foreground">
+              Elegí con qué IA responde este agente. Los proveedores usan las llaves configuradas en el servidor.
+              Si el modelo falla o se queda sin cuota, el bot cae al siguiente proveedor y, si no queda ninguno, a reglas.
+            </p>
+            <label className="block ts-caption">Modelo
+              <select className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 ts-body"
+                value={agent.model || ""} onChange={(e) => patch({ model: e.target.value || null })}>
+                <option value="">Predeterminado (rotación global)</option>
+                {models.map((m) => (
+                  <option key={m.model} value={m.model}>
+                    {m.provider} · {m.label} [{m.tier}]{!m.supportsTools ? " — sin tools" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="flex flex-wrap gap-1">
+              {models.filter((m) => !agent.model || m.model === agent.model).map((m) => (
+                <Chip key={m.model} active>{m.tier}</Chip>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" disabled={!agent.model || saving}
+                onClick={async () => {
+                  setModelTest("Probando…");
+                  const r = await fetch(`/api/admin/bots/agents/${encodeURIComponent(agentKey)}/test-model`, {
+                    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: agent.model }),
+                  });
+                  const d = await r.json().catch(() => ({}));
+                  setModelTest(d.ok ? `✅ OK · ${d.latencyMs}ms · respondió "${d.reply || ""}"` : `❌ ${d.error || `HTTP ${d.status || "?"}`}`);
+                }}>▶ Probar modelo</Button>
+              {modelTest && <span className="ts-caption text-muted-foreground">{modelTest}</span>}
+            </div>
+          </Card>
+
+          <Card padding="md" className="space-y-3">
+            <CardHeader><CardTitle>Ajustes de generación</CardTitle></CardHeader>
+            <label className="block ts-caption">Temperatura ({Number(agent.temperature ?? 0).toFixed(2)})
+              <input type="range" min={0} max={1} step={0.1} className="mt-1 w-full"
+                value={Number(agent.temperature ?? 0)}
+                onChange={(e) => setAgent({ ...agent, temperature: Number(e.target.value) })}
+                onMouseUp={() => patch({ temperature: Number(agent.temperature) })}
+                onTouchEnd={() => patch({ temperature: Number(agent.temperature) })} />
+            </label>
+            <label className="block ts-caption">Tokens máximos por respuesta
+              <input type="number" min={100} max={4000} step={100} className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 ts-body"
+                value={agent.max_tokens ?? 600}
+                onChange={(e) => setAgent({ ...agent, max_tokens: Number(e.target.value) })}
+                onBlur={() => patch({ max_tokens: Number(agent.max_tokens) })} />
+            </label>
+            <label className="block ts-caption">Mensajes de memoria (0 = sin historial)
+              <input type="number" min={0} max={100} className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 ts-body"
+                value={agent.memory_limit ?? 16}
+                onChange={(e) => setAgent({ ...agent, memory_limit: Number(e.target.value) })}
+                onBlur={() => patch({ memory_limit: Number(agent.memory_limit) })} />
+            </label>
+            <p className="ts-caption text-muted-foreground">
+              Temperatura 0 = respuestas deterministas (recomendado para pedidos). Subirla hace el bot más creativo pero menos predecible.
+            </p>
           </Card>
         </div>
       )}

@@ -1,0 +1,10 @@
+{
+  "models": [
+    { "provider": "gemini", "model": "gemini-flash-lite-latest", "label": "Gemini Flash Lite", "tier": "recomendado", "supportsTools": true },
+    { "provider": "gemini", "model": "gemini-2.5-flash", "label": "Gemini 2.5 Flash", "tier": "equilibrado", "supportsTools": true },
+    { "provider": "groq", "model": "qwen/qwen3.8-27b", "label": "Qwen 3.8 27B", "tier": "rápido", "supportsTools": true },
+    { "provider": "groq", "model": "openai/gpt-oss-20b", "label": "GPT OSS 20B", "tier": "rápido", "supportsTools": false },
+    { "provider": "openrouter", "model": "google/gemma-4-31b-it:free", "label": "Gemma 4 31B (free)", "tier": "equilibrado", "supportsTools": true },
+    { "provider": "openrouter", "model": "nvidia/nemotron-3-super-120b-a12b:free", "label": "Nemotron 3 Super (free)", "tier": "potente", "supportsTools": true }
+  ]
+}

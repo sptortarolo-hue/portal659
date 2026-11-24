@@ -1,25 +1,59 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Card, CardHeader, CardTitle, Chip, EmptyState, SectionHeader, StatusDot } from "@/components/panel-ui";
+import { Card, CardHeader, CardTitle, Chip, EmptyState, StatusDot } from "@/components/panel-ui";
 import { Button } from "@/components/ui/button";
 
 type FAQ = { id: string; question: string; answer: string; active: boolean };
+type Brief = {
+  instructions: string; business: string; products: string; audience: string;
+  policies: string; always: string[]; never: string[];
+};
+type Form = { name: string; greeting: string; tone: string; handoff_phone: string; brief: Brief };
 type Agent = {
-  key: string;
-  name: string;
-  mode: string;
-  enabled: boolean;
-  tone: string;
-  greeting: string | null;
-  handoff_phone: string | null;
-  store_name: string | null;
-  link_status: string | null;
-  wa_phone: string | null;
-  brief: Record<string, unknown>;
+  key: string; name: string; mode: string; enabled: boolean; tone: string;
+  greeting: string | null; handoff_phone: string | null; store_name: string | null;
+  link_status: string | null; wa_phone: string | null; brief: Record<string, unknown>;
   model: string | null;
 };
+
+const toForm = (a: Agent | null, def: any): Form => ({
+  name: a?.name || def?.name || "",
+  greeting: a?.greeting || def?.greeting || "",
+  tone: a?.tone || "humano",
+  handoff_phone: a?.handoff_phone || "",
+  brief: {
+    instructions: String(a?.brief?.instructions ?? def?.brief?.instructions ?? ""),
+    business: String(a?.brief?.business ?? def?.brief?.business ?? ""),
+    products: String(a?.brief?.products ?? def?.brief?.products ?? ""),
+    audience: String(a?.brief?.audience ?? def?.brief?.audience ?? ""),
+    policies: String(a?.brief?.policies ?? def?.brief?.policies ?? ""),
+    always: (a?.brief?.always ?? def?.brief?.always ?? []) as string[],
+    never: (a?.brief?.never ?? def?.brief?.never ?? []) as string[],
+  },
+});
+
+function buildAgentBlock(form: Form, faqs: FAQ[]): string {
+  const b = form.brief;
+  const lines: string[] = [];
+  const add = (title: string, text: string) => {
+    const t = String(text || "").trim();
+    if (t) lines.push(`### ${title}\n${t}`);
+  };
+  add("Tu trabajo", b.instructions);
+  add("El negocio", [b.business, b.products, b.audience, b.policies].filter(Boolean).join("\n"));
+  const rules = [
+    ...(b.always || []).map((x) => `- SIEMPRE: ${x}`),
+    ...(b.never || []).map((x) => `- NUNCA: ${x}`),
+  ];
+  if (rules.length) lines.push(`### Reglas\n${rules.join("\n")}`);
+  const activeFaqs = faqs.filter((f) => f.active);
+  if (activeFaqs.length) {
+    lines.push(`### Conocimiento\n${activeFaqs.map((f) => `P: ${f.question}\nR: ${f.answer}`).join("\n\n")}`);
+  }
+  return lines.length ? `INFORMACIÓN DE ESTE AGENTE (${form.name || "comercio"}):\n${lines.join("\n\n")}` : "";
+}
 
 const TABS = [
   { id: "basics", label: "✏️ Básicos" },
@@ -32,10 +66,10 @@ type Tab = typeof TABS[number]["id"];
 
 export function BotAgentEditor({ agentKey }: { agentKey: string }) {
   const [agent, setAgent] = useState<Agent | null>(null);
+  const [form, setForm] = useState<Form | null>(null);
   const [faqs, setFaqs] = useState<FAQ[]>([]);
-  const [prompt, setPrompt] = useState("");
   const [basePrompt, setBasePrompt] = useState("");
-  const [suggested, setSuggested] = useState<any>(null);
+  const [usingDefaults, setUsingDefaults] = useState(false);
   const [tab, setTab] = useState<Tab>("basics");
   const [msg, setMsg] = useState("");
   const [saving, setSaving] = useState(false);
@@ -45,25 +79,31 @@ export function BotAgentEditor({ agentKey }: { agentKey: string }) {
     const r = await fetch(`/api/admin/bots/agents/${encodeURIComponent(agentKey)}`);
     if (!r.ok) return;
     const d = await r.json();
-    setAgent(d.agent);
-    setPrompt(d.agentBlock || "");
+    const a: Agent = d.agent;
+    setAgent(a);
     setBasePrompt(d.basePrompt || "");
     const f = await fetch(`/api/admin/bots/agents/${encodeURIComponent(agentKey)}/faqs`);
-    if (f.ok) setFaqs((await f.json()).faqs || []);
-    const def = await fetch(`/api/admin/bots/agents/${encodeURIComponent(agentKey)}/defaults`);
-    if (def.ok) setSuggested(await def.json());
+    setFaqs(f.ok ? (await f.json()).faqs || [] : []);
+    const defR = await fetch(`/api/admin/bots/agents/${encodeURIComponent(agentKey)}/defaults`);
+    const defaults = defR.ok ? await defR.json() : null;
+    const empty = !a.greeting && (!a.brief || Object.keys(a.brief).length === 0);
+    setUsingDefaults(empty);
+    setForm(toForm(empty ? null : a, defaults));
   }, [agentKey]);
   useEffect(() => { load(); }, [load]);
 
-  async function save(patch: Partial<Agent>) {
+  const preview = useMemo(() => (form ? buildAgentBlock(form, faqs) : ""), [form, faqs]);
+
+  async function patch(body: Record<string, unknown>, successMsg = "Guardado ✓") {
     setSaving(true); setMsg("");
     try {
       const r = await fetch(`/api/admin/bots/agents/${encodeURIComponent(agentKey)}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d?.error || "No se pudo guardar");
-      setMsg("Guardado ✓"); await load();
+      setMsg(successMsg);
+      await load();
     } catch (e: any) { setMsg(`Error: ${e?.message || "no se pudo guardar"}`); }
     finally { setSaving(false); }
   }
@@ -86,10 +126,12 @@ export function BotAgentEditor({ agentKey }: { agentKey: string }) {
     await load();
   }
 
-  if (!agent) return <Card padding="md"><p className="ts-body text-muted-foreground">Cargando agente…</p></Card>;
+  if (!agent || !form) return <Card padding="md"><p className="ts-body text-muted-foreground">Cargando agente…</p></Card>;
 
-  const brief = agent.brief || {};
-  const setBrief = (key: string, value: unknown) => save({ brief: { ...brief, [key]: value } } as any);
+  const setField = (key: keyof Form, value: string) => setForm({ ...form, [key]: value });
+  const setBrief = (key: keyof Brief, value: string | string[]) => setForm({ ...form, brief: { ...form.brief, [key]: value } });
+  const lines = (v: string[]) => (v || []).join("\n");
+  const splitLines = (s: string) => s.split("\n").map((x) => x.trim()).filter(Boolean);
 
   return (
     <div className="space-y-4 ts-ui">
@@ -112,7 +154,7 @@ export function BotAgentEditor({ agentKey }: { agentKey: string }) {
           <div className="flex items-center gap-2">
             <Chip active={agent.mode === "orders"}>{agent.mode === "orders" ? "Órdenes" : "Conserje"}</Chip>
             <label className="flex items-center gap-2 ts-caption">
-              <input type="checkbox" checked={agent.enabled} onChange={(e) => save({ enabled: e.target.checked })} />
+              <input type="checkbox" checked={agent.enabled} onChange={(e) => patch({ enabled: e.target.checked })} />
               Activo
             </label>
           </div>
@@ -132,26 +174,29 @@ export function BotAgentEditor({ agentKey }: { agentKey: string }) {
       {tab === "basics" && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           <Card padding="md" className="space-y-3">
-            <CardHeader><CardTitle>Identidad</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle>Identidad</CardTitle>
+              {usingDefaults && <Chip active>Config por defecto (no guardada)</Chip>}
+            </CardHeader>
             <label className="block ts-caption">Nombre
               <input className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 ts-body"
-                defaultValue={agent.name} onBlur={(e) => e.target.value !== agent.name && save({ name: e.target.value })} />
+                value={form.name} onChange={(e) => setField("name", e.target.value)} />
             </label>
             <label className="block ts-caption">Saludo
               <textarea className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 ts-body" rows={3}
-                defaultValue={agent.greeting || ""} onBlur={(e) => e.target.value !== (agent.greeting || "") && save({ greeting: e.target.value })} />
+                value={form.greeting} onChange={(e) => setField("greeting", e.target.value)} />
             </label>
             <label className="block ts-caption">Tono
               <select className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 ts-body"
-                value={agent.tone} onChange={(e) => save({ tone: e.target.value })}>
+                value={form.tone} onChange={(e) => setField("tone", e.target.value)}>
                 <option value="humano">Humano (vos/tú)</option>
                 <option value="clasico">Clásico</option>
               </select>
             </label>
             <label className="block ts-caption">Teléfono de derivación
               <input className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 ts-body"
-                defaultValue={agent.handoff_phone || ""} placeholder="5491100000000"
-                onBlur={(e) => e.target.value !== (agent.handoff_phone || "") && save({ handoff_phone: e.target.value })} />
+                value={form.handoff_phone} placeholder="5491100000000"
+                onChange={(e) => setField("handoff_phone", e.target.value)} />
             </label>
           </Card>
 
@@ -159,26 +204,24 @@ export function BotAgentEditor({ agentKey }: { agentKey: string }) {
             <CardHeader><CardTitle>Brief del negocio</CardTitle></CardHeader>
             <label className="block ts-caption">Qué hace el negocio
               <textarea className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 ts-body" rows={2}
-                defaultValue={String(brief.instructions || "")} onBlur={(e) => e.target.value !== String(brief.instructions || "") && setBrief("instructions", e.target.value)} />
+                value={form.brief.instructions} onChange={(e) => setBrief("instructions", e.target.value)} />
             </label>
             <label className="block ts-caption">Productos / servicios
               <textarea className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 ts-body" rows={2}
-                defaultValue={String(brief.products || "")} onBlur={(e) => e.target.value !== String(brief.products || "") && setBrief("products", e.target.value)} />
+                value={form.brief.products} onChange={(e) => setBrief("products", e.target.value)} />
             </label>
             <label className="block ts-caption">Público
               <input className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 ts-body"
-                defaultValue={String(brief.audience || "")} onBlur={(e) => e.target.value !== String(brief.audience || "") && setBrief("audience", e.target.value)} />
+                value={form.brief.audience} onChange={(e) => setBrief("audience", e.target.value)} />
             </label>
             <div className="grid grid-cols-2 gap-2">
               <label className="block ts-caption">Siempre (una por línea)
                 <textarea className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 ts-body" rows={3}
-                  defaultValue={(brief.always as string[] || []).join("\n")}
-                  onBlur={(e) => setBrief("always", e.target.value.split("\n").map((x) => x.trim()).filter(Boolean))} />
+                  value={lines(form.brief.always)} onChange={(e) => setBrief("always", splitLines(e.target.value))} />
               </label>
               <label className="block ts-caption">Nunca (una por línea)
                 <textarea className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 ts-body" rows={3}
-                  defaultValue={(brief.never as string[] || []).join("\n")}
-                  onBlur={(e) => setBrief("never", e.target.value.split("\n").map((x) => x.trim()).filter(Boolean))} />
+                  value={lines(form.brief.never)} onChange={(e) => setBrief("never", splitLines(e.target.value))} />
               </label>
             </div>
           </Card>
@@ -186,26 +229,28 @@ export function BotAgentEditor({ agentKey }: { agentKey: string }) {
           <Card padding="md" className="lg:col-span-2">
             <CardHeader>
               <CardTitle>Prompt real del bot</CardTitle>
-              <Button variant="outline" size="sm" onClick={async () => {
-                await fetch(`/api/admin/bots/agents/${encodeURIComponent(agentKey)}/defaults`, { method: "POST" });
-                await load();
-              }}>↺ Restaurar defaults</Button>
+              <div className="flex gap-2">
+                <Button size="sm" disabled={saving} onClick={() => patch({
+                  name: form.name, greeting: form.greeting, tone: form.tone,
+                  handoff_phone: form.handoff_phone, brief: form.brief,
+                }, "Cambios guardados ✓")}>{saving ? "Guardando…" : "💾 Guardar cambios"}</Button>
+                <Button variant="outline" size="sm" onClick={async () => {
+                  await fetch(`/api/admin/bots/agents/${encodeURIComponent(agentKey)}/defaults`, { method: "POST" });
+                  await load();
+                }}>↺ Restaurar defaults</Button>
+              </div>
             </CardHeader>
             <p className="ts-caption text-muted-foreground mb-2">
-              El bloque 🔒 es el motor fijo (no editable). El bloque ✏️ es la configuración de este agente. Total: {(basePrompt.length + prompt.length).toLocaleString("es-AR")} caracteres.
+              🔒 motor fijo (no editable) · ✏️ config del agente (en vivo). Total: {(basePrompt.length + preview.length).toLocaleString("es-AR")} caracteres.
             </p>
             <details className="mb-2 rounded-lg bg-muted/40 p-2">
-              <summary className="ts-caption cursor-pointer">🔒 Motor fijo de Portal 659 — {basePrompt.length.toLocaleString("es-AR")} caracteres (ver)</summary>
+              <summary className="ts-caption cursor-pointer">🔒 Motor fijo — {basePrompt.length.toLocaleString("es-AR")} caracteres (ver)</summary>
               <pre className="mt-2 whitespace-pre-wrap rounded-lg bg-background p-3 ts-caption text-muted-foreground max-h-56 overflow-auto">{basePrompt || "(no disponible)"}</pre>
             </details>
             <div className="rounded-lg bg-muted/50 p-2">
-              <p className="ts-caption font-medium mb-1">✏️ Configuración del agente — {prompt.length.toLocaleString("es-AR")} caracteres</p>
+              <p className="ts-caption font-medium mb-1">✏️ Configuración del agente — {preview.length.toLocaleString("es-AR")} caracteres</p>
               <pre className="whitespace-pre-wrap rounded-lg bg-background p-3 ts-caption text-foreground max-h-64 overflow-auto">
-                {prompt || (
-                  suggested
-                    ? `CONFIG SUGERIDA (no guardada — clic en "Restaurar defaults" para aplicarla):\n\nSaludo: ${suggested.greeting}\n\nBrief: ${JSON.stringify(suggested.brief, null, 2)}`
-                    : "(sin configuración cargada — el bot usa solo el motor fijo)"
-                )}
+                {preview || "(sin configuración — el bot usa solo el motor fijo)"}
               </pre>
             </div>
           </Card>
@@ -256,14 +301,12 @@ export function BotAgentEditor({ agentKey }: { agentKey: string }) {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           <Card padding="md" className="space-y-3">
             <CardHeader><CardTitle>Modo de atención</CardTitle></CardHeader>
-            <p className="ts-body text-muted-foreground">
-              Elegí qué hace el bot cuando le escriben. El cambio se aplica sin código ni deploy.
-            </p>
+            <p className="ts-body text-muted-foreground">Elegí qué hace el bot cuando le escriben. Sin código ni deploy.</p>
             <div className="flex flex-wrap gap-2">
-              <Chip active={agent.mode === "concierge"} onClick={() => save({ mode: "concierge" })}>
+              <Chip active={agent.mode === "concierge"} onClick={() => patch({ mode: "concierge" })}>
                 🧑‍💼 Conserje — saluda, comparte menú y pasa a una persona
               </Chip>
-              <Chip active={agent.mode === "orders"} onClick={() => save({ mode: "orders" })}>
+              <Chip active={agent.mode === "orders"} onClick={() => patch({ mode: "orders" })}>
                 🛒 Órdenes — arma pedidos por WhatsApp
               </Chip>
             </div>
@@ -290,18 +333,15 @@ export function BotAgentEditor({ agentKey }: { agentKey: string }) {
 
       {tab === "playground" && (
         <Card padding="md">
-          <EmptyState
-            title="Playground en preparación"
-            hint="Vas a poder chatear con este agente sin enviar mensajes reales por WhatsApp. Se habilita en la Fase 2c."
-          />
+          <EmptyState title="Playground en preparación" hint="Chateá con este agente sin enviar mensajes reales por WhatsApp. Se habilita en la Fase 2c." />
         </Card>
       )}
 
       {tab === "metrics" && (
         <Card padding="md">
           <p className="ts-body text-muted-foreground">
-            Las métricas en vivo están en <Link href="/admin/bots" className="underline">/admin/bots</Link>: mensajes del día,
-            derivaciones a persona y estado de conexión por agente. El resumen de tokens y costo del LLM está en la tarjeta “IA del bot” de ese mismo panel.
+            Métricas en vivo en <Link href="/admin/bots" className="underline">/admin/bots</Link>: mensajes del día,
+            derivaciones y conexión por agente. Tokens y costo del LLM en la tarjeta “IA del bot” de ese panel.
           </p>
         </Card>
       )}

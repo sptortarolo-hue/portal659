@@ -1123,12 +1123,15 @@ export function PurchasesManager({
     formData.append("folder", "purchases");
     try {
       const res = await fetch("/api/vendor/purchases/extract", { method: "POST", body: formData });
-      const data = await res.json().catch(() => ({}));
+      const text = await res.text();
+      let data: any = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        data = { error: text ? text.slice(0, 300) : `HTTP ${res.status}` };
+      }
       if (!res.ok) {
-        setExtractMsg(data?.error || "No se pudo leer el comprobante");
-        if (data?.url) {
-          // keep url in attachments of next form open
-        }
+        setExtractMsg(data?.error || `Error ${res.status}`);
         return;
       }
       const ex = data?.extracted || {};
@@ -1215,8 +1218,8 @@ export function PurchasesManager({
       setExtractMsg(msg);
       setFormNonce((n) => n + 1);
       setShowForm(true);
-    } catch {
-      setExtractMsg("No se pudo leer el comprobante");
+    } catch (e: any) {
+      setExtractMsg(`No se pudo conectar: ${e?.message || e}`);
     } finally {
       setExtracting(false);
     }

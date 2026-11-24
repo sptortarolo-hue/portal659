@@ -56,6 +56,7 @@ import { StatusDot, configEnterState } from "@/components/dashboard/config-secti
 import { NotificationBell } from "@/components/nav/notification-bell";
 import { UserMenu } from "@/components/nav/user-menu";
 import { DashboardHome } from "@/components/dashboard/dashboard-home";
+import { VendorBotCard } from "@/components/dashboard/vendor-bot-card";
 import { OrdersKanban } from "@/components/dashboard/orders-kanban";
 import { useKeyboardShortcuts } from "@/lib/use-keyboard-shortcuts";
 import { buildClientWhatsAppUrl, ORDER_STATUS_COLORS, RETAIL_STATUS_LABELS, flowSteps, orderCondition, orderReadyLabel, orderNeedsKitchen, isSameBusinessDay, CONDITION_META } from "@/lib/order-utils";
@@ -2497,6 +2498,7 @@ function VendorDashboardInner() {
               {mountedTabs.has("hoy") && (
                 <div className={tab === "hoy" ? "" : "hidden"}>
                   <TabErrorBoundary tab="hoy">
+                  <VendorBotCard />
                   <MemoDashboardHome
                     vendor={vendor as unknown as VendorDB}
                     isGastro={isGastro}

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { BotAgentsPanel } from "@/components/admin/bot-agents-panel";
 
 type BotRow = {
   vendor_id: string;
@@ -332,6 +333,7 @@ export default function AdminBotsPage() {
       </div>
 
       {/* Embudo del bot del portal */}
+      <BotAgentsPanel />
       <PortalFunnel usage={llm?.usage} />
 
       {/* Alertas */}

@@ -12,6 +12,7 @@ import { trackEvent, trackMessage } from "./telemetry.mjs";
 import { getClientByVendor, sendText, sendTyping, sendPaused, sendImage, sendDocument } from "./relay.mjs";
 import { getServices, buildGreeting, isServiceVertical } from "./services.mjs";
 import { feedPush } from "./metrics.mjs";
+import { getBotConfig } from "./bot-config.mjs";
 
 const DEFAULT_STATE = {
   step: "idle",
@@ -176,9 +177,26 @@ export async function handleInbound({ vendor, waId, body, waPhone, timestamp }) 
   // identifica por slug del vendor (infraestructura del bot), NO por env
   // global — así el número de un comercio con su propio APK nunca cae en el
   // flujo multi-comercio y sigue el flujo por-comercio de siempre.
-  if (isPortalVendor(vendor)) {
+  const isPortal = isPortalVendor(vendor);
+  const cfg = await getBotConfig(vendor?.id, isPortal);
+  // Si la config existe y dice "apagado", el bot calla (mismo efecto que el
+  // kill switch por comercio de hoy). Si no hay config → comportamiento actual.
+  if (cfg && !cfg.enabled) return { replies: [] };
+  // Portal: el switch de modo permite bajarlo a conserje sin tocar código.
+  if (isPortal && cfg?.mode === "concierge") {
+    const text = String(body || "").trim();
+    const state = (await getState(vendor.id, waId)) || { ...DEFAULT_STATE };
+    const replies = [];
+    if (!Array.isArray(state.history)) state.history = [];
+    await handleConcierge({ vendor, text, state, replies, waId });
+    return await persist(state, vendor.id, waId, replies);
+  }
+  if (isPortal) {
     return await handlePortalInbound({ vendor, waId, body, waPhone, timestamp });
   }
+  // Comercio: la config "orders" equivale al BOT_TAKE_ORDERS=1 de hoy.
+  // (El resto del handleInbound queda intacto: ordersEnabled gobierna el gate.)
+  const ordersEnabled = cfg?.mode === "orders" || config.takeOrders;
   const text = String(body || "").trim();
   const state = (await getState(vendor.id, waId)) || { ...DEFAULT_STATE };
   if (!Array.isArray(state.history)) state.history = [];
@@ -291,11 +309,8 @@ if (state.pausedUntil && state.pausedUntil > Date.now()) {
       return await persist(state, vendor.id, waId, replies);
     }
 
-    // Modo conserje (BOT_TAKE_ORDERS no está en "1"): saludar, compartir el
-    // menú online, preguntar si hubo un problema para pedir (handoff a la
-    // persona) y escuchar consultas/sugerencias — sin armar el pedido. El
-    // flujo de pedidos queda intacto pero no se entra con esto.
-    if (!config.takeOrders) {
+    // Modo conserje: la config por-tenant puede forzar "orders" sin tocar env.
+    if (!ordersEnabled) {
       await handleConcierge({ vendor, text, state, replies, waId });
       return await persist(state, vendor.id, waId, replies);
     }

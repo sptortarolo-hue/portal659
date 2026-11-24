@@ -589,7 +589,8 @@ async function callOnce(message, products, ctx = null) {
   const storeName = ctx?.storeName || 'Portal 659';
   const systemWithVertical =
     SYSTEM.replace('{vertical}', ctx?.vertical || 'desconocida').replace('{stage}', stageLabel)
-    + `\nTu comercio es: ${storeName}. Eres el asistente de ${storeName}, no de otro comercio, y tu misión es ayudar a este comercio y sus productos.`;
+    + `\nTu comercio es: ${storeName}. Eres el asistente de ${storeName}, no de otro comercio, y tu misión es ayudar a este comercio y sus productos.`
+    + (ctx?.agentPrompt || "");
   const llmResult = await llmChat(
     [
       { role: "system", content: systemWithVertical + fewShot },

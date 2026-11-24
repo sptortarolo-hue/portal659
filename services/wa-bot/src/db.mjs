@@ -27,6 +27,11 @@ export async function query(sql, params = []) {
   await getPool().query(sql, params);
 }
 
+export async function queryMany(sql, params = []) {
+  const { rows } = await getPool().query(sql, params);
+  return rows;
+}
+
 /** token (vendor_wa_bots.token) → vendor. Devuelve null si no hay. */
 export async function vendorByToken(token) {
   if (!token) return null;

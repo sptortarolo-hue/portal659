@@ -12,7 +12,7 @@ import { trackEvent, trackMessage } from "./telemetry.mjs";
 import { getClientByVendor, sendText, sendTyping, sendPaused, sendImage, sendDocument } from "./relay.mjs";
 import { getServices, buildGreeting, isServiceVertical } from "./services.mjs";
 import { feedPush } from "./metrics.mjs";
-import { getBotConfig } from "./bot-config.mjs";
+import { getBotConfig, buildAgentPrompt } from "./bot-config.mjs";
 
 const DEFAULT_STATE = {
   step: "idle",
@@ -192,13 +192,14 @@ export async function handleInbound({ vendor, waId, body, waPhone, timestamp }) 
     return await persist(state, vendor.id, waId, replies);
   }
   if (isPortal) {
-    return await handlePortalInbound({ vendor, waId, body, waPhone, timestamp });
+    return await handlePortalInbound({ vendor, waId, body, waPhone, timestamp, agentPrompt: buildAgentPrompt(cfg) });
   }
   // Comercio: la config "orders" equivale al BOT_TAKE_ORDERS=1 de hoy.
   // (El resto del handleInbound queda intacto: ordersEnabled gobierna el gate.)
   const ordersEnabled = cfg?.mode === "orders" || config.takeOrders;
   const text = String(body || "").trim();
   const state = (await getState(vendor.id, waId)) || { ...DEFAULT_STATE };
+  if (cfg) state._agentPrompt = buildAgentPrompt(cfg);
   if (!Array.isArray(state.history)) state.history = [];
   // El teléfono real del relay actualiza un lid: previo (el primer mensaje
   // puede no haberlo traído).
@@ -351,6 +352,7 @@ function llmCtx(state, vendor) {
     cart: state.items,
     pending: missingFields(state, vendor),
     history: state.history,
+    agentPrompt: state._agentPrompt || "",
     vendorId: vendor?.id || vendor?.vendorId || null,
     vertical: vendor?.vertical || null,
     storeName: vendor?.store_name || vendor?.storeName || vendor?.slug || vendor?.vendorId || 'el comercio',
@@ -3198,9 +3200,10 @@ function portalB2BText() {
   ].join("\n");
 }
 
-async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp }) {
+async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp, agentPrompt }) {
   const text = String(body || "").trim();
   let state = (await getState(vendor.id, waId)) || { ...DEFAULT_STATE };
+  if (agentPrompt) state._agentPrompt = agentPrompt;
   if (!Array.isArray(state.history)) state.history = [];
   const ph = phoneFor(waId, waPhone);
   if (!state.customerPhone || (String(state.customerPhone).startsWith("lid:") && !ph.startsWith("lid:"))) {

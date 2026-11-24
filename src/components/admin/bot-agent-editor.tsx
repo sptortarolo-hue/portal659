@@ -15,6 +15,8 @@ type Agent = {
   greeting: string | null;
   handoff_phone: string | null;
   store_name: string | null;
+  link_status: string | null;
+  wa_phone: string | null;
   brief: Record<string, unknown>;
   model: string | null;
 };
@@ -32,6 +34,7 @@ export function BotAgentEditor({ agentKey }: { agentKey: string }) {
   const [agent, setAgent] = useState<Agent | null>(null);
   const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [prompt, setPrompt] = useState("");
+  const [basePrompt, setBasePrompt] = useState("");
   const [tab, setTab] = useState<Tab>("basics");
   const [msg, setMsg] = useState("");
   const [saving, setSaving] = useState(false);
@@ -42,7 +45,8 @@ export function BotAgentEditor({ agentKey }: { agentKey: string }) {
     if (!r.ok) return;
     const d = await r.json();
     setAgent(d.agent);
-    setPrompt(d.prompt || "");
+    setPrompt(d.agentBlock || "");
+    setBasePrompt(d.basePrompt || "");
     const f = await fetch(`/api/admin/bots/agents/${encodeURIComponent(agentKey)}/faqs`);
     if (f.ok) setFaqs((await f.json()).faqs || []);
   }, [agentKey]);
@@ -177,13 +181,26 @@ export function BotAgentEditor({ agentKey }: { agentKey: string }) {
           </Card>
 
           <Card padding="md" className="lg:col-span-2">
-            <CardHeader><CardTitle>Vista previa del prompt del agente</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle>Prompt real del bot</CardTitle>
+              <Button variant="outline" size="sm" onClick={async () => {
+                await fetch(`/api/admin/bots/agents/${encodeURIComponent(agentKey)}/defaults`, { method: "POST" });
+                await load();
+              }}>↺ Restaurar defaults</Button>
+            </CardHeader>
             <p className="ts-caption text-muted-foreground mb-2">
-              Bloque aditivo: se agrega al system prompt solo si cargaste algo. {prompt.length} caracteres.
+              El bloque 🔒 es el motor fijo (no editable). El bloque ✏️ es la configuración de este agente. Total: {(basePrompt.length + prompt.length).toLocaleString("es-AR")} caracteres.
             </p>
-            <pre className="whitespace-pre-wrap rounded-lg bg-muted/50 p-3 ts-caption text-foreground max-h-64 overflow-auto">
-              {prompt || "(Todavía no cargaste brief ni conocimiento — el bot usa el prompt estándar de Portal 659.)"}
-            </pre>
+            <details className="mb-2 rounded-lg bg-muted/40 p-2">
+              <summary className="ts-caption cursor-pointer">🔒 Motor fijo de Portal 659 — {basePrompt.length.toLocaleString("es-AR")} caracteres (ver)</summary>
+              <pre className="mt-2 whitespace-pre-wrap rounded-lg bg-background p-3 ts-caption text-muted-foreground max-h-56 overflow-auto">{basePrompt || "(no disponible)"}</pre>
+            </details>
+            <div className="rounded-lg bg-muted/50 p-2">
+              <p className="ts-caption font-medium mb-1">✏️ Configuración del agente — {prompt.length.toLocaleString("es-AR")} caracteres</p>
+              <pre className="whitespace-pre-wrap rounded-lg bg-background p-3 ts-caption text-foreground max-h-64 overflow-auto">
+                {prompt || "(sin configuración cargada — el bot usa solo el motor fijo)"}
+              </pre>
+            </div>
           </Card>
         </div>
       )}
@@ -249,10 +266,17 @@ export function BotAgentEditor({ agentKey }: { agentKey: string }) {
           </Card>
           <Card padding="md" className="space-y-3">
             <CardHeader><CardTitle>Estado de conexión</CardTitle></CardHeader>
+            <div className="flex items-center gap-2">
+              <StatusDot tone={(agent.link_status === "linked" ? "success" : agent.enabled ? "warning" : "neutral") as any} />
+              <span className="ts-body">
+                {agent.link_status === "linked" ? "WhatsApp vinculado" : agent.link_status === "pairing" ? "Pareando (esperando QR)" : "Sin vincular"}
+              </span>
+            </div>
+            {agent.wa_phone && <p className="ts-caption text-muted-foreground">Número: {agent.wa_phone}</p>}
             <p className="ts-body text-muted-foreground">
-              El vínculo de WhatsApp se administra desde <code>/admin/bots</code> (QR del relay). Este agente usa ese vínculo.
+              El vínculo se administra desde <code>/admin/bots</code> (QR del relay). Este agente usa ese vínculo.
             </p>
-            <Button variant="outline" size="sm" asChild><Link href="/admin/bots">Ver conexiones →</Link></Button>
+            <Button variant="outline" size="sm" asChild><Link href="/admin/bots">Gestionar conexión →</Link></Button>
           </Card>
         </div>
       )}

@@ -1,6 +1,15 @@
 import { NextResponse } from "next/server";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { isAdmin } from "@/lib/admin-utils";
 import { queryOne, queryMany, query } from "@/lib/db";
+
+/** System prompt real del motor — fuente única: services/wa-bot/src/system-prompt.txt */
+function basePrompt(): string {
+  try {
+    return readFileSync(path.join(process.cwd(), "services/wa-bot/src/system-prompt.txt"), "utf8");
+  } catch { return "(No se pudo leer el prompt base del motor)"; }
+}
 
 function promptView(a: Record<string, unknown>, faqs: { question: string; answer: string }[]) {
   const b = (a.brief && typeof a.brief === "object" ? a.brief : {}) as Record<string, unknown>;
@@ -31,15 +40,24 @@ export async function GET(
   const { key } = await params;
   const a = await queryOne<Record<string, unknown>>(
     `SELECT b.key, b.vendor_id, b.name, b.mode, b.enabled, b.tone, b.greeting,
-            b.handoff_phone, b.brief, b.model, v.store_name, v.slug
+            b.handoff_phone, b.brief, b.model, v.store_name, v.slug,
+            vb.status AS link_status, vb.wa_phone
      FROM bot_agents b LEFT JOIN vendors v ON v.id = b.vendor_id
+     LEFT JOIN vendor_wa_bots vb ON vb.vendor_id = b.vendor_id
      WHERE b.key = $1 LIMIT 1`, [key]
   ).catch(() => null);
   if (!a) return NextResponse.json({ error: "Agente no encontrado" }, { status: 404 });
   const faqs = await queryMany<{ question: string; answer: string }>(
     `SELECT question, answer FROM bot_agent_faqs WHERE agent_key = $1 AND active = true ORDER BY created_at ASC LIMIT 40`, [key]
   ).catch(() => []);
-  return NextResponse.json({ agent: a, prompt: promptView(a, faqs), promptChars: promptView(a, faqs).length });
+  const agentBlock = promptView(a, faqs);
+  return NextResponse.json({
+    agent: a,
+    basePrompt: basePrompt(),
+    prompt: basePrompt() + agentBlock,
+    agentBlock,
+    promptChars: basePrompt().length + agentBlock.length,
+  });
 }
 
 /** PATCH /api/admin/bots/agents/[key] — editar un agente (admin only). */

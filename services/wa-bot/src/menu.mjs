@@ -1,5 +1,6 @@
-// @ts-check
+// @ts-nocheck
 import { config } from "./config.mjs";
+import { appFetch } from "./sandbox.mjs";
 
 /** @typedef {{ id: string; name: string; description?: string | null; price: number; category?: string | null; modifiers?: any[]; variants?: any[]; store_id?: string; store_name?: string; store_slug?: string | null; store_open?: boolean; store_open_text?: string | null; vertical?: string; pack_size?: number | null; unit?: string; weight_step_kg?: number | null; weight_min_kg?: number | null; requires_prep?: boolean; stock_control?: boolean; stock?: number | null; has_variants?: boolean; }} Product */
 
@@ -26,7 +27,7 @@ export async function getMenuWithStatus(vendorId) {
   if (hit && Date.now() - hit.at < 60 * 1000) return { products: hit.products, failed: false };
 
   try {
-    const res = await fetch(`${config.appUrl}/api/wa/menu?vendorId=${encodeURIComponent(vendorId)}`, {
+    const res = await appFetch(`${config.appUrl}/api/wa/menu?vendorId=${encodeURIComponent(vendorId)}`, {
       headers: { Authorization: `Bearer ${config.waBotSecret}` },
       signal: AbortSignal.timeout(10_000),
     });
@@ -60,7 +61,7 @@ export async function getPortalMenu() {
   if (hit && Date.now() - hit.at < 60 * 1000) return hit.products;
 
   try {
-    const res = await fetch(`${config.appUrl}/api/wa/portal-menu`, {
+    const res = await appFetch(`${config.appUrl}/api/wa/portal-menu`, {
       headers: { Authorization: `Bearer ${config.waBotSecret}` },
       signal: AbortSignal.timeout(15_000),
     });

@@ -1,6 +1,7 @@
 // Telemetría persistente: envía eventos del bot al app (POST /api/wa/events)
 // para métricas históricas. Best-effort: no bloquea el flujo del bot.
 import { config } from "./config.mjs";
+import { isSandbox } from "./sandbox.mjs";
 
 /**
  * Registra un evento del bot en el app (fire-and-forget).
@@ -10,7 +11,7 @@ import { config } from "./config.mjs";
  * @param {Record<string, any>} [meta] - metadata adicional
  */
 export function trackEvent(vendorId, type, waId, meta) {
-  if (!vendorId || !type) return;
+  if (!vendorId || !type || isSandbox()) return;
   try {
     fetch(`${config.appUrl}/api/wa/events`, {
       method: "POST",
@@ -30,7 +31,7 @@ export function trackEvent(vendorId, type, waId, meta) {
  * @param {string} text
  */
 export function trackMessage(vendorId, waId, direction, text) {
-  if (!vendorId || !waId || !text) return;
+  if (!vendorId || !waId || !text || isSandbox()) return;
   try {
     fetch(`${config.appUrl}/api/wa/messages`, {
       method: "POST",

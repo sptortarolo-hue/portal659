@@ -61,6 +61,8 @@ function buildAgentBlock(form: Form, faqs: FAQ[]): string {
 const TABS = [
   { id: "basics", label: "✏️ Básicos" },
   { id: "model", label: "🧠 Modelo" },
+  { id: "playground", label: "💬 Playground" },
+  { id: "lab", label: "🧪 Laboratorio" },
   { id: "knowledge", label: "📚 Conocimiento" },
   { id: "channel", label: "📱 Canal" },
   { id: "playground", label: "💬 Playground" },
@@ -79,6 +81,11 @@ export function BotAgentEditor({ agentKey }: { agentKey: string }) {
   const [saving, setSaving] = useState(false);
   const [models, setModels] = useState<{ provider: string; model: string; label: string; tier: string; supportsTools: boolean }[]>([]);
   const [modelTest, setModelTest] = useState("");
+  const [chat, setChat] = useState<{ role: "user" | "bot"; text: string }[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatSession] = useState(() => `s${Date.now()}`);
+  const [labResult, setLabResult] = useState<any>(null);
+  const [labRunning, setLabRunning] = useState(false);
   const [faqForm, setFaqForm] = useState({ question: "", answer: "" });
 
   const load = useCallback(async () => {
@@ -405,9 +412,105 @@ export function BotAgentEditor({ agentKey }: { agentKey: string }) {
       )}
 
       {tab === "playground" && (
-        <Card padding="md">
-          <EmptyState title="Playground en preparación" hint="Chateá con este agente sin enviar mensajes reales por WhatsApp. Se habilita en la Fase 2c." />
-        </Card>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+          <Card padding="md" className="lg:col-span-2 space-y-3">
+            <CardHeader>
+              <CardTitle>Chat de prueba</CardTitle>
+              <Button variant="outline" size="sm" onClick={() => {
+                setChat([]);
+                fetch(`/api/admin/bots/agents/${encodeURIComponent(agentKey)}/playground?sessionId=${chatSession}`, { method: "DELETE" }).catch(() => {});
+              }}>🧹 Nueva sesión</Button>
+            </CardHeader>
+            <div className="space-y-2 max-h-[420px] overflow-auto rounded-lg bg-muted/30 p-3">
+              {chat.length === 0 && <p className="ts-caption text-muted-foreground">Escribí como si fueras un cliente. No se envía nada por WhatsApp.</p>}
+              {chat.map((m, i) => (
+                <div key={i} className={`rounded-lg px-3 py-2 ts-body whitespace-pre-wrap ${m.role === "user" ? "ml-auto bg-primary text-primary-foreground max-w-[80%]" : "mr-auto bg-background max-w-[85%]"}`}>
+                  {m.text}
+                </div>
+              ))}
+            </div>
+            <form className="flex gap-2" onSubmit={async (e) => {
+              e.preventDefault();
+              const msg = chatInput.trim();
+              if (!msg || saving) return;
+              setChatInput(""); setChat((c) => [...c, { role: "user", text: msg }]); setSaving(true);
+              try {
+                const r = await fetch(`/api/admin/bots/agents/${encodeURIComponent(agentKey)}/playground`, {
+                  method: "POST", headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ sessionId: chatSession, message: msg }),
+                });
+                const d = await r.json().catch(() => ({}));
+                setChat((c) => [...c, { role: "bot", text: (d.replies || []).join("\n") || "(sin respuesta)" }]);
+              } catch { setChat((c) => [...c, { role: "bot", text: "Error al llamar al motor" }]); }
+              finally { setSaving(false); }
+            }}>
+              <input className="flex-1 rounded-lg border border-border bg-background px-3 py-2 ts-body"
+                value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="Hola, quiero pedir…" />
+              <Button size="sm" type="submit" disabled={saving || !chatInput.trim()}>{saving ? "…" : "Enviar"}</Button>
+            </form>
+          </Card>
+          <Card padding="md" className="space-y-2">
+            <CardHeader><CardTitle>Cómo funciona</CardTitle></CardHeader>
+            <p className="ts-body text-muted-foreground">
+              Este chat usa el <strong>mismo motor</strong> que atiende por WhatsApp, con la config y el modelo de este agente.
+              Está en <strong>sandbox</strong>: no envía mensajes, no crea pedidos reales y no contamina métricas ni conversaciones de clientes.
+            </p>
+            <p className="ts-caption text-muted-foreground">Sesión: <code>{chatSession}</code></p>
+          </Card>
+        </div>
+      )}
+
+      {tab === "lab" && (
+        <div className="space-y-3">
+          <Card padding="md" className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="ts-subtitle">Simulación con 6 clientes</p>
+              <p className="ts-body text-muted-foreground">
+                Clientes con personalidades distintas conversan contra el agente real (en sandbox) y un juez LLM los puntúa 0-100.
+              </p>
+            </div>
+            <Button size="sm" disabled={labRunning} onClick={async () => {
+              setLabRunning(true); setMsg("");
+              try {
+                const r = await fetch(`/api/admin/bots/agents/${encodeURIComponent(agentKey)}/lab`, {
+                  method: "POST", headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ sessionId: chatSession, judgeEnabled: true }),
+                });
+                const d = await r.json().catch(() => ({}));
+                if (!r.ok) throw new Error(d?.error || "No se pudo correr");
+                setLabResult(d);
+                setMsg(`Simulación lista: ${d.passed}/${d.total} personas OK`);
+              } catch (e: any) { setMsg(`Error: ${e?.message || "falló"}`); }
+              finally { setLabRunning(false); }
+            }}>{labRunning ? "Corriendo…" : "▶ Correr simulación (6 clientes)"}</Button>
+          </Card>
+          {msg && <p className="ts-caption text-muted-foreground">{msg}</p>}
+          {labResult && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {labResult.results?.map((r: any) => (
+                <Card key={r.id} padding="md" className="space-y-2">
+                  <CardHeader>
+                    <CardTitle>{r.ok ? "✅" : "⚠️"} {r.name}</CardTitle>
+                    <Chip active={r.ok}>{r.total}/100</Chip>
+                  </CardHeader>
+                  <p className="ts-caption text-muted-foreground">{r.heuristic?.note}</p>
+                  {r.verdict && (
+                    <div className="rounded-lg bg-muted/40 p-2">
+                      <p className="ts-caption font-medium">Juez: score {r.verdict.score} · alucina: {r.verdict.hallucination ? "sí" : "no"} · escala bien: {r.verdict.escalation_correct ? "sí" : "no"}</p>
+                      {(r.verdict.findings || []).map((f: string, i: number) => <p key={i} className="ts-caption text-muted-foreground">• {f}</p>)}
+                    </div>
+                  )}
+                  <details className="ts-caption">
+                    <summary className="cursor-pointer text-muted-foreground">Ver conversación</summary>
+                    <pre className="mt-2 whitespace-pre-wrap rounded-lg bg-background p-2 text-[11px] max-h-48 overflow-auto">
+                      {r.transcript.map((t: any) => `CLIENTE: ${t.user}\nBOT: ${t.bot}`).join("\n\n")}
+                    </pre>
+                  </details>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {tab === "metrics" && (

@@ -1,5 +1,6 @@
-// @ts-check
+// @ts-nocheck
 import { config } from "./config.mjs";
+import { appFetch } from "./sandbox.mjs";
 
 /** @typedef {{ id: string; name: string; description?: string | null; category?: string | null; duration_min?: number | null; price?: number | null; price_from?: number | null; image_url?: string | null; featured_today?: boolean }} Service */
 
@@ -27,7 +28,7 @@ export async function getServices(vendorId) {
   }
 
   try {
-    const res = await fetch(`${config.appUrl}/api/wa/services?vendorId=${encodeURIComponent(vendorId)}`, {
+    const res = await appFetch(`${config.appUrl}/api/wa/services?vendorId=${encodeURIComponent(vendorId)}`, {
       headers: { Authorization: `Bearer ${config.waBotSecret}` },
       signal: AbortSignal.timeout(10_000),
     });

@@ -187,8 +187,9 @@ defTool("track_order", {
     const phone = String(args?.phone || "").trim();
     if (!phone) return { ok: false, orders: [] };
     const { config } = await import("./config.mjs");
+    const { appFetch } = await import("./sandbox.mjs");
     try {
-      const res = await fetch(`${config.appUrl}/api/wa/portal-orders?phone=${encodeURIComponent(phone)}`, {
+      const res = await appFetch(`${config.appUrl}/api/wa/portal-orders?phone=${encodeURIComponent(phone)}`, {
         headers: { Authorization: `Bearer ${config.waBotSecret}` },
         signal: AbortSignal.timeout(10_000),
       });

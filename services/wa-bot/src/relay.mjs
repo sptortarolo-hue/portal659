@@ -1,4 +1,5 @@
 import { WebSocket } from "ws";
+import { isSandbox } from "./sandbox.mjs";
 
 const clients = new Map(); // token -> { ws, vendor }
 
@@ -38,6 +39,7 @@ export function clientsList() {
 }
 
 export function sendText(client, waId, text) {
+  if (isSandbox()) return true;
   if (!client || client.ws.readyState !== WebSocket.OPEN) return false;
   client.ws.send(JSON.stringify({ type: "send", wa_id: waId, text }));
   return true;
@@ -45,6 +47,7 @@ export function sendText(client, waId, text) {
 
 /** Envía una imagen por WhatsApp (base64). Caption opcional. */
 export function sendImage(client, waId, data, caption) {
+  if (isSandbox()) return true;
   if (!client || client.ws.readyState !== WebSocket.OPEN) return false;
   client.ws.send(JSON.stringify({ type: "image", wa_id: waId, data, body: caption || "" }));
   return true;
@@ -52,6 +55,7 @@ export function sendImage(client, waId, data, caption) {
 
 /** Envía un documento (PDF) por WhatsApp (base64). */
 export function sendDocument(client, waId, data, fileName, mime) {
+  if (isSandbox()) return true;
   if (!client || client.ws.readyState !== WebSocket.OPEN) return false;
   client.ws.send(JSON.stringify({ type: "document", wa_id: waId, data, name: fileName || "documento.pdf", mime: mime || "application/pdf" }));
   return true;
@@ -60,6 +64,7 @@ export function sendDocument(client, waId, data, fileName, mime) {
 /** Avisa al relay que "está tipeando" (ChatPresence composing) — el dueño se ve
  *  como si estuviera escribiendo. No bloquea: si el relay no está, se ignora. */
 export function sendTyping(client, waId) {
+  if (isSandbox()) return true;
   if (!client || client.ws.readyState !== WebSocket.OPEN) return false;
   client.ws.send(JSON.stringify({ type: "typing", wa_id: waId }));
   return true;
@@ -67,6 +72,7 @@ export function sendTyping(client, waId) {
 
 /** Detiene el indicador de tipeo (ChatPresence paused). */
 export function sendPaused(client, waId) {
+  if (isSandbox()) return true;
   if (!client || client.ws.readyState !== WebSocket.OPEN) return false;
   client.ws.send(JSON.stringify({ type: "paused", wa_id: waId }));
   return true;

@@ -12,6 +12,7 @@ import { trackEvent, trackMessage } from "./telemetry.mjs";
 import { getClientByVendor, sendText, sendTyping, sendPaused, sendImage, sendDocument } from "./relay.mjs";
 import { getServices, buildGreeting, isServiceVertical } from "./services.mjs";
 import { feedPush } from "./metrics.mjs";
+import { isSandbox, appFetch } from "./sandbox.mjs";
 import { getBotConfig, buildAgentPrompt } from "./bot-config.mjs";
 
 const DEFAULT_STATE = {
@@ -172,13 +173,13 @@ function isPortalVendor(vendor) {
   return ["portal659-bot", "portal-central", "admin-portal659"].includes(slug);
 }
 
-export async function handleInbound({ vendor, waId, body, waPhone, timestamp }) {
+export async function handleInbound({ vendor, waId, body, waPhone, timestamp, agentConfig }) {
   // Modo portal SOLO para el relay del número central de Portal 659: se
   // identifica por slug del vendor (infraestructura del bot), NO por env
   // global — así el número de un comercio con su propio APK nunca cae en el
   // flujo multi-comercio y sigue el flujo por-comercio de siempre.
   const isPortal = isPortalVendor(vendor);
-  const cfg = await getBotConfig(vendor?.id, isPortal);
+  const cfg = agentConfig || await getBotConfig(vendor?.id, isPortal);
   // Si la config existe y dice "apagado", el bot calla (mismo efecto que el
   // kill switch por comercio de hoy). Si no hay config → comportamiento actual.
   if (cfg && !cfg.enabled) return { replies: [] };
@@ -2271,7 +2272,11 @@ function mergeItems(state, newItems, vendorId) {
 // ———————————————————————————————————————————————————————————————————————————
 
 async function createOrder(vendorId, state) {
-  const res = await fetch(`${config.appUrl}/api/wa/order`, {
+  if (isSandbox()) {
+    const total = state.items.reduce((s, i) => s + Number(i.price || 0) * Number(i.qty || 1), 0);
+    return { ok: true, orderId: "SIMULADO", total, trackToken: "sim", pickupNumber: "SIM", sandbox: true };
+  }
+  const res = await appFetch(`${config.appUrl}/api/wa/order`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.waBotSecret}` },
     body: JSON.stringify({
@@ -2323,7 +2328,7 @@ const RE_PERSON_NO = /^(2|no|nop|no quiero|no gracias|cero)(?=[\s.,!¡]|$)/i;
 
 async function latestOrderFor(vendorId, phone) {
   try {
-    const r = await fetch(`${config.appUrl}/api/wa/latest-orders?vendorId=${encodeURIComponent(vendorId)}&phone=${encodeURIComponent(String(phone || ""))}`, {
+    const r = await appFetch(`${config.appUrl}/api/wa/latest-orders?vendorId=${encodeURIComponent(vendorId)}&phone=${encodeURIComponent(String(phone || ""))}`, {
       headers: { Authorization: `Bearer ${config.waBotSecret}` },
       signal: AbortSignal.timeout(8_000),
     });
@@ -2373,7 +2378,7 @@ function hashStr(s) {
 async function conciergeGreeting(vendor, waId) {
   let openLine = "";
   try {
-    const r = await fetch(`${config.appUrl}/api/wa/menu?vendorId=${encodeURIComponent(vendor.id)}`, {
+    const r = await appFetch(`${config.appUrl}/api/wa/menu?vendorId=${encodeURIComponent(vendor.id)}`, {
       headers: { Authorization: `Bearer ${config.waBotSecret}` },
       signal: AbortSignal.timeout(8_000),
     });
@@ -2641,11 +2646,11 @@ async function replyStoreCatalog({ state, vendor, waId, replies, chosen }) {
   if (_client) {
     try {
       const [bRes, mRes] = await Promise.all([
-        fetch(`${config.appUrl}/api/wa/store-banner?vendorId=${encodeURIComponent(chosen.id)}`, {
+        appFetch(`${config.appUrl}/api/wa/store-banner?vendorId=${encodeURIComponent(chosen.id)}`, {
           headers: { Authorization: `Bearer ${config.waBotSecret}` },
           signal: AbortSignal.timeout(15_000),
         }).catch(() => null),
-        fetch(`${config.appUrl}/api/wa/menu-image?vendorId=${encodeURIComponent(chosen.id)}`, {
+        appFetch(`${config.appUrl}/api/wa/menu-image?vendorId=${encodeURIComponent(chosen.id)}`, {
           headers: { Authorization: `Bearer ${config.waBotSecret}` },
           signal: AbortSignal.timeout(15_000),
         }).catch(() => null),
@@ -2706,7 +2711,7 @@ async function fetchPortalMenu(q = "") {
  *  o null si falla. Solo se usa cuando config.waQuoteMode !== "off". */
 async function fetchQuote(vendorId, items, method, paymentMethod) {
   try {
-    const res = await fetch(`${config.appUrl}/api/wa/quote`, {
+    const res = await appFetch(`${config.appUrl}/api/wa/quote`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.waBotSecret}` },
       signal: AbortSignal.timeout(10_000),
@@ -2727,7 +2732,7 @@ async function fetchQuote(vendorId, items, method, paymentMethod) {
  *  Devuelve { slots: [{time, available}], estimated, closed } o null si falla. */
 async function fetchDeliverySlots(vendorId, date) {
   try {
-    const res = await fetch(`${config.appUrl}/api/slot-availability?vendorId=${encodeURIComponent(vendorId)}&date=${date}`, {
+    const res = await appFetch(`${config.appUrl}/api/slot-availability?vendorId=${encodeURIComponent(vendorId)}&date=${date}`, {
       headers: { Authorization: `Bearer ${config.waBotSecret}` },
       signal: AbortSignal.timeout(10_000),
     });
@@ -2744,7 +2749,7 @@ async function fetchDeliverySlots(vendorId, date) {
  *  nombre, dirección, método, pago, total e ítems para re-pedido. */
 async function fetchCustomer(vendorId, phone) {
   try {
-    const res = await fetch(`${config.appUrl}/api/wa/customer?vendorId=${encodeURIComponent(vendorId)}&phone=${encodeURIComponent(phone || "")}`, {
+    const res = await appFetch(`${config.appUrl}/api/wa/customer?vendorId=${encodeURIComponent(vendorId)}&phone=${encodeURIComponent(phone || "")}`, {
       headers: { Authorization: `Bearer ${config.waBotSecret}` },
       signal: AbortSignal.timeout(10_000),
     });
@@ -3267,7 +3272,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp, age
     try {
       const rawPhone = state.customerPhone || waId;
       const phone = String(rawPhone).startsWith("lid:") ? waId : rawPhone;
-      const res = await fetch(`${config.appUrl}/api/wa/portal-orders?phone=${encodeURIComponent(String(phone))}`, {
+      const res = await appFetch(`${config.appUrl}/api/wa/portal-orders?phone=${encodeURIComponent(String(phone))}`, {
         headers: { Authorization: `Bearer ${config.waBotSecret}` },
         signal: AbortSignal.timeout(5_000),
       });
@@ -3532,7 +3537,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp, age
       const rawPhone = state.customerPhone || waId;
       const phone = String(rawPhone).startsWith("lid:") ? waId : rawPhone;
       try {
-        const res = await fetch(`${config.appUrl}/api/wa/portal-orders?phone=${encodeURIComponent(String(phone))}`, {
+        const res = await appFetch(`${config.appUrl}/api/wa/portal-orders?phone=${encodeURIComponent(String(phone))}`, {
           headers: { Authorization: `Bearer ${config.waBotSecret}` },
           signal: AbortSignal.timeout(10_000),
         });
@@ -3589,7 +3594,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp, age
             return sn.includes(name.toLowerCase()) || name.toLowerCase().includes(sn);
           });
           if (store) {
-            await fetch(`${config.appUrl}/api/wa/favorites`, {
+            await appFetch(`${config.appUrl}/api/wa/favorites`, {
               method: "DELETE",
               headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.waBotSecret}` },
               body: JSON.stringify({ phone, vendorId: store.id }),
@@ -3603,7 +3608,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp, age
         }
 
         if (isFavList) {
-          const res = await fetch(`${config.appUrl}/api/wa/favorites?phone=${encodeURIComponent(String(phone))}`, {
+          const res = await appFetch(`${config.appUrl}/api/wa/favorites?phone=${encodeURIComponent(String(phone))}`, {
             headers: { Authorization: `Bearer ${config.waBotSecret}` },
             signal: AbortSignal.timeout(10_000),
           });
@@ -3632,7 +3637,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp, age
           replies.push(`No encontré "${name}" en las tiendas de la zona. Escribí *comercios* para ver el listado.`);
           return await persist(state, vendor.id, waId, replies);
         }
-        const res = await fetch(`${config.appUrl}/api/wa/favorites`, {
+        const res = await appFetch(`${config.appUrl}/api/wa/favorites`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.waBotSecret}` },
           body: JSON.stringify({ phone, vendorId: store.id }),
@@ -3659,7 +3664,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp, age
       const rawPhone = state.customerPhone || waId;
       const phone = String(rawPhone).startsWith("lid:") ? waId : rawPhone;
       try {
-        const res = await fetch(`${config.appUrl}/api/wa/portal-orders?phone=${encodeURIComponent(String(phone))}`, {
+        const res = await appFetch(`${config.appUrl}/api/wa/portal-orders?phone=${encodeURIComponent(String(phone))}`, {
           headers: { Authorization: `Bearer ${config.waBotSecret}` },
           signal: AbortSignal.timeout(10_000),
         });
@@ -3822,7 +3827,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp, age
       const rawPhone = state.customerPhone || waId;
       const phone = String(rawPhone).startsWith("lid:") ? waId : rawPhone;
       try {
-        const res = await fetch(`${config.appUrl}/api/wa/portal-orders?phone=${encodeURIComponent(String(phone))}`, {
+        const res = await appFetch(`${config.appUrl}/api/wa/portal-orders?phone=${encodeURIComponent(String(phone))}`, {
           headers: { Authorization: `Bearer ${config.waBotSecret}` },
           signal: AbortSignal.timeout(10_000),
         });
@@ -3906,7 +3911,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp, age
       // Buscar el último pedido para dar contexto al admin.
       let lastOrderInfo = "";
       try {
-        const res = await fetch(`${config.appUrl}/api/wa/portal-orders?phone=${encodeURIComponent(String(phone))}`, {
+        const res = await appFetch(`${config.appUrl}/api/wa/portal-orders?phone=${encodeURIComponent(String(phone))}`, {
           headers: { Authorization: `Bearer ${config.waBotSecret}` },
           signal: AbortSignal.timeout(10_000),
         });
@@ -3930,7 +3935,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp, age
       const rawPhone = state.customerPhone || waId;
       const phone = String(rawPhone).startsWith("lid:") ? waId : rawPhone;
       try {
-        const res = await fetch(`${config.appUrl}/api/wa/portal-orders?phone=${encodeURIComponent(String(phone))}`, {
+        const res = await appFetch(`${config.appUrl}/api/wa/portal-orders?phone=${encodeURIComponent(String(phone))}`, {
           headers: { Authorization: `Bearer ${config.waBotSecret}` },
           signal: AbortSignal.timeout(10_000),
         });
@@ -3993,7 +3998,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp, age
       const rawPhone = state.customerPhone || waId;
       const phone = String(rawPhone).startsWith("lid:") ? waId : rawPhone;
       try {
-        const res = await fetch(`${config.appUrl}/api/wa/portal-orders?phone=${encodeURIComponent(String(phone))}`, {
+        const res = await appFetch(`${config.appUrl}/api/wa/portal-orders?phone=${encodeURIComponent(String(phone))}`, {
           headers: { Authorization: `Bearer ${config.waBotSecret}` },
           signal: AbortSignal.timeout(10_000),
         });
@@ -4355,8 +4360,9 @@ export async function sweepAbandonedCarts() {
 }
 
 async function notifyHandoff(vendorId, waId, text) {
+  if (isSandbox()) return;
   try {
-    await fetch(`${config.appUrl}/api/wa/handoff`, {
+    await appFetch(`${config.appUrl}/api/wa/handoff`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.waBotSecret}` },
       body: JSON.stringify({ vendorId, waId, lastMessage: text.slice(0, 200) }),
@@ -4468,7 +4474,7 @@ export async function handleInboundMedia({ vendor, waId, mime, name, buffer, waP
     fd.append("vendorId", vendor.id);
     fd.append("file", new Blob([buffer], { type: mime }), name || `comprobante.${mime === "application/pdf" ? "pdf" : "jpg"}`);
 
-    const res = await fetch(`${config.appUrl}/api/wa/receipt`, {
+    const res = await appFetch(`${config.appUrl}/api/wa/receipt`, {
       method: "POST",
       headers: { Authorization: `Bearer ${config.waBotSecret}` },
       body: fd,

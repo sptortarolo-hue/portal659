@@ -259,7 +259,16 @@ export async function POST(request: Request) {
     const p = await tx.queryOne<{ id: string }>(
       `INSERT INTO purchases (vendor_id, supplier_id, purchased_at, receipt_type, receipt_number, notes, total, attachment_urls)
        VALUES ($1, $2, COALESCE($3::date, CURRENT_DATE), $4, $5, $6, $7, $8) RETURNING id`,
-      [gate.vendor.id, supplier_id, purchased_at, receipt_type, receipt_number, notes, total, attachment_urls]
+      [
+        gate.vendor.id,
+        supplier_id,
+        purchased_at,
+        receipt_type,
+        receipt_number,
+        notes,
+        total,
+        JSON.stringify(attachment_urls),
+      ]
     );
     if (!p) throw new Error("No se pudo crear la compra");
     const { logStockMovement } = await import("@/lib/stock-ledger");

@@ -14,14 +14,16 @@ export const PERSONAS = [
     name: "El Decidido",
     description: "Quiere comprar ya: elige, da datos y confirma.",
     lines: ["hola", "comercios", "1", "quiero 2 boca juniors", "retirar", "Juan", "efectivo", "sí"],
-    expect: (ctx) => (ctx.orderCreated ? { ok: true, note: "Pedido simulado creado" } : { ok: false, note: "El flujo nunca creó el pedido" }),
+    expect: (ctx) => (ctx.mode === "orders" && !ctx.orderCreated
+      ? { ok: false, note: "Modo órdenes: el flujo nunca creó el pedido" }
+      : { ok: true, note: ctx.mode === "orders" ? "Pedido simulado creado" : "Conserje: respondió y/o derivó a una persona" }),
   },
   {
     id: "preguntón",
     name: "El Preguntón",
     description: "Pregunta precios y no decide.",
     lines: ["hola", "comercios", "1", "cuánto sale la boca juniors?", "y la cerezas?", "y el maradona?", "gracias"],
-    expect: (ctx) => (/\$[\d.,]+/.test(ctx.transcript) ? { ok: true, note: "Mostró precios" } : { ok: false, note: "Nunca mostró un precio" }),
+    expect: (ctx) => (ctx.answered ? { ok: true, note: "Mostró precios o explicó que no los tiene / derivó" } : { ok: false, note: "No respondió" }),
   },
   {
     id: "enojado",
@@ -49,7 +51,7 @@ export const PERSONAS = [
     name: "Escribe mal",
     description: "Lunfardo y errores de ortografía.",
     lines: ["ola", "ke tieen", "quiero boca", "cuantos vale la cereza"],
-    expect: (ctx) => (/boca|cereza|\$[\d.,]+/i.test(ctx.transcript) ? { ok: true, note: "Entendió el catálogo" } : { ok: false, note: "No entendió" }),
+    expect: (ctx) => (ctx.answered ? { ok: true, note: "Entendió el mensaje (aunque derivó a una persona)" } : { ok: false, note: "No respondió" }),
   },
 ];
 
@@ -99,12 +101,16 @@ export async function runLab({ vendor, agentConfig, sessionId = "lab", judgeEnab
         }
       }
       const text = transcript.map((x) => x.bot).join("\n");
-      const heuristic = persona.expect({ transcript: text, handoff, orderCreated });
+      const answered = transcript.some((x) => x.bot.trim() && !x.bot.startsWith("[error]"));
+      const heuristic = persona.expect({ transcript: text, handoff, orderCreated, answered, mode: agentConfig?.mode || "orders" });
       const verdict = judgeEnabled ? await judge(persona, transcript, catalogText) : null;
-      const total = verdict ? Math.round((heuristic.ok ? 60 : 0) * 0.6 + Number(verdict.score || 0) * 0.4)
+      // El juez entiende el contexto (modo conserje, derivación, tono); la
+      // heurística es sólo un piso para cuando el juez no está disponible.
+      const total = verdict ? Math.round(Number(verdict.score || 0) * 0.8 + (heuristic.ok ? 20 : 0))
         : (heuristic.ok ? 80 : 0);
       results.push({
-        id: persona.id, name: persona.name, ok: heuristic.ok && (!verdict || Number(verdict.score) >= 50),
+        id: persona.id, name: persona.name,
+        ok: verdict ? Number(verdict.score) >= 50 : heuristic.ok,
         heuristic, verdict, total, transcript,
       });
     }

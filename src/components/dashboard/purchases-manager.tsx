@@ -114,6 +114,9 @@ function QuickCreateSheet({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // El Modal usa portal, pero React propaga eventos por el árbol de
+    // componentes: sin esto el submit sube al <form> de la compra y la cierra.
+    e.stopPropagation();
     setError("");
     if (kind === "ing") {
       if (!name.trim()) return setError("Indicá el nombre del insumo");

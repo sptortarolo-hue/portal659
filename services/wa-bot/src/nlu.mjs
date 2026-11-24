@@ -211,10 +211,8 @@ export async function classifyIntent(message) {
 
 // SYSTEM prompt: si hay tools (function calling), usá create_order / not_an_order.
 // Si no hay (provider que no las soporta), respondé JSON puro.
-// System prompt: fuente única en system-prompt.txt (la panel lo lee también).
-// Se rellenan {vertical} y {stage} en callOnce().
-import { readFileSync } from "node:fs";
-const SYSTEM = readFileSync(new URL("./system-prompt.txt", import.meta.url), "utf8");
+// System prompt: fuente única en system-prompt.mjs (el panel lo importa también).
+import { SYSTEM_PROMPT as SYSTEM } from "./system-prompt.mjs";
 export { SYSTEM };
 
 

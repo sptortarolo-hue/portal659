@@ -35,6 +35,7 @@ export function BotAgentEditor({ agentKey }: { agentKey: string }) {
   const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [prompt, setPrompt] = useState("");
   const [basePrompt, setBasePrompt] = useState("");
+  const [suggested, setSuggested] = useState<any>(null);
   const [tab, setTab] = useState<Tab>("basics");
   const [msg, setMsg] = useState("");
   const [saving, setSaving] = useState(false);
@@ -49,6 +50,8 @@ export function BotAgentEditor({ agentKey }: { agentKey: string }) {
     setBasePrompt(d.basePrompt || "");
     const f = await fetch(`/api/admin/bots/agents/${encodeURIComponent(agentKey)}/faqs`);
     if (f.ok) setFaqs((await f.json()).faqs || []);
+    const def = await fetch(`/api/admin/bots/agents/${encodeURIComponent(agentKey)}/defaults`);
+    if (def.ok) setSuggested(await def.json());
   }, [agentKey]);
   useEffect(() => { load(); }, [load]);
 
@@ -198,7 +201,11 @@ export function BotAgentEditor({ agentKey }: { agentKey: string }) {
             <div className="rounded-lg bg-muted/50 p-2">
               <p className="ts-caption font-medium mb-1">✏️ Configuración del agente — {prompt.length.toLocaleString("es-AR")} caracteres</p>
               <pre className="whitespace-pre-wrap rounded-lg bg-background p-3 ts-caption text-foreground max-h-64 overflow-auto">
-                {prompt || "(sin configuración cargada — el bot usa solo el motor fijo)"}
+                {prompt || (
+                  suggested
+                    ? `CONFIG SUGERIDA (no guardada — clic en "Restaurar defaults" para aplicarla):\n\nSaludo: ${suggested.greeting}\n\nBrief: ${JSON.stringify(suggested.brief, null, 2)}`
+                    : "(sin configuración cargada — el bot usa solo el motor fijo)"
+                )}
               </pre>
             </div>
           </Card>

@@ -1,15 +1,10 @@
 import { NextResponse } from "next/server";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import { isAdmin } from "@/lib/admin-utils";
 import { queryOne, queryMany, query } from "@/lib/db";
+import { SYSTEM_PROMPT } from "../../../../../../../services/wa-bot/src/system-prompt.mjs";
 
-/** System prompt real del motor — fuente única: services/wa-bot/src/system-prompt.txt */
-function basePrompt(): string {
-  try {
-    return readFileSync(path.join(process.cwd(), "services/wa-bot/src/system-prompt.txt"), "utf8");
-  } catch { return "(No se pudo leer el prompt base del motor)"; }
-}
+/** System prompt real del motor — fuente única compartida con el cerebro. */
+function basePrompt(): string { return SYSTEM_PROMPT; }
 
 function promptView(a: Record<string, unknown>, faqs: { question: string; answer: string }[]) {
   const b = (a.brief && typeof a.brief === "object" ? a.brief : {}) as Record<string, unknown>;

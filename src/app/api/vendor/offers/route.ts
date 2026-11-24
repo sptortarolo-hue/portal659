@@ -218,10 +218,20 @@ export async function POST(request: Request) {
       supplierId = existing.id;
     } else {
       const created = await queryOne<{ id: string }>(
-        `INSERT INTO suppliers (vendor_id, name) VALUES ($1, $2) RETURNING id`,
+        `INSERT INTO suppliers (vendor_id, name) VALUES ($1, $2)
+         ON CONFLICT DO NOTHING RETURNING id`,
         [vendor.id, supplierName]
       ).catch(() => null);
-      if (created?.id) supplierId = created.id;
+      if (created?.id) {
+        supplierId = created.id;
+      } else {
+        const raced = await queryOne<{ id: string }>(
+          `SELECT id FROM suppliers
+            WHERE vendor_id = $1 AND lower(btrim(name)) = lower(btrim($2)) LIMIT 1`,
+          [vendor.id, supplierName]
+        ).catch(() => null);
+        if (raced?.id) supplierId = raced.id;
+      }
     }
   }
   const hasExpiresField = await queryOne<{ exists: boolean }>(

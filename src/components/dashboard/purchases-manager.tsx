@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -838,7 +839,7 @@ function PurchaseForm({
           Al guardar, el costo se actualiza al último precio{allowMerchandise ? " y la mercadería entra a stock" : " y los platos se recalculan solos"}.
         </p>
 
-        {creating && (
+        {creating && typeof document !== "undefined" && createPortal(
           <QuickCreateSheet
             kind={creating.kind}
             products={products.map((p) => ({ id: p.id, name: p.name }))}
@@ -866,7 +867,8 @@ function PurchaseForm({
               onItemCreated(created);
               setCreating(null);
             }}
-          />
+          />,
+          document.body
         )}
 
         {error && <p className="text-sm text-red-600">{error}</p>}

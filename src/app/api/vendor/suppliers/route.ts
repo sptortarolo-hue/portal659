@@ -44,10 +44,28 @@ export async function POST(request: Request) {
   const notes =
     body?.notes != null && String(body.notes).trim() !== "" ? String(body.notes).trim() : null;
 
-  const row = await queryOne<Record<string, unknown>>(
+  // Idempotente: si ya existe un proveedor con el mismo nombre (ignorando
+  // mayúsculas/espacios), se reutiliza en vez de crear un duplicado.
+  const existing = await queryOne<Record<string, unknown>>(
+    `SELECT * FROM suppliers
+      WHERE vendor_id = $1 AND lower(btrim(name)) = lower(btrim($2)) LIMIT 1`,
+    [gate.vendor.id, name]
+  ).catch(() => null);
+  if (existing) return NextResponse.json({ supplier: existing });
+
+  let row = await queryOne<Record<string, unknown>>(
     `INSERT INTO suppliers (vendor_id, name, phone, email, notes)
-     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT DO NOTHING RETURNING *`,
     [gate.vendor.id, name, phone, email, notes]
-  );
+  ).catch(() => null);
+
+  if (!row) {
+    row = await queryOne<Record<string, unknown>>(
+      `SELECT * FROM suppliers
+        WHERE vendor_id = $1 AND lower(btrim(name)) = lower(btrim($2)) LIMIT 1`,
+      [gate.vendor.id, name]
+    );
+  }
   return NextResponse.json({ supplier: row });
 }

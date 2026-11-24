@@ -1128,7 +1128,7 @@ export function PurchasesManager({
       try {
         data = text ? JSON.parse(text) : {};
       } catch {
-        data = { error: text ? text.slice(0, 300) : `HTTP ${res.status}` };
+        data = { error: `HTTP ${res.status}: ${text ? text.slice(0, 300) : "(sin body)"}` };
       }
       if (!res.ok) {
         setExtractMsg(data?.error || `Error ${res.status}`);
@@ -1219,6 +1219,7 @@ export function PurchasesManager({
       setFormNonce((n) => n + 1);
       setShowForm(true);
     } catch (e: any) {
+      console.error("[purchases/extract] fetch failed", e);
       setExtractMsg(`No se pudo conectar: ${e?.message || e}`);
     } finally {
       setExtracting(false);

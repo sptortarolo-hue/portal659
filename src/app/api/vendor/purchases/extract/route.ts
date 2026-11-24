@@ -46,6 +46,12 @@ export async function POST(request: Request) {
   const mimeType =
     file.type ||
     (isPdf ? "application/pdf" : "image/jpeg");
+  console.log("[extract] start", {
+    vendorId: gate.vendor.id,
+    mimeType,
+    size: buffer.length,
+    name: String(file.name || "").slice(0, 80),
+  });
 
   try {
     const { extracted, raw, usedProvider } = await extractInvoice(buffer, mimeType);
@@ -100,6 +106,7 @@ export async function POST(request: Request) {
       return { ...it, suggestions, bestMatch: best };
     });
 
+    console.log("[extract] ok", { usedProvider, items: extracted.items.length });
     return NextResponse.json({
       url,
       extracted: { ...extracted, items: itemsWithSuggestions },
@@ -108,6 +115,7 @@ export async function POST(request: Request) {
     });
   } catch (e: any) {
     const msg = e?.message || "No se pudo leer el comprobante";
+    console.error("[extract] error", msg);
     // El archivo ya quedó guardado: lo devolvemos para que el comerciante
     // lo use manualmente si la IA falla.
     return NextResponse.json({ error: msg, url }, { status: 502 });

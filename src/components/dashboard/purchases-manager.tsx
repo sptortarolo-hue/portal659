@@ -1192,12 +1192,14 @@ export function PurchasesManager({
       const low = extractedItems.filter(
         (it: any) => !it?.bestMatch || (it?.confidence != null && Number(it.confidence) < 0.7)
       );
+      const providerSuffix = data?.usedProvider ? ` (IA: ${data.usedProvider})` : "";
       const msg =
         extractedItems.length > 0
           ? `Se leyeron ${extractedItems.length} línea(s). ` +
             (low.length > 0 ? `${low.length} requieren revisión (sin match o baja confianza). ` : "") +
-            "Revisá y guardá."
-          : "No se detectaron líneas. Cargá manualmente.";
+            "Revisá y guardá." +
+            providerSuffix
+          : "No se detectaron líneas. Cargá manualmente." + providerSuffix;
 
       setFormInitial({
         supplierId: supplierId,

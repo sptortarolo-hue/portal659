@@ -48,7 +48,7 @@ export async function POST(request: Request) {
     (isPdf ? "application/pdf" : "image/jpeg");
 
   try {
-    const { extracted, raw } = await extractInvoice(buffer, mimeType);
+    const { extracted, raw, usedProvider } = await extractInvoice(buffer, mimeType);
 
     // Catálogo del comercio para sugerir match por línea.
     const [ings, prods, vars] = await Promise.all([
@@ -104,6 +104,7 @@ export async function POST(request: Request) {
       url,
       extracted: { ...extracted, items: itemsWithSuggestions },
       raw,
+      usedProvider,
     });
   } catch (e: any) {
     const msg = e?.message || "No se pudo leer el comprobante";

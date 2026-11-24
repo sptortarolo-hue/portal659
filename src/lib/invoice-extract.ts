@@ -1,8 +1,9 @@
 /**
- * Extracción de comprobantes de proveedor (foto/PDF) con Gemini.
+ * Extracción de comprobantes de proveedor (foto/PDF) con IA.
  *
- * Devuelve datos estructurados (proveedor, fecha, n°, líneas) para que el
- * comerciante los revise en el formulario de Compras. La IA solo propone:
+ * Soporta varios proveedores con fallback automático (igual que el bot de
+ * WhatsApp): Gemini → Groq (visión) → OpenRouter (visión) → primario
+ * configurado (solo si el modelo soporta imágenes). La IA solo propone:
  * nada se guarda ciego.
  */
 export type ExtractedInvoiceItem = {
@@ -28,6 +29,81 @@ const VALID_RECEIPTS = new Set([
   "factura_a", "factura_b", "factura_c", "remito", "ticket", "ninguno",
 ]);
 
+const PROMPT = `Sos un asistente que lee comprobantes de proveedores (facturas, remitos, tickets) de comercios minoristas argentinos y devuelve SOLO un JSON válido, sin texto adicional.
+
+Extraé los siguientes campos del comprobante:
+- supplier_name: nombre del proveedor/emisor (string o null).
+- receipt_type: uno de "factura_a", "factura_b", "factura_c", "remito", "ticket", "ninguno" según el comprobante. Si es remito sin tipo fiscal, "remito".
+- receipt_number: número de comprobante (string o null).
+- purchased_at: fecha del comprobante en formato YYYY-MM-DD (string o null).
+- items: array de líneas de producto/mercadería. Cada item:
+  - description: descripción del artículo tal como figura (string).
+  - qty: cantidad (número).
+  - unit: unidad de la cantidad ("kg", "g", "l", "ml", "u", etc.).
+  - unit_price: precio unitario. Si la factura discrimina IVA, devolvé el precio NETO sin IVA; si no, el precio tal como figura.
+  - line_total: total de la línea (qty * unit_price). Si no figura, calculalo.
+  - confidence: número entre 0 y 1 con tu confianza en esa línea.
+
+REGLAS IMPORTANTES:
+- NO incluyas líneas de subtotal, IVA, descuentos, fletes, redondeos ni totales como items.
+- Si una línea es un servicio o gasto (no mercadería), NO la incluyas.
+- Si no podés leer un campo con seguridad, devolvé null o 0 y bajá confidence.
+- Devolvé SOLO el JSON, sin explicaciones.`;
+
+type Provider = {
+  name: string;
+  kind: "gemini" | "openai";
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+};
+
+function buildProviders(): Provider[] {
+  const out: Provider[] = [];
+  const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
+  if (geminiKey) {
+    out.push({
+      name: "gemini",
+      kind: "gemini",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      apiKey: geminiKey,
+      model: process.env.GEMINI_MODEL || "gemini-2.0-flash",
+    });
+  }
+  const groqKey = process.env.GROQ_API_KEY || "";
+  if (groqKey) {
+    out.push({
+      name: "groq",
+      kind: "openai",
+      baseUrl: "https://api.groq.com/openai/v1",
+      apiKey: groqKey,
+      model: process.env.GROQ_VISION_MODEL || "llama-3.2-11b-vision-preview",
+    });
+  }
+  const orKey = process.env.OPENROUTER_API_KEY || "";
+  if (orKey) {
+    out.push({
+      name: "openrouter",
+      kind: "openai",
+      baseUrl: "https://openrouter.ai/api/v1",
+      apiKey: orKey,
+      model: process.env.OPENROUTER_VISION_MODEL || "google/gemini-2.0-flash-001",
+    });
+  }
+  // Primario configurado (NVIDIA/OpenRouter/etc.): solo si se indica un modelo
+  // con visión explícitamente, para no intentar con uno de texto.
+  if (process.env.LLM_API_KEY && process.env.LLM_VISION_MODEL) {
+    out.push({
+      name: "primary",
+      kind: "openai",
+      baseUrl: (process.env.LLM_BASE_URL || "https://integrate.api.nvidia.com/v1").replace(/\/$/, ""),
+      apiKey: process.env.LLM_API_KEY,
+      model: process.env.LLM_VISION_MODEL,
+    });
+  }
+  return out;
+}
+
 function normalizeUnit(u: string): string {
   const s = String(u || "").trim().toLowerCase();
   if (!s) return "u";
@@ -50,7 +126,6 @@ function toDate(v: unknown): string | null {
   const s = String(v ?? "").trim();
   if (!s) return null;
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  // dd/mm/yyyy o dd-mm-yyyy
   const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
   if (m) {
     const d = m[1].padStart(2, "0");
@@ -75,7 +150,6 @@ function tryParseJson(text: string): unknown {
   try {
     return JSON.parse(t);
   } catch {
-    // Buscar el primer objeto JSON balanceado.
     const start = t.indexOf("{");
     const end = t.lastIndexOf("}");
     if (start >= 0 && end > start) {
@@ -89,85 +163,10 @@ function tryParseJson(text: string): unknown {
   }
 }
 
-const PROMPT = `Sos un asistente que lee comprobantes de proveedores (facturas, remitos, tickets) de comercios minoristas argentinos y devuelve SOLO un JSON válido, sin texto adicional.
-
-Extraé los siguientes campos del comprobante:
-- supplier_name: nombre del proveedor/emisor (string o null).
-- receipt_type: uno de "factura_a", "factura_b", "factura_c", "remito", "ticket", "ninguno" según el comprobante. Si es remito sin tipo fiscal, "remito".
-- receipt_number: número de comprobante (string o null).
-- purchased_at: fecha del comprobante en formato YYYY-MM-DD (string o null).
-- items: array de líneas de producto/mercadería. Cada item:
-  - description: descripción del artículo tal como figura (string).
-  - qty: cantidad (número).
-  - unit: unidad de la cantidad ("kg", "g", "l", "ml", "u", etc.).
-  - unit_price: precio unitario. Si la factura discrimina IVA, devolvé el precio NETO sin IVA; si no, el precio tal como figura.
-  - line_total: total de la línea (qty * unit_price). Si no figura, calculalo.
-  - confidence: número entre 0 y 1 con tu confianza en esa línea.
-
-REGLAS IMPORTANTES:
-- NO incluyas líneas de subtotal, IVA, descuentos, fletes, redondeos ni totales como items.
-- Si una línea es un servicio o gasto (no mercadería), NO la incluyas.
-- Si no podés leer un campo con seguridad, devolvé null o 0 y bajá confidence.
-- Devolvé SOLO el JSON, sin explicaciones.`;
-
-export async function extractInvoice(
-  buffer: Buffer,
-  mimeType: string
-): Promise<{ extracted: ExtractedInvoice; raw: string }> {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  if (!apiKey) {
-    throw new Error("Falta configurar GEMINI_API_KEY en el servidor");
-  }
-  const model = process.env.GEMINI_MODEL || "gemini-2.0-flash";
-
-  const body = {
-    contents: [
-      {
-        parts: [
-          { inlineData: { mimeType, data: buffer.toString("base64") } },
-          { text: PROMPT },
-        ],
-      },
-    ],
-    generationConfig: {
-      responseMimeType: "application/json",
-      temperature: 0.1,
-      maxOutputTokens: 4096,
-    },
-  };
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-    model
-  )}:generateContent?key=${encodeURIComponent(apiKey)}`;
-
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-  const rawText = await res.text();
-  if (!res.ok) {
-    throw new Error(`Gemini respondió ${res.status}: ${rawText.slice(0, 400)}`);
-  }
-
-  let json: unknown;
-  try {
-    json = JSON.parse(rawText);
-  } catch {
-    throw new Error("Respuesta inválida de Gemini");
-  }
-
-  const candidateText =
-    (json as { candidates?: { content?: { parts?: { text?: string }[] } }[] })?.candidates?.[0]?.content?.parts
-      ?.map((p) => p.text || "")
-      .join("") || "";
-
-  const parsed = tryParseJson(candidateText);
+function normalizeParsed(parsed: unknown, raw: string): { extracted: ExtractedInvoice; raw: string } {
   if (!parsed || typeof parsed !== "object") {
     throw new Error("No se pudo interpretar la respuesta de la IA");
   }
-
   const obj = parsed as Record<string, unknown>;
   const itemsRaw = Array.isArray(obj.items) ? obj.items : [];
   const items: ExtractedInvoiceItem[] = itemsRaw
@@ -207,7 +206,132 @@ export async function extractInvoice(
     items,
   };
 
-  return { extracted, raw: candidateText };
+  return { extracted, raw };
+}
+
+async function callGemini(provider: Provider, buffer: Buffer, mimeType: string): Promise<{ extracted: ExtractedInvoice; raw: string }> {
+  const body = {
+    contents: [
+      {
+        parts: [
+          { inlineData: { mimeType, data: buffer.toString("base64") } },
+          { text: PROMPT },
+        ],
+      },
+    ],
+    generationConfig: {
+      responseMimeType: "application/json",
+      temperature: 0.1,
+      maxOutputTokens: 4096,
+    },
+  };
+
+  const res = await fetch(
+    `${provider.baseUrl}/models/${encodeURIComponent(provider.model)}:generateContent?key=${encodeURIComponent(provider.apiKey)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }
+  );
+
+  const rawText = await res.text();
+  if (!res.ok) {
+    throw new Error(`Gemini respondió ${res.status}: ${rawText.slice(0, 300)}`);
+  }
+
+  let json: unknown;
+  try {
+    json = JSON.parse(rawText);
+  } catch {
+    throw new Error("Respuesta inválida de Gemini");
+  }
+
+  const candidateText =
+    (json as { candidates?: { content?: { parts?: { text?: string }[] } }[] })?.candidates?.[0]?.content?.parts
+      ?.map((p) => p.text || "")
+      .join("") || "";
+
+  const parsed = tryParseJson(candidateText);
+  return normalizeParsed(parsed, candidateText);
+}
+
+async function callOpenAI(provider: Provider, buffer: Buffer, mimeType: string): Promise<{ extracted: ExtractedInvoice; raw: string }> {
+  const dataUrl = `data:${mimeType};base64,${buffer.toString("base64")}`;
+  const body = {
+    model: provider.model,
+    temperature: 0.1,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: "Devolvé SOLO un JSON válido, sin texto adicional." },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: PROMPT },
+          { type: "image_url", image_url: { url: dataUrl } },
+        ],
+      },
+    ],
+  };
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${provider.apiKey}`,
+  };
+  if (provider.name === "openrouter") {
+    headers["HTTP-Referer"] = process.env.NEXT_PUBLIC_SITE_URL || "https://www.portal659.com.ar";
+    headers["X-Title"] = "Portal 659";
+  }
+
+  const res = await fetch(`${provider.baseUrl}/chat/completions`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+
+  const rawText = await res.text();
+  if (!res.ok) {
+    throw new Error(`${provider.name} respondió ${res.status}: ${rawText.slice(0, 300)}`);
+  }
+
+  let json: unknown;
+  try {
+    json = JSON.parse(rawText);
+  } catch {
+    throw new Error(`Respuesta inválida de ${provider.name}`);
+  }
+
+  const content: string =
+    (json as { choices?: { message?: { content?: string } }[] })?.choices?.[0]?.message?.content || "";
+
+  const parsed = tryParseJson(content);
+  return normalizeParsed(parsed, content);
+}
+
+export async function extractInvoice(
+  buffer: Buffer,
+  mimeType: string
+): Promise<{ extracted: ExtractedInvoice; raw: string; usedProvider: string }> {
+  const providers = buildProviders();
+  if (providers.length === 0) {
+    throw new Error("No hay proveedor de IA configurado (GEMINI_API_KEY/GROQ_API_KEY/OPENROUTER_API_KEY/LLM_API_KEY+LLM_VISION_MODEL)");
+  }
+
+  let lastError: Error | null = null;
+  for (const provider of providers) {
+    try {
+      const result =
+        provider.kind === "gemini"
+          ? await callGemini(provider, buffer, mimeType)
+          : await callOpenAI(provider, buffer, mimeType);
+      return { ...result, usedProvider: provider.name };
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error(String(e));
+      // Intentar el siguiente proveedor.
+    }
+  }
+
+  throw lastError || new Error("No se pudo leer el comprobante");
 }
 
 // --- Matching de catálogo ---
@@ -253,12 +377,10 @@ export function scoreMatch(description: string, candidate: string): number {
   let overlap = 0;
   for (const t of t1) if (set2.has(t)) overlap++;
   const jaccard = overlap / new Set([...t1, ...t2]).size;
-  // Bonus si la descripción contiene al candidato completo o viceversa.
   const n1 = normalizeText(description);
   const n2 = normalizeText(candidate);
   let bonus = 0;
   if (n1.includes(n2) || n2.includes(n1)) bonus = 0.25;
-  // Similitud por Levenshtein sobre el string normalizado (peso menor).
   const maxLen = Math.max(n1.length, n2.length) || 1;
   const levSim = 1 - levenshtein(n1, n2) / maxLen;
   return Math.min(1, jaccard * 0.6 + levSim * 0.15 + bonus);

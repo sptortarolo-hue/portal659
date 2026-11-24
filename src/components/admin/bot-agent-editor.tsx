@@ -296,7 +296,7 @@ export function BotAgentEditor({ agentKey }: { agentKey: string }) {
                     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: agent.model }),
                   });
                   const d = await r.json().catch(() => ({}));
-                  setModelTest(d.ok ? `✅ OK · ${d.latencyMs}ms · respondió "${d.reply || ""}"` : `❌ ${d.error || `HTTP ${d.status || "?"}`}`);
+                  setModelTest(d.ok ? `✅ HTTP ${d.status} · ${d.latencyMs}ms · ${d.reply ? `respondió "${d.reply}"` : "sin contenido"}${d.note ? ` · ${d.note}` : ""}` : `❌ ${d.error || `HTTP ${d.status || "?"}`}`);
                 }}>▶ Probar modelo</Button>
               {modelTest && <span className="ts-caption text-muted-foreground">{modelTest}</span>}
             </div>

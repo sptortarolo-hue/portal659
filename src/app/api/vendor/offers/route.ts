@@ -207,6 +207,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Proveedor no encontrado" }, { status: 400 });
     }
   }
+  // Alta desde factura: si vino el nombre del proveedor, lo reutiliza o crea.
+  if (hasSupplierField?.exists === true && !supplierId && body.supplier_name != null && String(body.supplier_name).trim()) {
+    const supplierName = String(body.supplier_name).trim().slice(0, 120);
+    const existing = await queryOne<{ id: string }>(
+      `SELECT id FROM suppliers WHERE vendor_id = $1 AND lower(btrim(name)) = lower($2) LIMIT 1`,
+      [vendor.id, supplierName]
+    ).catch(() => null);
+    if (existing) {
+      supplierId = existing.id;
+    } else {
+      const created = await queryOne<{ id: string }>(
+        `INSERT INTO suppliers (vendor_id, name) VALUES ($1, $2) RETURNING id`,
+        [vendor.id, supplierName]
+      ).catch(() => null);
+      if (created?.id) supplierId = created.id;
+    }
+  }
   const hasExpiresField = await queryOne<{ exists: boolean }>(
     `SELECT EXISTS (
        SELECT 1 FROM information_schema.columns
@@ -510,18 +527,20 @@ export async function POST(request: Request) {
     });
     throw e;
   }
-  // Oferta del día única por comercio (igual que el PATCH: el nuevo
-  // destacado apaga el anterior del mismo vendor).
-  if (!!featured_today && offer) {
-    await queryOne(
-      `UPDATE products SET featured_today = false WHERE vendor_id = $1 AND id <> $2`,
-      [vendor.id, (offer as Record<string, unknown>).id]
-    ).catch(() => {});
+  // Pasos posteriores al insert: best-effort. El producto ya quedó guardado;
+  // si algo acá falla no debe mostrarse como "no se pudo crear".
+  try {
+    if (!!featured_today && offer) {
+      await queryOne(
+        `UPDATE products SET featured_today = false WHERE vendor_id = $1 AND id <> $2`,
+        [vendor.id, (offer as Record<string, unknown>).id]
+      ).catch(() => {});
+    }
+    const { touchPromoVersion } = await import("@/lib/promo-server");
+    await touchPromoVersion(vendor.id);
+  } catch {
+    /* best-effort */
   }
-
-  // El catálogo cambió: mover el versionado de la tarjeta promo (?v=).
-  const { touchPromoVersion } = await import("@/lib/promo-server");
-  await touchPromoVersion(vendor.id);
 
   // Combo: persistir líneas en la misma transacción (tolerante a DB sin tabla).
   if (is_combo) {

@@ -71,6 +71,7 @@ function QuickCreateSheet({
   products,
   initial,
   supplierId,
+  supplierName,
   onClose,
   onCreated,
 }: {
@@ -78,6 +79,7 @@ function QuickCreateSheet({
   products: { id: string; name: string }[];
   initial?: { name: string; cost: string; unit: string };
   supplierId?: string | null;
+  supplierName?: string;
   onClose: () => void;
   onCreated: (created: CreatedItem) => void;
 }) {
@@ -153,6 +155,7 @@ function QuickCreateSheet({
             return Number.isFinite(n) && n >= 0 ? n : undefined;
           })(),
           supplier_id: supplierId || undefined,
+          supplier_name: supplierId ? undefined : supplierName || undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -850,6 +853,7 @@ function PurchaseForm({
               };
             })()}
             supplierId={supplierId || null}
+            supplierName={newSupplier.trim() || undefined}
             onClose={() => setCreating(null)}
             onCreated={(created) => {
               if (created.kind === "ing") {

@@ -41,6 +41,19 @@ services:
       - PRINT_BRIDGE_URL=${PRINT_BRIDGE_URL:-http://printbridge:8791}
       - PRINT_BRIDGE_SECRET=${PRINT_BRIDGE_SECRET}
       - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_MODEL=${LLM_MODEL:-}
+      - LLM_VISION_MODEL=${LLM_VISION_MODEL:-}
+      # Proveedores de IA (extracción de comprobantes + bot): el deploy los
+      # escribe al .env del host, pero había que reenviarlos al contenedor.
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=${GROQ_MODEL:-}
+      - GROQ_VISION_MODEL=${GROQ_VISION_MODEL:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-}
+      - OPENROUTER_VISION_MODEL=${OPENROUTER_VISION_MODEL:-}
       - WA_BOT_SECRET=${WA_BOT_SECRET}
       - WABOT_URL=${WABOT_URL:-http://portal659-wabot:8792}
       - CRON_SECRET=${CRON_SECRET}

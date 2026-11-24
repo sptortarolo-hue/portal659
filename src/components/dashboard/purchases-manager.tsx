@@ -320,6 +320,7 @@ function PurchaseForm({
   products = [],
   variants = [],
   allowMerchandise = false,
+  initial = null,
   onSupplierCreated,
   onItemCreated,
   onDone,
@@ -330,26 +331,42 @@ function PurchaseForm({
   products?: { id: string; name: string; cost_last?: number | null; stock?: number | null }[];
   variants?: { id: string; product_id: string; color: string; talle: string; price: number; stock: number; cost_last?: number | null }[];
   allowMerchandise?: boolean;
+  initial?: {
+    supplierId: string;
+    newSupplier: string;
+    date: string;
+    receiptType: string;
+    receiptNumber: string;
+    lines: BuyLine[];
+    keySeq: number;
+    attachments: string[];
+    extractMsg: string;
+  } | null;
   onSupplierCreated: () => void;
   /** Creado un insumo/producto/variante sin salir de la compra. */
   onItemCreated: (created: CreatedItem) => void;
   onDone: () => void;
   onCancel: () => void;
 }) {
-  const [supplierId, setSupplierId] = useState("");
-  const [newSupplier, setNewSupplier] = useState("");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [receiptType, setReceiptType] = useState("ninguno");
-  const [receiptNumber, setReceiptNumber] = useState("");
+  const [supplierId, setSupplierId] = useState(initial?.supplierId || "");
+  const [newSupplier, setNewSupplier] = useState(initial?.newSupplier || "");
+  const [date, setDate] = useState(initial?.date || new Date().toISOString().slice(0, 10));
+  const [receiptType, setReceiptType] = useState(initial?.receiptType || "ninguno");
+  const [receiptNumber, setReceiptNumber] = useState(initial?.receiptNumber || "");
   const [notes, setNotes] = useState("");
-  const [lines, setLines] = useState<BuyLine[]>(() => [
-    { key: 0, kind: (ingredients && ingredients.length > 0) ? "ing" : (allowMerchandise ? "prod" : "ing"), ingredient_id: "", product_id: "", variant_id: "", qty: "", unit: "g", unit_cost: "", total_paid: "", expires_at: "" },
-  ]);
-  const [keySeq, setKeySeq] = useState(1);
+  const [lines, setLines] = useState<BuyLine[]>(
+    initial?.lines && initial.lines.length > 0
+      ? initial.lines
+      : [
+          { key: 0, kind: (ingredients && ingredients.length > 0) ? "ing" : (allowMerchandise ? "prod" : "ing"), ingredient_id: "", product_id: "", variant_id: "", qty: "", unit: "g", unit_cost: "", total_paid: "", expires_at: "" },
+        ]
+  );
+  const [keySeq, setKeySeq] = useState(initial?.keySeq || 1);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [attachments, setAttachments] = useState<string[]>([]);
+  const [attachments, setAttachments] = useState<string[]>(initial?.attachments || []);
   const [uploading, setUploading] = useState(false);
+  const [extractMsg, setExtractMsg] = useState(initial?.extractMsg || "");
   // Línea creando ítem nuevo sin salir de la compra (sheet abierto).
   const [creating, setCreating] = useState<{ lineKey: number; kind: BuyLine["kind"] } | null>(null);
   // Aviso post-compra: listas de margen con costo cambiado.
@@ -465,6 +482,7 @@ function PurchaseForm({
     <Card className="p-4 border-primary/30">
       <form onSubmit={handleSubmit} className="space-y-3">
         <h4 className="font-medium text-sm">Nueva compra</h4>
+      {extractMsg && <p className="text-xs text-muted-foreground">{extractMsg}</p>}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <div className="col-span-2 sm:col-span-1">
             <Label className="text-xs">Proveedor</Label>
@@ -1074,6 +1092,20 @@ export function PurchasesManager({
   const listProducts = useMemo(() => mergeById(products, createdProducts), [products, createdProducts]);
   const listVariants = useMemo(() => mergeById(variants, createdVariants), [variants, createdVariants]);
   const [showForm, setShowForm] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [extractMsg, setExtractMsg] = useState("");
+  const [formNonce, setFormNonce] = useState(0);
+  const [formInitial, setFormInitial] = useState<{
+    supplierId: string;
+    newSupplier: string;
+    date: string;
+    receiptType: string;
+    receiptNumber: string;
+    lines: BuyLine[];
+    keySeq: number;
+    attachments: string[];
+    extractMsg: string;
+  } | null>(null);
   const [showSuppliers, setShowSuppliers] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | "new" | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -1081,6 +1113,112 @@ export function PurchasesManager({
   const [msg, setMsg] = useState("");
   // Fila resaltada puntualmente (llegada desde "Ver origen" en Gastos).
   const [highlighted, setHighlighted] = useState<string | null>(null);
+
+  async function handleExtractInvoice(file: File) {
+    setExtracting(true);
+    setExtractMsg("");
+    setMsg("");
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("folder", "purchases");
+    try {
+      const res = await fetch("/api/vendor/purchases/extract", { method: "POST", body: formData });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setExtractMsg(data?.error || "No se pudo leer el comprobante");
+        if (data?.url) {
+          // keep url in attachments of next form open
+        }
+        return;
+      }
+      const ex = data?.extracted || {};
+      let supplierId = "";
+      let newSupplier = "";
+      if (ex.supplier_name) {
+        const match = suppliers.find((s) => s.name.toLowerCase() === String(ex.supplier_name).toLowerCase());
+        if (match) supplierId = match.id;
+        else newSupplier = String(ex.supplier_name);
+      }
+      const extractedItems = Array.isArray(ex.items) ? ex.items : [];
+      const newLines: BuyLine[] =
+        extractedItems.length > 0
+          ? extractedItems.map((it: any, idx: number) => {
+              const best = it?.bestMatch;
+              let kind: BuyLine["kind"] = "ing";
+              let ingredient_id = "";
+              let product_id = "";
+              let variant_id = "";
+              if (best?.kind === "product") {
+                kind = "prod";
+                product_id = String(best.id);
+              } else if (best?.kind === "variant") {
+                kind = "var";
+                variant_id = String(best.id);
+              } else if (best?.kind === "ingredient") {
+                kind = "ing";
+                ingredient_id = String(best.id);
+              } else {
+                kind = ingredients && ingredients.length > 0 ? "ing" : allowMerchandise ? "prod" : "ing";
+              }
+              return {
+                key: idx,
+                kind,
+                ingredient_id,
+                product_id,
+                variant_id,
+                qty: it?.qty != null ? String(it.qty) : "",
+                unit: kind === "ing" ? String(it?.unit || "g") : "u",
+                unit_cost: it?.unit_price != null ? String(it.unit_price) : "",
+                total_paid: it?.line_total != null ? String(it.line_total) : "",
+                expires_at: "",
+              };
+            })
+          : [
+              {
+                key: 0,
+                kind: (ingredients && ingredients.length > 0) ? "ing" : allowMerchandise ? "prod" : "ing",
+                ingredient_id: "",
+                product_id: "",
+                variant_id: "",
+                qty: "",
+                unit: "g",
+                unit_cost: "",
+                total_paid: "",
+                expires_at: "",
+              },
+            ];
+      // rekey
+      const rekeyed = newLines.map((l, i) => ({ ...l, key: i }));
+      const low = extractedItems.filter(
+        (it: any) => !it?.bestMatch || (it?.confidence != null && Number(it.confidence) < 0.7)
+      );
+      const msg =
+        extractedItems.length > 0
+          ? `Se leyeron ${extractedItems.length} línea(s). ` +
+            (low.length > 0 ? `${low.length} requieren revisión (sin match o baja confianza). ` : "") +
+            "Revisá y guardá."
+          : "No se detectaron líneas. Cargá manualmente.";
+
+      setFormInitial({
+        supplierId: supplierId,
+        newSupplier: newSupplier,
+        date: ex.purchased_at ? String(ex.purchased_at) : new Date().toISOString().slice(0, 10),
+        receiptType: ex.receipt_type ? String(ex.receipt_type) : "ninguno",
+        receiptNumber: ex.receipt_number ? String(ex.receipt_number) : "",
+        lines: rekeyed,
+        keySeq: rekeyed.length + 1,
+        attachments: data?.url ? [data.url] : [],
+        extractMsg: msg,
+      });
+      setExtractMsg(msg);
+      setFormNonce((n) => n + 1);
+      setShowForm(true);
+    } catch {
+      setExtractMsg("No se pudo leer el comprobante");
+    } finally {
+      setExtracting(false);
+    }
+  }
 
   const loadAll = useCallback(async () => {
     const [s, p] = await Promise.all([
@@ -1194,15 +1332,37 @@ export function PurchasesManager({
         <Button size="sm" onClick={() => setShowForm((v) => !v)}>
           {showForm ? "Cerrar" : "+ Nueva compra"}
         </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={extracting}
+          onClick={() => document.getElementById("extract-invoice-input")?.click()}
+        >
+          {extracting ? "Leyendo…" : "📸 Leer factura"}
+        </Button>
+        <input
+          id="extract-invoice-input"
+          type="file"
+          accept="image/*,application/pdf"
+          className="hidden"
+          onChange={async (e) => {
+            const file = e.target.files?.[0];
+            if (file) await handleExtractInvoice(file);
+            e.target.value = "";
+          }}
+        />
         <Button size="sm" variant="outline" onClick={() => setShowSuppliers((v) => !v)}>
           🏭 Proveedores ({suppliers.filter((s) => s.active).length})
         </Button>
       </div>
+      {extractMsg && <p className="text-xs text-muted-foreground">{extractMsg}</p>}
 
       {msg && <p className="text-sm text-green-600">{msg}</p>}
 
       {showForm && (
         <PurchaseForm
+          key={formNonce}
+          initial={formInitial}
           suppliers={suppliers}
           ingredients={listIngredients}
           products={listProducts}

@@ -1,0 +1,279 @@
+/**
+ * Extracción de comprobantes de proveedor (foto/PDF) con Gemini.
+ *
+ * Devuelve datos estructurados (proveedor, fecha, n°, líneas) para que el
+ * comerciante los revise en el formulario de Compras. La IA solo propone:
+ * nada se guarda ciego.
+ */
+export type ExtractedInvoiceItem = {
+  description: string;
+  qty: number;
+  unit: string;
+  unit_price: number;
+  line_total: number;
+  confidence?: number;
+};
+
+export type ExtractedInvoice = {
+  supplier_name: string | null;
+  receipt_type: string | null;
+  receipt_number: string | null;
+  purchased_at: string | null;
+  items: ExtractedInvoiceItem[];
+};
+
+export type CatalogItem = { id: string; name: string; kind: "product" | "ingredient" | "variant" };
+
+const VALID_RECEIPTS = new Set([
+  "factura_a", "factura_b", "factura_c", "remito", "ticket", "ninguno",
+]);
+
+function normalizeUnit(u: string): string {
+  const s = String(u || "").trim().toLowerCase();
+  if (!s) return "u";
+  if (s === "unidad" || s === "unidades" || s === "u." || s === "un") return "u";
+  if (s === "kilogramo" || s === "kilogramos" || s === "kilo" || s === "kilos") return "kg";
+  if (s === "gramo" || s === "gramos") return "g";
+  if (s === "litro" || s === "litros") return "l";
+  if (s === "mililitro" || s === "mililitros") return "ml";
+  return s;
+}
+
+function toNum(v: unknown, fallback = 0): number {
+  if (typeof v === "number") return Number.isFinite(v) ? v : fallback;
+  const s = String(v ?? "").trim().replace(/\./g, "").replace(",", ".");
+  const n = Number(s);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function toDate(v: unknown): string | null {
+  const s = String(v ?? "").trim();
+  if (!s) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // dd/mm/yyyy o dd-mm-yyyy
+  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (m) {
+    const d = m[1].padStart(2, "0");
+    const mo = m[2].padStart(2, "0");
+    let y = m[3];
+    if (y.length === 2) y = "20" + y;
+    return `${y}-${mo}-${d}`;
+  }
+  return null;
+}
+
+function stripFences(text: string): string {
+  let t = text.trim();
+  if (t.startsWith("```")) {
+    t = t.replace(/^```[a-zA-Z]*\n?/, "").replace(/```\s*$/, "").trim();
+  }
+  return t;
+}
+
+function tryParseJson(text: string): unknown {
+  const t = stripFences(text);
+  try {
+    return JSON.parse(t);
+  } catch {
+    // Buscar el primer objeto JSON balanceado.
+    const start = t.indexOf("{");
+    const end = t.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      try {
+        return JSON.parse(t.slice(start, end + 1));
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+}
+
+const PROMPT = `Sos un asistente que lee comprobantes de proveedores (facturas, remitos, tickets) de comercios minoristas argentinos y devuelve SOLO un JSON válido, sin texto adicional.
+
+Extraé los siguientes campos del comprobante:
+- supplier_name: nombre del proveedor/emisor (string o null).
+- receipt_type: uno de "factura_a", "factura_b", "factura_c", "remito", "ticket", "ninguno" según el comprobante. Si es remito sin tipo fiscal, "remito".
+- receipt_number: número de comprobante (string o null).
+- purchased_at: fecha del comprobante en formato YYYY-MM-DD (string o null).
+- items: array de líneas de producto/mercadería. Cada item:
+  - description: descripción del artículo tal como figura (string).
+  - qty: cantidad (número).
+  - unit: unidad de la cantidad ("kg", "g", "l", "ml", "u", etc.).
+  - unit_price: precio unitario. Si la factura discrimina IVA, devolvé el precio NETO sin IVA; si no, el precio tal como figura.
+  - line_total: total de la línea (qty * unit_price). Si no figura, calculalo.
+  - confidence: número entre 0 y 1 con tu confianza en esa línea.
+
+REGLAS IMPORTANTES:
+- NO incluyas líneas de subtotal, IVA, descuentos, fletes, redondeos ni totales como items.
+- Si una línea es un servicio o gasto (no mercadería), NO la incluyas.
+- Si no podés leer un campo con seguridad, devolvé null o 0 y bajá confidence.
+- Devolvé SOLO el JSON, sin explicaciones.`;
+
+export async function extractInvoice(
+  buffer: Buffer,
+  mimeType: string
+): Promise<{ extracted: ExtractedInvoice; raw: string }> {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  if (!apiKey) {
+    throw new Error("Falta configurar GEMINI_API_KEY en el servidor");
+  }
+  const model = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+
+  const body = {
+    contents: [
+      {
+        parts: [
+          { inlineData: { mimeType, data: buffer.toString("base64") } },
+          { text: PROMPT },
+        ],
+      },
+    ],
+    generationConfig: {
+      responseMimeType: "application/json",
+      temperature: 0.1,
+      maxOutputTokens: 4096,
+    },
+  };
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+    model
+  )}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  const rawText = await res.text();
+  if (!res.ok) {
+    throw new Error(`Gemini respondió ${res.status}: ${rawText.slice(0, 400)}`);
+  }
+
+  let json: unknown;
+  try {
+    json = JSON.parse(rawText);
+  } catch {
+    throw new Error("Respuesta inválida de Gemini");
+  }
+
+  const candidateText =
+    (json as { candidates?: { content?: { parts?: { text?: string }[] } }[] })?.candidates?.[0]?.content?.parts
+      ?.map((p) => p.text || "")
+      .join("") || "";
+
+  const parsed = tryParseJson(candidateText);
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("No se pudo interpretar la respuesta de la IA");
+  }
+
+  const obj = parsed as Record<string, unknown>;
+  const itemsRaw = Array.isArray(obj.items) ? obj.items : [];
+  const items: ExtractedInvoiceItem[] = itemsRaw
+    .map((it): ExtractedInvoiceItem | null => {
+      const o = (it || {}) as Record<string, unknown>;
+      const desc = String(o.description || "").trim();
+      if (!desc) return null;
+      const qty = toNum(o.qty, 1);
+      const safeQty = qty > 0 ? qty : 1;
+      const unit = normalizeUnit(String(o.unit || "u"));
+      const unitPrice = toNum(o.unit_price, 0);
+      const lineTotalRaw = o.line_total;
+      const lineTotal =
+        lineTotalRaw != null && String(lineTotalRaw).trim() !== ""
+          ? toNum(lineTotalRaw, safeQty * unitPrice)
+          : safeQty * unitPrice;
+      const conf = o.confidence != null ? toNum(o.confidence, 1) : undefined;
+      return {
+        description: desc,
+        qty: safeQty,
+        unit,
+        unit_price: Math.round(unitPrice * 10000) / 10000,
+        line_total: Math.round(lineTotal * 100) / 100,
+        confidence: conf != null ? Math.max(0, Math.min(1, conf)) : undefined,
+      };
+    })
+    .filter((x): x is ExtractedInvoiceItem => x !== null);
+
+  const receiptTypeRaw = obj.receipt_type != null ? String(obj.receipt_type).trim().toLowerCase() : null;
+  const receiptType = receiptTypeRaw && VALID_RECEIPTS.has(receiptTypeRaw) ? receiptTypeRaw : null;
+
+  const extracted: ExtractedInvoice = {
+    supplier_name: obj.supplier_name != null ? String(obj.supplier_name).trim() || null : null,
+    receipt_type: receiptType,
+    receipt_number: obj.receipt_number != null ? String(obj.receipt_number).trim() || null : null,
+    purchased_at: toDate(obj.purchased_at),
+    items,
+  };
+
+  return { extracted, raw: candidateText };
+}
+
+// --- Matching de catálogo ---
+
+function normalizeText(s: string): string {
+  return String(s || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tokens(s: string): string[] {
+  const stop = new Set(["de", "del", "la", "el", "los", "las", "y", "x", "kg", "gr", "g", "l", "ml", "u", "un", "una"]);
+  return normalizeText(s)
+    .split(" ")
+    .filter((t) => t.length >= 2 && !stop.has(t));
+}
+
+function levenshtein(a: string, b: string): number {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const curr = [i];
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+    }
+    prev = curr;
+  }
+  return prev[b.length];
+}
+
+export function scoreMatch(description: string, candidate: string): number {
+  const t1 = tokens(description);
+  const t2 = tokens(candidate);
+  if (t1.length === 0 || t2.length === 0) return 0;
+  const set2 = new Set(t2);
+  let overlap = 0;
+  for (const t of t1) if (set2.has(t)) overlap++;
+  const jaccard = overlap / new Set([...t1, ...t2]).size;
+  // Bonus si la descripción contiene al candidato completo o viceversa.
+  const n1 = normalizeText(description);
+  const n2 = normalizeText(candidate);
+  let bonus = 0;
+  if (n1.includes(n2) || n2.includes(n1)) bonus = 0.25;
+  // Similitud por Levenshtein sobre el string normalizado (peso menor).
+  const maxLen = Math.max(n1.length, n2.length) || 1;
+  const levSim = 1 - levenshtein(n1, n2) / maxLen;
+  return Math.min(1, jaccard * 0.6 + levSim * 0.15 + bonus);
+}
+
+export function suggestMatches(
+  description: string,
+  catalog: CatalogItem[],
+  limit = 3
+): { id: string; name: string; kind: CatalogItem["kind"]; score: number }[] {
+  return catalog
+    .map((c) => ({ id: c.id, name: c.name, kind: c.kind, score: scoreMatch(description, c.name) }))
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+}
+
+export const MATCH_THRESHOLD = 0.35;

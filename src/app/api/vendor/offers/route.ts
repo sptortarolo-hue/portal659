@@ -384,8 +384,8 @@ export async function POST(request: Request) {
        WHERE table_name = 'products' AND column_name = 'cost_last'
      ) AS exists`
   );
-  const costLastNum = Number(body?.cost_last);
-  if (hasCostLast?.exists === true && Number.isFinite(costLastNum) && costLastNum >= 0) {
+  const costLastNum = body?.cost_last == null || body.cost_last === "" ? null : Number(body.cost_last);
+  if (hasCostLast?.exists === true && costLastNum != null && Number.isFinite(costLastNum) && costLastNum >= 0) {
     extraCols.push("cost_last");
     extraVals.push(Math.round(costLastNum * 100) / 100);
   }
@@ -478,27 +478,38 @@ export async function POST(request: Request) {
       /* noop */
     }
   }
-  const offer = await queryOne<Record<string, unknown>>(
-    `INSERT INTO products (vendor_id, name, description, price, currency, category, neighborhood, type, available, featured_today, image_url, stock, stock_low_threshold, stock_control, requires_prep, has_variants, cash_discount_excluded${extraCols.length ? ", " + extraCols.join(", ") : ""})
-     VALUES ($1, $2, $3, $4, 'ARS', $5, $6, 'food', true, $7, $8, $9, $10, $11, $12, $13, $14${extraPlaceholders ? ", " + extraPlaceholders : ""}) RETURNING *`,
-    [
-      vendor.id,
-      name,
-      description || null,
-      parseFloat(String(effectivePrice)),
-      await resolveCategoryName(vendor.id, category),
-      fullVendor?.neighborhood || null,
-      !!featured_today,
-      finalImageUrl,
-      stock,
-      stock_low_threshold,
-      stock_control,
-      requires_prep,
-      has_variants,
-      cash_discount_excluded,
-      ...extraVals,
-    ]
-  );
+  let offer: Record<string, unknown> | undefined = undefined;
+  try {
+    offer = await queryOne<Record<string, unknown>>(
+      `INSERT INTO products (vendor_id, name, description, price, currency, category, neighborhood, type, available, featured_today, image_url, stock, stock_low_threshold, stock_control, requires_prep, has_variants, cash_discount_excluded${extraCols.length ? ", " + extraCols.join(", ") : ""})
+       VALUES ($1, $2, $3, $4, 'ARS', $5, $6, 'food', true, $7, $8, $9, $10, $11, $12, $13, $14${extraPlaceholders ? ", " + extraPlaceholders : ""}) RETURNING *`,
+      [
+        vendor.id,
+        name,
+        description || null,
+        parseFloat(String(effectivePrice)),
+        await resolveCategoryName(vendor.id, category),
+        fullVendor?.neighborhood || null,
+        !!featured_today,
+        finalImageUrl,
+        stock,
+        stock_low_threshold,
+        stock_control,
+        requires_prep,
+        has_variants,
+        cash_discount_excluded,
+        ...extraVals,
+      ]
+    );
+  } catch (e: any) {
+    console.error("[offers/post] insert failed", {
+      message: e?.message,
+      cols: extraCols,
+      vals: extraVals,
+      body: { name, price: effectivePrice, from_invoice: body?.from_invoice === true },
+    });
+    throw e;
+  }
   // Oferta del día única por comercio (igual que el PATCH: el nuevo
   // destacado apaga el anterior del mismo vendor).
   if (!!featured_today && offer) {

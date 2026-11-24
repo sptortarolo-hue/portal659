@@ -143,12 +143,15 @@ function QuickCreateSheet({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim(),
-          price: Number(price) || 0,
-          unit,
+          price: Number(String(price).replace(/\./g, "").replace(",", ".")) || 0,
+          unit: unit === "kg" ? "kg" : "unidad",
           stock: 0,
           stock_control: true,
           from_invoice: true,
-          cost_last: cost !== "" ? Number(cost) : undefined,
+          cost_last: (() => {
+            const n = Number(String(cost).replace(/\./g, "").replace(",", "."));
+            return Number.isFinite(n) && n >= 0 ? n : undefined;
+          })(),
           supplier_id: supplierId || undefined,
         }),
       });

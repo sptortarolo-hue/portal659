@@ -917,8 +917,8 @@ export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable,
                       <div className="h-12 w-12 rounded-lg bg-violet-100 flex items-center justify-center flex-shrink-0 text-xl">🎁</div>
                     )}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-medium text-sm truncate">{offer.name}</span>
+                      <div className="font-medium text-sm truncate">{offer.name}</div>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                         <Badge className="bg-violet-100 text-violet-700 text-[10px] px-1.5 py-0">🎁 Tarjeta</Badge>
                         {!offer.available && (
                           <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Pausada</Badge>
@@ -947,8 +947,9 @@ export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable,
                   <div className="h-12 w-12 rounded-lg bg-primary/15 flex items-center justify-center flex-shrink-0"><span className="font-bold text-primary">{offer.name.charAt(0)}</span></div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-medium text-sm truncate">{offer.name}</span>
+                  {/* Nombre en su propia línea para que las pastillas no lo colapsen (mobile). */}
+                  <div className="font-medium text-sm truncate">{offer.name}</div>
+                  <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                     {offer.featured_today && <Badge className="bg-sun/15 text-[var(--ts-accent-strong)] text-[10px] px-1.5 py-0">Hoy</Badge>}
                     {!offer.available && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Pausado</Badge>}
                     {offer.promo_only && <Badge className="bg-violet-100 text-violet-700 text-[10px] px-1.5 py-0">Solo promo</Badge>}

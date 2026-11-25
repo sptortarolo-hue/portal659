@@ -1630,11 +1630,7 @@ export function PurchasesManager({
           <button
             type="button"
             className="text-sm text-primary underline underline-offset-2"
-            onClick={() => {
-              const ids = createdProducts.map((p) => p.id).filter(Boolean);
-              const qs = ids.length ? `?ids=${encodeURIComponent(ids.join(","))}&step=5` : "?group=auto:falta_precio&step=5";
-              window.location.href = `/vendor/precios/asistente${qs}`;
-            }}
+            onClick={() => { window.location.href = "/vendor/precios/asistente"; }}
           >
             Terminar precios →
           </button>

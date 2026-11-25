@@ -119,6 +119,7 @@ type Props = {
 };
 
 type View = "productos" | "categorias" | "opciones" | "volumen" | "combos" | "listas" | "sugerencias";
+type StatusFilter = "all" | "active" | "paused" | "nostock" | "incomplete" | "sin_costo" | "falta_lista" | "falta_precio";
 
 /**
  * Vista previa de la etiqueta de góndola (estilo supermercado): nombre
@@ -273,7 +274,11 @@ export function MenuStudio({
   // Galería simple: portada + hasta 3 extras (sin color, a diferencia de moda).
   const MAX_EXTRA_IMAGES = 3;
   const [galleryUrls, setGalleryUrls] = useState<{ url: string }[]>([]);
-  const [view, setView] = useState<View>("productos");
+  const [view, setView] = useState<View>(() => {
+    if (typeof window === "undefined") return "productos";
+    const v = new URLSearchParams(window.location.search).get("vista");
+    return v && VIEWS.some((x) => x.id === v) ? (v as View) : "productos";
+  });
   const [showImport, setShowImport] = useState(false);
   const [showImportWa, setShowImportWa] = useState(false);
   // Etiquetas de góndola (requiere impresora + SKU en el producto).
@@ -365,7 +370,13 @@ export function MenuStudio({
   // Toolbar desktop: búsqueda + filtros + selección.
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "paused" | "nostock" | "incomplete">("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => {
+    if (typeof window === "undefined") return "all";
+    const f = new URLSearchParams(window.location.search).get("filtro");
+    return f === "sin_costo" || f === "falta_lista" || f === "falta_precio" || f === "incomplete"
+      ? f
+      : "all";
+  });
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   // Precios masivos.
@@ -935,6 +946,12 @@ export function MenuStudio({
         return false;
       if (statusFilter === "incomplete" && getPricingStatus(o).stage === "listo")
         return false;
+      if (statusFilter === "sin_costo" && !getPricingStatus(o).missing.includes("costo"))
+        return false;
+      if (statusFilter === "falta_lista" && (getPricingStatus(o).missing.includes("lista") === false))
+        return false;
+      if (statusFilter === "falta_precio" && !getPricingStatus(o).missing.includes("precio"))
+        return false;
       return true;
     });
   }, [offers, search, catFilter, statusFilter]);
@@ -1313,7 +1330,7 @@ export function MenuStudio({
               <select
                 value={statusFilter}
                 onChange={(e) =>
-                  setStatusFilter(e.target.value as "all" | "active" | "paused" | "nostock" | "incomplete")
+                  setStatusFilter(e.target.value as StatusFilter)
                 }
                 className="h-10 rounded-md border border-input bg-background px-3 text-sm"
                 aria-label="Filtrar por estado"
@@ -1323,16 +1340,15 @@ export function MenuStudio({
                 <option value="paused">Pausados</option>
                 <option value="nostock">Sin stock</option>
                 <option value="incomplete">Flujo incompleto</option>
+                <option value="sin_costo">Sin costo</option>
+                <option value="falta_lista">Falta lista</option>
+                <option value="falta_precio">Falta precio</option>
               </select>
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
-                onClick={() => {
-                  const ids = [...selected].filter(Boolean);
-                  const qs = ids.length ? `?ids=${encodeURIComponent(ids.join(","))}` : "";
-                  window.location.href = `/vendor/precios/asistente${qs}`;
-                }}
+                onClick={() => { window.location.href = "/vendor/precios/asistente"; }}
                 title="Completar costo, lista y precio paso a paso"
               >
                 Asistente de precios

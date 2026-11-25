@@ -12,11 +12,13 @@ type Product = {
   margin_list_id?: string | null;
   price_source?: string | null;
   pricing_skipped?: unknown;
+  is_combo?: boolean | null;
+  sku?: string | null;
 };
 
 /** Card compacta del setup guide de precios para el Dashboard / Hoy. */
 export function PricingCard({ vendorId }: { vendorId: string }) {
-  const [progress, setProgress] = useState<number | null>(null);
+  const [stats, setStats] = useState<{ done: number; pending: number } | null>(null);
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
@@ -24,21 +26,24 @@ export function PricingCard({ vendorId }: { vendorId: string }) {
     try { setDismissed(window.localStorage.getItem(key) === "1"); } catch { /* noop */ }
     getJson<{ offers?: Product[] }>("/api/vendor/offers")
       .then((d) => {
-        const products = d?.offers || [];
-        if (products.length === 0) return setProgress(0);
-        const done = [
-          products.some((p) => p.price_source === "factura"),
-          products.some((p) => p.cost_last != null),
-          products.every((p) => p.cost_last != null),
-          products.every((p) => p.margin_list_id || getPricingStatus(p).skipped.list),
-          products.every((p) => getPricingStatus(p).stage === "listo"),
-        ].filter(Boolean).length;
-        setProgress(done);
+        const products = (d?.offers || []).filter(
+          (p) => !p.is_combo && !(p.sku || "").startsWith("GC-")
+        );
+        if (products.length === 0) return setStats({ done: 0, pending: 0 });
+        const sinCosto = products.filter((p) => getPricingStatus(p).missing.includes("costo")).length;
+        const sinLista = products.filter(
+          (p) => !p.margin_list_id && !getPricingStatus(p).skipped.list && p.cost_last != null
+        ).length;
+        const sinPrecio = products.filter(
+          (p) => p.cost_last != null && (p.margin_list_id || getPricingStatus(p).skipped.list) && (!p.price || Number(p.price) <= 0)
+        ).length;
+        const done = [sinCosto === 0, sinLista === 0, sinPrecio === 0].filter(Boolean).length;
+        setStats({ done, pending: sinCosto + sinLista + sinPrecio });
       })
-      .catch(() => setProgress(null));
+      .catch(() => setStats(null));
   }, [vendorId]);
 
-  if (dismissed || progress === null || progress >= 5) return null;
+  if (dismissed || stats === null || stats.pending === 0) return null;
 
   function dismiss() {
     setDismissed(true);
@@ -49,15 +54,15 @@ export function PricingCard({ vendorId }: { vendorId: string }) {
     <Card className="p-4 border-primary/30">
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0">
-          <p className="font-medium text-sm">Dejá tus productos listos para vender</p>
+          <p className="font-medium text-sm">Prepará tus productos para vender</p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Costo → lista → precio, en 5 pasos. Podés entrar por donde quieras.
+            {stats.pending} producto{stats.pending === 1 ? "" : "s"} con pasos pendientes.
           </p>
           <div className="flex items-center gap-2 mt-2">
             <div className="h-1.5 w-28 rounded-full bg-muted overflow-hidden">
-              <div className="h-full bg-primary" style={{ width: `${(progress / 5) * 100}%` }} />
+              <div className="h-full bg-primary" style={{ width: `${(stats.done / 3) * 100}%` }} />
             </div>
-            <span className="text-[11px] text-muted-foreground">{progress}/5</span>
+            <span className="text-[11px] text-muted-foreground">{stats.done}/3</span>
           </div>
         </div>
         <a href="/vendor/precios/asistente">

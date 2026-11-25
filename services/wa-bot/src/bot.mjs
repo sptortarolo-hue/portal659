@@ -34,6 +34,8 @@ const DEFAULT_STATE = {
   pendingConfirm: null, // { items } - confirmacion de baja confianza
   portalStep: null,     // menu | open_stores | all_stores | select_store | cart | method | details | confirm | awaiting_receipt | completed
   deliveryWindow: null, // turno de entrega elegido (ej: "2026-11-15|18:00-20:00")
+  deliverySelectionPending: false,
+  etaNotified: false,   // aviso de demora desde que se toma el pedido (una vez)
   navStack: [],         // back-stack del portal
   portalListContext: null, // descriptor de la pantalla actual del portal
   pendingResume: null,  // { storeId, storeName, storeSlug, vertical, delivery, items, method, payment, customerName, customerAddress } — carrito abandonado al resetear sesión
@@ -77,6 +79,34 @@ function normalizePhone(waId) {
 
 function acceptsTransfer(vendor) {
   return !!(vendor.transfer_alias || vendor.transfer_cbu);
+}
+
+/** Espejo del gate de order-service: cerrado y sin el toggle => no tomar pedido.
+ *  En el bot central el vendor que llega es el portal: por eso se consulta
+ *  también el comercio elegido guardado en el state. */
+function closedForOrder(state, vendor) {
+  const closed = vendor?.store_open === false || vendor?.open_override === false
+    || state?.currentVendorOpen === false;
+  const accept = vendor?.accept_orders_when_closed === true
+    || state?.currentVendorAcceptClosed === true;
+  return closed && !accept;
+}
+
+function storeLink(state, vendor) {
+  const slug = state?.currentVendorSlug || vendor?.slug;
+  return slug ? `${config.publicUrl}/tienda/${slug}` : "";
+}
+
+/** Reemplaza la pregunta de horario cuando el comercio no tiene franjas:
+ *  la demora se mide desde que se toma el pedido (opción B del Bot Studio). */
+function etaLine(state, vendor) {
+  const vertical = String(state?.currentVendorVertical || vendor?.vertical || "").toLowerCase();
+  const gastro = /gastr|restaur|parrill|cafeter|panader/i.test(vertical);
+  const mins = gastro
+    ? Number(state?.currentVendorPrepMin ?? vendor?.prep_time_min)
+    : Number(state?.currentVendorDeliveryPrepMin ?? vendor?.delivery_prep_min);
+  if (!Number.isFinite(mins) || mins <= 0) return null;
+  return `⏱️ Lo preparamos y sale en ~${Math.round(mins)} min desde que confirmamos.`;
 }
 
 function shopUrl(vendor) {
@@ -1149,6 +1179,16 @@ async function handleStep({ vendor, text, state, replies, waId }) {
     return await persist(state, vendor.id, waId, replies);
   }
 
+  // Cerrado sin el toggle "recibir pedidos estando cerrado": cortar el flujo
+  // igual que hace el servidor (antes se armaba el pedido y moría en un 409).
+  if (closedForOrder(state, vendor) && state.step !== "idle") {
+    state.step = "idle";
+    replies.push(`⚠️ *${state.currentVendorName || vendor?.store_name || "El comercio"}* está cerrado ahora y no recibe pedidos hasta que abra.`);
+    const link = storeLink(state, vendor);
+    if (link) replies.push(`🔗 Mirá la vidriera: ${link}`);
+    return await persist(state, vendor.id, waId, replies);
+  }
+
   // En confirm: "sí" crea; "no" cancela; edición del carrito (sacar/cambiar
   // cantidad) se aplica sin reiniciar el pedido; el resto = corrección.
   if (state.step === "confirm") {
@@ -1608,53 +1648,55 @@ async function handleStep({ vendor, text, state, replies, waId }) {
   if (parsed?.customerName) { state.customerName = parsed.customerName; got = true; }
   if (parsed?.payment) { state.payment = parsed.payment; got = true; }
 
-  // Si el cliente eligió delivery y aún no eligió horario, mostrar los horarios disponibles
-  if (state.method === "delivery" && !state.deliveryWindow) {
-    const deliverySlots = await fetchDeliverySlots(vendor.id, new Date().toISOString().slice(0, 10));
-    if (deliverySlots && deliverySlots.slots && deliverySlots.slots.length > 0) {
-      const slots = deliverySlots.slots.filter((s) => s.available);
-      if (slots.length > 0) {
-        state.deliverySelectionPending = true;
-        replies.push("¿Qué horario de entrega preferís?");
-        replies.push(slots.map((s, i) => `${i + 1}️⃣ ${s.time}`).join("\n"));
-        replies.push(portalNavFooter());
-        return await persist(state, vendor.id, waId, replies);
+  // Entrega: PRIMERO procesamos la respuesta a una lista ya mostrada. Si el
+  // bloque de abajo corriera antes, cada respuesta abriría la lista otra vez
+  // y el cliente quedaría en un loop (bug real: "2", "13:00", "lo antes posible").
+  if (state.deliverySelectionPending) {
+    const slots = await fetchDeliverySlots(state.currentVendorId || vendor.id);
+    const num = t.match(/^(\d{1,2})$/);
+    const fast = /^(lo antes posible|cuanto antes|cuanto antes pueda|lo más pronto posible|lo mas pronto posible)$/i.test(t);
+    const chosen = fast ? slots[0] || null
+      : num ? slots[Number(num[1]) - 1] || null
+      : t ? slots.find((s) => s.id === t || s.range === t || String(s.label || "").includes(t)) || null
+      : null;
+    if (chosen) {
+      state.deliveryWindow = chosen.id;
+      state.deliverySelectionPending = false;
+      replies.push(`✅ Horario de entrega: ${chosen.label || chosen.range}`);
+      const missing = missingFields(state, vendor);
+      if (missing.length === 0) {
+        state.step = "confirm";
+        replies.push(summaryText(state, vendor));
+      } else {
+        state.step = "flow";
+        state.pendingFields = missing;
+        replies.push(pendingQuestions(state));
       }
+      return await persist(state, vendor.id, waId, replies);
     }
+    replies.push("No encontré ese horario. Respondé el número de la lista, *lo antes posible* o *volver*.");
+    replies.push(portalNavFooter());
+    return await persist(state, vendor.id, waId, replies);
   }
 
-  // Si el cliente eligió un horario de entrega
-  if (state.deliverySelectionPending) {
-    const numMatch = t.match(/^(\d+)$/);
-    if (numMatch) {
-      const n = Number(numMatch[1]);
-      const deliverySlots = await fetchDeliverySlots(vendor.id, new Date().toISOString().slice(0, 10));
-      if (deliverySlots && deliverySlots.slots) {
-        const slots = deliverySlots.slots.filter((s) => s.available);
-        const chosen = slots[n - 1];
-        if (chosen) {
-          state.deliveryWindow = chosen.time;
-          state.deliverySelectionPending = false;
-          replies.push(`✅ Horario de entrega: ${chosen.time}`);
-          // Verificar si falta algo más
-          const missing = missingFields(state, vendor);
-          if (missing.length === 0) {
-            state.step = "confirm";
-            replies.push(summaryText(state, vendor));
-            return await persist(state, vendor.id, waId, replies);
-          }
-          state.step = "flow";
-          state.pendingFields = missing;
-          replies.push(pendingQuestions(state));
-          return await persist(state, vendor.id, waId, replies);
-        }
-      }
-      replies.push("No encontré ese horario. Probá con otro número.");
+  // Sólo mostramos la lista si el comercio tiene franjas reales de reparto.
+  // Muchos comercios (ej. gastronomía) no cargan horarios: la demora se mide
+  // desde que se toma el pedido, así que NO se pregunta horario.
+  if (state.method === "delivery" && !state.deliveryWindow) {
+    const slots = await fetchDeliverySlots(state.currentVendorId || vendor.id);
+    if (slots.length > 0) {
+      state.deliverySelectionPending = true;
+      replies.push("¿Qué horario de entrega preferís?");
+      replies.push(slots.map((s, i) => `${i + 1}️⃣ ${s.label || s.range}`).join("\n"));
+      replies.push("O escribí *lo antes posible*.");
       replies.push(portalNavFooter());
       return await persist(state, vendor.id, waId, replies);
     }
+    if (!state.etaNotified) {
+      const eta = etaLine(state, vendor);
+      if (eta) { replies.push(eta); state.etaNotified = true; }
+    }
   }
-
 
   // Productos en la respuesta: distinguir AGREGAR de RE-DECLARAR.
   //  - Verbos de suma ("agregá/también/más") y el parseo NO devolvió el
@@ -1908,6 +1950,15 @@ function parseCatalogQtyPicks(text, catalogLen) {
 }
 
 function advanceAndAsk(state, vendor, replies) {
+  // Gate de negocio: espejo de order-service (cerrado sin toggle = no pedido).
+  // Antes el bot armaba el carrito y el POST terminaba en 409.
+  if (closedForOrder(state, vendor)) {
+    state.step = "idle";
+    replies.push(`⚠️ *${state?.currentVendorName || vendor?.store_name || "El comercio"}* está cerrado ahora y no recibe pedidos hasta que abra.`);
+    const link = storeLink(state, vendor);
+    if (link) replies.push(`🔗 Mirá la vidriera: ${link}`);
+    return;
+  }
   const missing = missingFields(state, vendor);
 
   // Si quedó un producto pendiente de aclarar, esa es la única pregunta que falta.
@@ -2730,19 +2781,23 @@ async function fetchQuote(vendorId, items, method, paymentMethod) {
   }
 }
 
-/** Consulta los horarios de entrega disponibles para un comercio en una fecha dada.
- *  Devuelve { slots: [{time, available}], estimated, closed } o null si falla. */
-async function fetchDeliverySlots(vendorId, date) {
+/** Franjas REALES de reparto (retail). Sin `hours`/`delivery_hours` devuelve
+ *  [] —no hay turnos que elegir: la demora va desde que se toma el pedido.
+ *  Ojo: `/api/slot-availability` es la turnera de estética, NO es delivery. */
+async function fetchDeliverySlots(vendorId) {
+  if (!vendorId) return [];
   try {
-    const res = await appFetch(`${config.appUrl}/api/slot-availability?vendorId=${encodeURIComponent(vendorId)}&date=${date}`, {
+    const res = await appFetch(`${config.appUrl}/api/delivery-availability?vendorId=${encodeURIComponent(vendorId)}`, {
       headers: { Authorization: `Bearer ${config.waBotSecret}` },
       signal: AbortSignal.timeout(10_000),
     });
-    if (!res.ok) return null;
-    return await res.json();
+    if (!res.ok) return [];
+    const d = await res.json().catch(() => null);
+    if (!d || d.deliveryCoordinar || d.deliveryPaused) return [];
+    return Array.isArray(d.slots) ? d.slots : [];
   } catch (e) {
-    console.error(`[bot] slot-availability fetch fail: ${e?.message}`);
-    return null;
+    console.error(`[bot] delivery-availability fetch fail: ${e?.message || e}`);
+    return [];
   }
 }
 
@@ -4026,7 +4081,11 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp, age
 
     // En flujo de pedido con un comercio elegido: reusar el flow normal.
     if (state.currentVendorId && state.step !== "idle") {
-      const chosenVendor = { id: state.currentVendorId, store_name: state.currentVendorName || "Comercio", slug: state.currentVendorSlug || null, enabled: true, vertical: state.currentVendorVertical || "desconocida", transfer_alias: state.currentVendorTransfer?.alias || null, transfer_cbu: state.currentVendorTransfer?.cbu || null, transfer_holder: state.currentVendorTransfer?.holder || null, delivery_options: state.currentVendorDelivery || "ambos" };
+      const chosenVendor = { id: state.currentVendorId, store_name: state.currentVendorName || "Comercio", slug: state.currentVendorSlug || null, enabled: true, vertical: state.currentVendorVertical || "desconocida", transfer_alias: state.currentVendorTransfer?.alias || null, transfer_cbu: state.currentVendorTransfer?.cbu || null, transfer_holder: state.currentVendorTransfer?.holder || null, delivery_options: state.currentVendorDelivery || "ambos",
+        store_open: state.currentVendorOpen ?? null,
+        accept_orders_when_closed: state.currentVendorAcceptClosed === true,
+        prep_time_min: state.currentVendorPrepMin ?? null,
+        delivery_prep_min: state.currentVendorDeliveryPrepMin ?? null };
       await handleStep({ vendor: chosenVendor, text, state, replies, waId });
       // Si el pedido se confirmó y se limpió, ofrecer otro comercio.
       if (state._cleared) {
@@ -4053,7 +4112,11 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp, age
         state.portalVendorList = [];
         // cae al bloque de portal idle abajo
       } else {
-        const chosenVendor = { id: state.currentVendorId, store_name: state.currentVendorName || "Comercio", slug: state.currentVendorSlug || null, enabled: true, vertical: state.currentVendorVertical || "desconocida", transfer_alias: state.currentVendorTransfer?.alias || null, transfer_cbu: state.currentVendorTransfer?.cbu || null, transfer_holder: state.currentVendorTransfer?.holder || null, delivery_options: state.currentVendorDelivery || "ambos" };
+        const chosenVendor = { id: state.currentVendorId, store_name: state.currentVendorName || "Comercio", slug: state.currentVendorSlug || null, enabled: true, vertical: state.currentVendorVertical || "desconocida", transfer_alias: state.currentVendorTransfer?.alias || null, transfer_cbu: state.currentVendorTransfer?.cbu || null, transfer_holder: state.currentVendorTransfer?.holder || null, delivery_options: state.currentVendorDelivery || "ambos",
+        store_open: state.currentVendorOpen ?? null,
+        accept_orders_when_closed: state.currentVendorAcceptClosed === true,
+        prep_time_min: state.currentVendorPrepMin ?? null,
+        delivery_prep_min: state.currentVendorDeliveryPrepMin ?? null };
         await handleIdle({ vendor: chosenVendor, text, state, replies, waId });
         return await persist(state, vendor.id, waId, replies);
       }
@@ -4075,6 +4138,10 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp, age
         state.currentVendorSlug = chosen.slug || storeInfo.slug || null;
         state.currentVendorTransfer = { alias: storeInfo.transfer_alias || null, cbu: storeInfo.transfer_cbu || null, holder: storeInfo.transfer_holder || null };
         state.currentVendorDelivery = storeInfo.delivery_options || "ambos";
+        state.currentVendorOpen = storeInfo.store_open ?? null;
+        state.currentVendorAcceptClosed = storeInfo.accept_orders_when_closed === true;
+        state.currentVendorPrepMin = storeInfo.prep_time_min ?? null;
+        state.currentVendorDeliveryPrepMin = storeInfo.delivery_prep_min ?? null;
         // Funnel: tienda seleccionada
         try {
           trackEvent(vendor.id, "funnel_store_selected", waId, { storeId: chosen.id, storeName: chosen.store_name });
@@ -4137,6 +4204,10 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp, age
         state.currentVendorSlug = nameHit.slug || storeInfo2.slug || null;
         state.currentVendorTransfer = { alias: storeInfo2.transfer_alias || null, cbu: storeInfo2.transfer_cbu || null, holder: storeInfo2.transfer_holder || null };
         state.currentVendorDelivery = storeInfo2.delivery_options || "ambos";
+        state.currentVendorOpen = storeInfo2.store_open ?? null;
+        state.currentVendorAcceptClosed = storeInfo2.accept_orders_when_closed === true;
+        state.currentVendorPrepMin = storeInfo2.prep_time_min ?? null;
+        state.currentVendorDeliveryPrepMin = storeInfo2.delivery_prep_min ?? null;
         // Funnel: tienda seleccionada
         try { trackEvent(vendor.id, "funnel_store_selected", waId, { storeId: nameHit.id, storeName: nameHit.store_name }); } catch {}
         if (storeInfo2.store_open === false) {

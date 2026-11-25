@@ -12,10 +12,22 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 
+  // Tolerante a migraciones sin aplicar: si falta alguna columna, devolvemos
+  // NULL y el bot cae al comportamiento histórico (el servidor sí enforcea).
+  const extraCols = await queryMany<{ column_name: string }>(
+    `SELECT column_name FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = 'vendors'
+       AND column_name = ANY($1)`,
+    [["accept_orders_when_closed", "prep_time_min", "delivery_prep_min"]]
+  ).catch(() => []);
+  const has = new Set(extraCols.map((c) => c.column_name));
+  const col = (name: string) => has.has(name) ? name : `NULL AS ${name}`;
+
   const stores = await queryMany<any>(
     `SELECT id, store_name, slug, vertical, hours, open_override, address, neighborhood,
             transfer_alias, transfer_cbu, transfer_holder, delivery_options, cash_discount_pct,
             payment_methods, delivery_fee, free_delivery_min, delivery_mode, delivery_area_text,
+            ${col("accept_orders_when_closed")}, ${col("prep_time_min")}, ${col("delivery_prep_min")},
             logo_url, image_url
      FROM vendors
      WHERE COALESCE(visible, true) = true
@@ -133,6 +145,9 @@ export async function GET(request: Request) {
       transfer_cbu: s.transfer_cbu || null,
       transfer_holder: s.transfer_holder || null,
       delivery_options: s.delivery_options || "ambos",
+      accept_orders_when_closed: s.accept_orders_when_closed === true,
+      prep_time_min: s.prep_time_min != null ? Number(s.prep_time_min) : null,
+      delivery_prep_min: s.delivery_prep_min != null ? Number(s.delivery_prep_min) : null,
       cash_discount_pct: s.cash_discount_pct != null ? Number(s.cash_discount_pct) : null,
       payment_methods: s.payment_methods || null,
       delivery_fee: s.delivery_fee != null ? Number(s.delivery_fee) : null,

@@ -385,6 +385,9 @@ function PurchaseForm({
     keySeq: number;
     attachments: string[];
     extractMsg: string;
+    sourceHash: string | null;
+    allowDuplicate: boolean;
+    duplicateReason: string;
   } | null;
   onSupplierCreated: () => void;
   /** Creado un insumo/producto/variante sin salir de la compra. */
@@ -411,6 +414,9 @@ function PurchaseForm({
   const [attachments, setAttachments] = useState<string[]>(initial?.attachments || []);
   const [uploading, setUploading] = useState(false);
   const [extractMsg, setExtractMsg] = useState(initial?.extractMsg || "");
+  const [allowDuplicate] = useState(initial?.allowDuplicate || false);
+  const [duplicateReason] = useState(initial?.duplicateReason || "");
+  const [sourceHash] = useState(initial?.sourceHash || null);
   // Línea creando ítem nuevo sin salir de la compra (sheet abierto).
   const [creating, setCreating] = useState<{ lineKey: number; kind: BuyLine["kind"] } | null>(null);
   // Aviso post-compra: listas de margen con costo cambiado.
@@ -500,6 +506,9 @@ function PurchaseForm({
         receipt_number: receiptNumber.trim() || null,
         notes: notes.trim() || null,
         attachment_urls: attachments.length > 0 ? attachments : undefined,
+        source_hash: sourceHash || undefined,
+        allow_duplicate: allowDuplicate,
+        duplicate_reason: duplicateReason || undefined,
         items: clean.map((l) =>
           l.kind === "ing"
             ? {
@@ -1185,7 +1194,12 @@ export function PurchasesManager({
     keySeq: number;
     attachments: string[];
     extractMsg: string;
+    sourceHash: string | null;
+    allowDuplicate: boolean;
+    duplicateReason: string;
   } | null>(null);
+  const [duplicate, setDuplicate] = useState<any | null>(null);
+  const [duplicateReason, setDuplicateReason] = useState("");
   const [showSuppliers, setShowSuppliers] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | "new" | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -1299,8 +1313,13 @@ export function PurchasesManager({
         keySeq: rekeyed.length + 1,
         attachments: data?.url ? [data.url] : [],
         extractMsg: msg,
+        sourceHash: data?.fileHash || null,
+        allowDuplicate: false,
+        duplicateReason: "",
       });
       setExtractMsg(msg);
+      setDuplicate(data?.duplicate || null);
+      setDuplicateReason("");
       setFormNonce((n) => n + 1);
       setShowForm(true);
     } catch (e: any) {
@@ -1447,6 +1466,50 @@ export function PurchasesManager({
         </Button>
       </div>
       {extractMsg && <p className="text-xs text-muted-foreground">{extractMsg}</p>}
+
+      {duplicate && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200 space-y-2">
+          <p className="font-medium">
+            ⚠️ {duplicate.type === "exact_file" ? "Este comprobante ya fue registrado" : "Posible compra duplicada"}
+          </p>
+          <p className="text-xs">
+            Compra del {duplicate.purchased_at || "—"} · {duplicate.receipt_number || "sin n°"} · ${Number(duplicate.total || 0).toLocaleString("es-AR")}
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              value={duplicateReason}
+              onChange={(e) => setDuplicateReason(e.target.value)}
+              placeholder="Motivo (opcional)"
+              className="h-8 text-xs max-w-xs"
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setFormInitial((prev) =>
+                  prev ? { ...prev, allowDuplicate: true, duplicateReason } : prev
+                );
+                setFormNonce((n) => n + 1);
+                setDuplicate(null);
+              }}
+            >
+              Cargar igual
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setDuplicate(null);
+                setShowForm(false);
+                setFormInitial(null);
+                setExtractMsg("");
+              }}
+            >
+              Cancelar
+            </Button>
+          </div>
+        </div>
+      )}
 
       {msg && <p className="text-sm text-green-600">{msg}</p>}
 

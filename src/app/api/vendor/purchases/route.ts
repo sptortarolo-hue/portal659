@@ -2,6 +2,7 @@
 import { queryMany, queryOne, withTransaction } from "@/lib/db";
 import { unitFactor } from "@/lib/costing";
 import { isValidDateOnly, toDateOnly } from "@/lib/expiry";
+import { findDuplicatePurchase } from "@/lib/purchase-dedupe";
 import { NextResponse } from "next/server";
 import type { Ingredient, ReceiptType } from "@/types/database";
 
@@ -73,6 +74,12 @@ export async function POST(request: Request) {
     ? body.attachment_urls.filter((u: unknown) => typeof u === "string" && u.trim() !== "").map((u: string) => u.trim())
     : [];
   const rawItems: unknown = body?.items;
+  const sourceHash = body?.source_hash != null ? String(body.source_hash).slice(0, 64) : null;
+  const allowDuplicate = body?.allow_duplicate === true;
+  const duplicateReason =
+    body?.duplicate_reason != null && String(body.duplicate_reason).trim() !== ""
+      ? String(body.duplicate_reason).trim().slice(0, 300)
+      : null;
 
   if (supplier_id) {
     const s = await queryOne<{ id: string }>(
@@ -98,6 +105,17 @@ export async function POST(request: Request) {
   const hasProductExpiry = colSet.has("products.expires_at");
   const hasProductSupplier = colSet.has("products.supplier_id");
   const hasItemExpiry = colSet.has("purchase_items.expires_at");
+  let hasSourceHash = false;
+  let hasOverrideReason = false;
+  try {
+    const dedupeCols = await queryMany<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='purchases'
+          AND column_name IN ('source_hash','duplicate_override_reason')`
+    );
+    hasSourceHash = (dedupeCols || []).some((c) => c.column_name === "source_hash");
+    hasOverrideReason = (dedupeCols || []).some((c) => c.column_name === "duplicate_override_reason");
+  } catch { /* sin migración: se ignora */ }
 
   const ingIds = Array.from(
     new Set((rawItems as any[]).map((i) => String(i?.ingredient_id || "")).filter(Boolean))
@@ -253,12 +271,33 @@ export async function POST(request: Request) {
 
   const total = round2(items.reduce((s, i) => s + i.line_total, 0));
 
+  // Deduplicación: el hash exacto del comprobante bloquea; los matches
+  // por n°/monto/fecha advierten. El usuario puede forzar con motivo.
+  const duplicate = await findDuplicatePurchase({
+    vendorId: gate.vendor.id,
+    supplierId: supplier_id,
+    receiptNumber: receipt_number,
+    total,
+    purchasedAt: purchased_at,
+    fileHash: sourceHash,
+  }).catch(() => null);
+  if (duplicate && !allowDuplicate) {
+    return NextResponse.json(
+      {
+        error: "Esta compra ya está registrada",
+        code: duplicate.type === "exact_file" ? "duplicate_file" : "duplicate_purchase",
+        duplicate,
+      },
+      { status: 409 }
+    );
+  }
+
   let purchaseId: string;
   try {
     purchaseId = await withTransaction(async (tx) => {
     const p = await tx.queryOne<{ id: string }>(
-      `INSERT INTO purchases (vendor_id, supplier_id, purchased_at, receipt_type, receipt_number, notes, total, attachment_urls)
-       VALUES ($1, $2, COALESCE($3::date, CURRENT_DATE), $4, $5, $6, $7, $8) RETURNING id`,
+      `INSERT INTO purchases (vendor_id, supplier_id, purchased_at, receipt_type, receipt_number, notes, total, attachment_urls${hasSourceHash ? ", source_hash" : ""}${hasOverrideReason ? ", duplicate_override_reason" : ""})
+       VALUES ($1, $2, COALESCE($3::date, CURRENT_DATE), $4, $5, $6, $7, $8${hasSourceHash ? ", $9" : ""}${hasOverrideReason ? `, $${hasSourceHash ? 10 : 9}` : ""}) RETURNING id`,
       [
         gate.vendor.id,
         supplier_id,
@@ -268,6 +307,8 @@ export async function POST(request: Request) {
         notes,
         total,
         JSON.stringify(attachment_urls),
+        ...(hasSourceHash ? [sourceHash] : []),
+        ...(hasOverrideReason ? [duplicateReason] : []),
       ]
     );
     if (!p) throw new Error("No se pudo crear la compra");

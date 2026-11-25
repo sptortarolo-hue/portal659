@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { gateRequest, gateError } from "@/lib/subscription-gate";
 import { saveUploadedFile } from "@/lib/upload-file";
 import { extractInvoice, suggestMatches, MATCH_THRESHOLD, type CatalogItem } from "@/lib/invoice-extract";
-import { queryMany } from "@/lib/db";
+import { queryMany, queryOne } from "@/lib/db";
+import { fileSha256, findDuplicatePurchase } from "@/lib/purchase-dedupe";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -106,12 +107,33 @@ export async function POST(request: Request) {
       return { ...it, suggestions, bestMatch: best };
     });
 
-    console.log("[extract] ok", { usedProvider, items: extracted.items.length });
+    // Dedupe: hash del archivo + match fuerte/débil con compras existentes.
+    const supplierName = String(extracted.supplier_name || "").trim();
+    const supplier = supplierName
+      ? await queryOne<{ id: string }>(
+          `SELECT id FROM suppliers
+            WHERE vendor_id=$1 AND lower(btrim(name))=lower(btrim($2)) LIMIT 1`,
+          [gate.vendor.id, supplierName]
+        ).catch(() => null)
+      : null;
+    const total = extracted.items.reduce((s, i) => s + (Number(i.line_total) || 0), 0);
+    const duplicate = await findDuplicatePurchase({
+      vendorId: gate.vendor.id,
+      supplierId: supplier?.id || null,
+      receiptNumber: extracted.receipt_number,
+      total,
+      purchasedAt: extracted.purchased_at,
+      fileHash: fileSha256(buffer),
+    }).catch(() => null);
+
+    console.log("[extract] ok", { usedProvider, items: extracted.items.length, duplicate: duplicate?.type || null });
     return NextResponse.json({
       url,
       extracted: { ...extracted, items: itemsWithSuggestions },
       raw,
       usedProvider,
+      duplicate,
+      fileHash: fileSha256(buffer),
     });
   } catch (e: any) {
     const msg = e?.message || "No se pudo leer el comprobante";

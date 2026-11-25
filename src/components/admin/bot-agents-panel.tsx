@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Card, Chip, SectionHeader, StatusDot } from "@/components/panel-ui";
 import { Button } from "@/components/ui/button";
+import { AgentWizard } from "./bot-agent-wizard";
 
 type Agent = {
   key: string;
@@ -25,6 +26,7 @@ export function BotAgentsPanel() {
   const [saving, setSaving] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
   const [filter, setFilter] = useState<"all" | "on" | "off">("all");
+  const [wizardOpen, setWizardOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -77,6 +79,7 @@ export function BotAgentsPanel() {
                 </Chip>
               ))}
             </div>
+            <Button size="sm" onClick={() => setWizardOpen(true)}>✨ Nuevo agente</Button>
             <Button variant="outline" size="sm" onClick={load} disabled={loading}>{loading ? "…" : "Actualizar"}</Button>
           </div>
         }
@@ -164,6 +167,8 @@ export function BotAgentsPanel() {
       <p className="ts-caption text-muted-foreground/70">
         Los cambios se guardan en DB y el cerebro los lee con cache de 5 min. Si la tabla no existe, el bot sigue con el modo histórico.
       </p>
+
+      <AgentWizard open={wizardOpen} onClose={() => setWizardOpen(false)} />
     </div>
   );
 }

@@ -1328,7 +1328,11 @@ export function MenuStudio({
                 type="button"
                 size="sm"
                 variant="outline"
-                onClick={() => { window.location.href = "/vendor/precios/asistente"; }}
+                onClick={() => {
+                  const ids = [...selected].filter(Boolean);
+                  const qs = ids.length ? `?ids=${encodeURIComponent(ids.join(","))}` : "";
+                  window.location.href = `/vendor/precios/asistente${qs}`;
+                }}
                 title="Completar costo, lista y precio paso a paso"
               >
                 Asistente de precios

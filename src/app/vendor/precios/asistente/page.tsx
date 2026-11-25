@@ -36,6 +36,8 @@ type WorkGroup = {
 type Draft = {
   step: number;
   selectedIds: string[];
+  scopeName: string;
+  scopeFromInvoice: boolean;
   listId: string;
   customGroups: WorkGroup[];
   groupChoices: Record<string, { listId: string | null; reason: string }>;
@@ -60,10 +62,9 @@ function autoGroups(products: Product[]): WorkGroup[] {
 }
 
 function deriveStep(products: Product[]): number {
-  if (products.length === 0) return 1;
+  if (products.length === 0) return 2;
   if (products.some((p) => p.cost_last == null)) return 3;
   if (products.some((p) => !p.margin_list_id && !getPricingStatus(p).skipped.list)) return 4;
-  if (products.some((p) => getPricingStatus(p).stage !== "listo")) return 5;
   return 5;
 }
 
@@ -73,6 +74,9 @@ export default function PricingWizardPage() {
   const [lists, setLists] = useState<ListRow[]>([]);
   const [step, setStep] = useState(1);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [scopeName, setScopeName] = useState("");
+  const [scopeFromInvoice, setScopeFromInvoice] = useState(false);
+  const [scopeReady, setScopeReady] = useState(false);
   const [customGroups, setCustomGroups] = useState<WorkGroup[]>([]);
   const [groupChoices, setGroupChoices] = useState<Record<string, { listId: string | null; reason: string }>>({});
   const [listId, setListId] = useState("");
@@ -85,23 +89,32 @@ export default function PricingWizardPage() {
   const [ivaRecuperable, setIvaRecuperable] = useState(false);
 
   const groups = useMemo(() => {
-    const base = autoGroups(products);
-    const merged = base.map((g) => ({ ...g, ...(groupChoices[g.id] || {}) }));
-    return [...merged, ...customGroups];
-  }, [products, customGroups, groupChoices]);
+    const base = autoGroups(products)
+      .map((g) => ({ ...g, productIds: g.productIds.filter((id) => selectedIds.includes(id)), ...(groupChoices[g.id] || {}) }))
+      .filter((g) => g.productIds.length > 0);
+    const custom = customGroups
+      .map((g) => ({ ...g, productIds: g.productIds.filter((id) => selectedIds.includes(id)) }))
+      .filter((g) => g.productIds.length > 0);
+    return [...base, ...custom];
+  }, [products, customGroups, groupChoices, selectedIds]);
+
+  const scopedProducts = useMemo(
+    () => products.filter((p) => selectedIds.includes(p.id)),
+    [products, selectedIds]
+  );
 
   const completed = useMemo(() => {
-    const noCost = products.filter((p) => p.cost_last == null).length;
-    const noList = products.filter((p) => !p.margin_list_id && !getPricingStatus(p).skipped.list).length;
-    const notReady = products.filter((p) => getPricingStatus(p).stage !== "listo").length;
+    const noCost = scopedProducts.filter((p) => p.cost_last == null).length;
+    const noList = scopedProducts.filter((p) => !p.margin_list_id && !getPricingStatus(p).skipped.list).length;
+    const notReady = scopedProducts.filter((p) => getPricingStatus(p).stage !== "listo").length;
     return {
-      1: products.some((p) => p.price_source === "factura"),
+      1: scopeFromInvoice || scopedProducts.some((p) => p.price_source === "factura"),
       2: selectedIds.length > 0 || customGroups.length > 0,
-      3: products.length > 0 && noCost === 0,
-      4: products.length > 0 && noList === 0,
-      5: products.length > 0 && notReady === 0,
+      3: scopedProducts.length > 0 && noCost === 0,
+      4: scopedProducts.length > 0 && noList === 0,
+      5: scopedProducts.length > 0 && notReady === 0,
     } as Record<number, boolean>;
-  }, [products, selectedIds, customGroups]);
+  }, [scopedProducts, selectedIds, customGroups, scopeFromInvoice]);
 
   const progress = STEPS.filter((s) => completed[s.n]).length;
 
@@ -121,22 +134,87 @@ export default function PricingWizardPage() {
     const params = new URLSearchParams(window.location.search);
     const urlStep = Number(params.get("step"));
     const urlIds = (params.get("ids") || "").split(",").filter(Boolean);
+    const urlGroup = params.get("group");
     const draft = loadDraft<Draft>(vid, "pricing-wizard");
-    const incomplete = prods.filter((p) => getPricingStatus(p).stage !== "listo");
-    setSelectedIds(urlIds.length ? urlIds : draft?.selectedIds?.length ? draft.selectedIds : incomplete.map((p) => p.id));
-    setStep(Number.isFinite(urlStep) && urlStep >= 1 && urlStep <= 5 ? urlStep : draft?.step || deriveStep(prods));
-    setListId(draft?.listId || ml?.lists?.[0]?.id || "");
-    setCustomGroups(draft?.customGroups || []);
+    const custom = draft?.customGroups || [];
+    setCustomGroups(custom);
     setGroupChoices(draft?.groupChoices || {});
+    setListId(draft?.listId || ml?.lists?.[0]?.id || "");
+
+    const resolvable = [...autoGroups(prods), ...custom];
+    let ids: string[] = [];
+    let name = "";
+    let fromInvoice = false;
+
+    if (urlGroup === "invoice" || urlGroup === "factura") {
+      fromInvoice = true;
+      name = "Factura nueva";
+    } else if (urlGroup) {
+      const g = resolvable.find((x) => x.id === urlGroup);
+      if (g) { ids = g.productIds; name = g.name; }
+    } else if (urlIds.length) {
+      ids = urlIds;
+      name = "Selección personalizada";
+    } else if (draft?.scopeName) {
+      ids = draft.selectedIds || [];
+      name = draft.scopeName;
+      fromInvoice = !!draft.scopeFromInvoice;
+    }
+
+    setSelectedIds(ids);
+    setScopeName(name);
+    setScopeFromInvoice(fromInvoice);
+    setScopeReady(!!name);
+    const scoped = prods.filter((p) => ids.includes(p.id));
+    setStep(Number.isFinite(urlStep) && urlStep >= 1 && urlStep <= 5 ? urlStep : draft?.step || deriveStep(scoped));
   }
 
   useEffect(() => { load(); }, []);
 
   useEffect(() => {
-    if (vendorId) saveDraft(vendorId, "pricing-wizard", { step, selectedIds, listId, customGroups, groupChoices } as Draft);
-  }, [vendorId, step, selectedIds, listId, customGroups, groupChoices]);
+    if (vendorId) saveDraft(vendorId, "pricing-wizard", { step, selectedIds, scopeName, scopeFromInvoice, listId, customGroups, groupChoices } as Draft);
+  }, [vendorId, step, selectedIds, scopeName, scopeFromInvoice, listId, customGroups, groupChoices]);
 
   function go(n: number) { setStep(n); setMsg(""); setPreview(null); }
+
+  function chooseGroup(g: WorkGroup) {
+    setSelectedIds(g.productIds);
+    setScopeName(g.name);
+    setScopeFromInvoice(false);
+    setScopeReady(true);
+    setStep(deriveStep(products.filter((p) => g.productIds.includes(p.id))));
+    setMsg("");
+    setPreview(null);
+  }
+
+  function chooseInvoice() {
+    setSelectedIds([]);
+    setScopeName("Factura nueva");
+    setScopeFromInvoice(true);
+    setScopeReady(true);
+    setStep(1);
+    setMsg("");
+    setPreview(null);
+  }
+
+  function chooseManual() {
+    setSelectedIds([]);
+    setScopeName("Selección manual");
+    setScopeFromInvoice(false);
+    setScopeReady(true);
+    setStep(2);
+    setMsg("");
+    setPreview(null);
+  }
+
+  function changeGroup() {
+    setScopeReady(false);
+    setScopeName("");
+    setSelectedIds([]);
+    setStep(1);
+    setMsg("");
+    setPreview(null);
+  }
 
   async function extract(file: File) {
     setBusy(true); setMsg("");
@@ -162,24 +240,34 @@ export default function PricingWizardPage() {
     const cost = ivaRecuperable
       ? Number(item.unit_price_net ?? item.unit_price ?? 0)
       : Number(item.unit_price_total ?? item.unit_price ?? 0);
-    const r = await apiJson("/api/vendor/offers", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: String(item.description || "Producto sin nombre"),
-        price: 0,
-        from_invoice: true,
-        cost_last: cost,
-        margin_list_id: listId || null,
-        price_source: listId ? "lista" : "manual",
-        pricing_skipped: listId ? undefined : { list: "Precio manual" },
-        supplier_name: null,
-      }),
-    });
+    let data: any = {};
+    try {
+      const res = await fetch("/api/vendor/offers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: String(item.description || "Producto sin nombre"),
+          price: 0,
+          from_invoice: true,
+          cost_last: cost,
+          margin_list_id: listId || null,
+          price_source: listId ? "lista" : "manual",
+          pricing_skipped: listId ? undefined : { list: "Precio manual" },
+          supplier_name: null,
+        }),
+      });
+      data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "No se pudo crear el producto");
+    } catch (e: any) {
+      setBusy(false);
+      return setMsg(e?.message || "No se pudo crear el producto");
+    }
+    const newId = data?.offer?.id ? String(data.offer.id) : null;
+    if (newId) setSelectedIds((prev) => prev.includes(newId) ? prev : [...prev, newId]);
+    const fresh = await getJson<{ offers?: Product[] }>("/api/vendor/offers").catch(() => null);
+    setProducts(fresh?.offers || []);
     setBusy(false);
-    if (!r.ok) return setMsg(r.error || "No se pudo crear el producto");
     setMsg(`Creado: ${item.description}`);
-    await load();
   }
 
   function addCustomGroup() {
@@ -236,6 +324,58 @@ export default function PricingWizardPage() {
     }
   }
 
+  if (!scopeReady) {
+    const selectorGroups = [...autoGroups(products), ...customGroups];
+    return (
+      <div className="mx-auto max-w-3xl p-4 space-y-4">
+        <div>
+          <h1 className="text-xl font-semibold">Asistente de precios</h1>
+          <p className="text-sm text-muted-foreground">
+            Elegí por dónde querés empezar. Todo lo que hagamos después será solo sobre ese grupo.
+          </p>
+        </div>
+        <Card className="p-4 space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Empezar por</p>
+          <button
+            onClick={chooseInvoice}
+            className="w-full rounded-xl border border-primary/30 bg-primary/5 p-3 text-left hover:bg-primary/10"
+          >
+            <p className="font-medium text-sm">📄 Cargar una factura del proveedor</p>
+            <p className="text-xs text-muted-foreground">Subí el comprobante y armamos un grupo con esos productos.</p>
+          </button>
+
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground pt-2">Grupos que necesitan trabajo</p>
+          <div className="grid gap-2 md:grid-cols-2">
+            {selectorGroups.map((g) => (
+              <button
+                key={g.id}
+                onClick={() => chooseGroup(g)}
+                className="rounded-xl border border-border p-3 text-left hover:bg-muted/50"
+              >
+                <p className="font-medium text-sm">{g.name}</p>
+                <p className="text-xs text-muted-foreground">{g.productIds.length} productos</p>
+              </button>
+            ))}
+          </div>
+          {selectorGroups.length === 0 && (
+            <p className="text-sm text-muted-foreground">No hay grupos pendientes. Podés cargar una factura o elegir productos manualmente.</p>
+          )}
+
+          <button
+            onClick={chooseManual}
+            className="w-full rounded-xl border border-dashed border-border p-3 text-left hover:bg-muted/50"
+          >
+            <p className="font-medium text-sm">➕ Elegir productos manualmente</p>
+            <p className="text-xs text-muted-foreground">Armá tu propio grupo desde el catálogo.</p>
+          </button>
+        </Card>
+        <Link href="/vendor/dashboard">
+          <Button variant="outline" size="sm">Volver al panel</Button>
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-6xl p-4">
       <div className="flex items-center justify-between gap-2 flex-wrap mb-4">
@@ -245,7 +385,13 @@ export default function PricingWizardPage() {
             De la factura al precio de venta, a tu ritmo y sin perder ningún paso.
           </p>
         </div>
-        <Link href="/vendor/dashboard"><Button variant="outline" size="sm">Volver al panel</Button></Link>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-xs">
+            Trabajando con: <strong>{scopeName}</strong> · {selectedIds.length} producto{selectedIds.length === 1 ? "" : "s"}
+          </span>
+          <button onClick={changeGroup} className="text-xs text-primary underline underline-offset-2">Cambiar grupo</button>
+          <Link href="/vendor/dashboard"><Button variant="outline" size="sm">Volver al panel</Button></Link>
+        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
@@ -255,7 +401,10 @@ export default function PricingWizardPage() {
           <div className="h-2 rounded-full bg-muted overflow-hidden mb-3">
             <div className="h-full bg-primary transition-all" style={{ width: `${(progress / STEPS.length) * 100}%` }} />
           </div>
-          <p className="text-xs text-muted-foreground mb-3">{progress} de {STEPS.length} pasos listos</p>
+          <p className="text-xs text-muted-foreground mb-1">{progress} de {STEPS.length} pasos listos</p>
+          <p className="text-[11px] text-muted-foreground mb-3">
+            De estos {scopedProducts.length} productos, {scopedProducts.filter((p) => getPricingStatus(p).stage !== "listo").length} faltan completar.
+          </p>
           <div className="space-y-1">
             {STEPS.map((s) => (
               <button
@@ -318,7 +467,7 @@ export default function PricingWizardPage() {
           {step === 2 && (
             <div className="space-y-3">
               <p className="text-xs text-muted-foreground">
-                Los grupos automáticos se actualizan solos. También podés armar tus propios grupos.
+                Este es tu grupo de trabajo. Podés ajustar la selección o armar subgrupos adentro.
               </p>
               <div className="grid gap-2 md:grid-cols-2">
                 {groups.map((g) => (

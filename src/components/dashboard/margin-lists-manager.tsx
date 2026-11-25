@@ -465,7 +465,7 @@ export function MarginListsManager({
         <button
           type="button"
           className="text-sm text-primary underline underline-offset-2"
-          onClick={() => { window.location.href = "/vendor/precios/asistente?step=5"; }}
+          onClick={() => { window.location.href = "/vendor/precios/asistente?group=auto:falta_precio&step=5"; }}
         >
           Abrir asistente de precios →
         </button>

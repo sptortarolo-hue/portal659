@@ -547,6 +547,14 @@ export default function VendorSidebar({
                       {canInventory && (
                         <NavButton active={currentTab === "inventario"} onClick={() => handleTab("inventario")} icon={Boxes} label="Inventario" />
                       )}
+                      {!isEmployee && (
+                        <NavButton
+                          active={false}
+                          onClick={() => { window.location.href = "/vendor/precios/asistente"; }}
+                          icon={Calculator}
+                          label="Asistente de precios"
+                        />
+                      )}
                     </div>
                   )}
                 </div>
@@ -712,6 +720,14 @@ export default function VendorSidebar({
                       ))}
                       {canInventory && (
                         <NavButton active={currentTab === "inventario"} onClick={() => handleTab("inventario")} icon={Boxes} label="Inventario" />
+                      )}
+                      {!isEmployee && (
+                        <NavButton
+                          active={false}
+                          onClick={() => { window.location.href = "/vendor/precios/asistente"; }}
+                          icon={Calculator}
+                          label="Asistente de precios"
+                        />
                       )}
                     </div>
                   )}

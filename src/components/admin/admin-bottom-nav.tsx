@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Store, Users, Star, Settings, Megaphone, BarChart3, Tag, CreditCard, MessageCircle, Truck, Phone, Activity } from "lucide-react";
+import { LayoutDashboard, Store, Users, Star, Settings, Megaphone, BarChart3, Tag, CreditCard, MessageCircle, Truck, Phone, Activity, Coins } from "lucide-react";
 
 const ITEMS = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
@@ -11,6 +11,7 @@ const ITEMS = [
   { href: "/admin/logisticas", label: "Envíos", icon: Truck },
   { href: "/admin/portal-wa", label: "WA Portal", icon: Phone },
   { href: "/admin/bots", label: "Bots", icon: MessageCircle },
+  { href: "/admin/ia", label: "IA $", icon: Coins },
   { href: "/admin/comercios", label: "Comercios", icon: Store },
   { href: "/admin/suscripciones", label: "Suscrip.", icon: CreditCard },
   { href: "/admin/usuarios", label: "Usuarios", icon: Users },

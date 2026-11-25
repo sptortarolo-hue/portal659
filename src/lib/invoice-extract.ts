@@ -6,6 +6,8 @@
  * configurado (solo si el modelo soporta imágenes). La IA solo propone:
  * nada se guarda ciego.
  */
+import { recordLlmUsage, parseLlmUsage } from "@/lib/llm-accounting";
+
 export type ExtractedInvoiceItem = {
   description: string;
   qty: number;
@@ -57,6 +59,7 @@ type Provider = {
   apiKey: string;
   model: string;
 };
+type ExtractResult = { extracted: ExtractedInvoice; raw: string; usage?: any };
 
 function buildProviders(): Provider[] {
   const out: Provider[] = [];
@@ -209,7 +212,7 @@ function normalizeParsed(parsed: unknown, raw: string): { extracted: ExtractedIn
   return { extracted, raw };
 }
 
-async function callGemini(provider: Provider, buffer: Buffer, mimeType: string): Promise<{ extracted: ExtractedInvoice; raw: string }> {
+async function callGemini(provider: Provider, buffer: Buffer, mimeType: string): Promise<ExtractResult> {
   const body = {
     contents: [
       {
@@ -253,10 +256,10 @@ async function callGemini(provider: Provider, buffer: Buffer, mimeType: string):
       .join("") || "";
 
   const parsed = tryParseJson(candidateText);
-  return normalizeParsed(parsed, candidateText);
+  return { ...normalizeParsed(parsed, candidateText), usage: json };
 }
 
-async function callOpenAI(provider: Provider, buffer: Buffer, mimeType: string): Promise<{ extracted: ExtractedInvoice; raw: string }> {
+async function callOpenAI(provider: Provider, buffer: Buffer, mimeType: string): Promise<ExtractResult> {
   const dataUrl = `data:${mimeType};base64,${buffer.toString("base64")}`;
   const body = {
     model: provider.model,
@@ -305,7 +308,7 @@ async function callOpenAI(provider: Provider, buffer: Buffer, mimeType: string):
     (json as { choices?: { message?: { content?: string } }[] })?.choices?.[0]?.message?.content || "";
 
   const parsed = tryParseJson(content);
-  return normalizeParsed(parsed, content);
+  return { ...normalizeParsed(parsed, content), usage: json };
 }
 
 export async function extractInvoice(
@@ -313,6 +316,7 @@ export async function extractInvoice(
   mimeType: string
 ): Promise<{ extracted: ExtractedInvoice; raw: string; usedProvider: string }> {
   const providers = buildProviders();
+  const started = Date.now();
   if (providers.length === 0) {
     throw new Error("No hay proveedor de IA configurado (GEMINI_API_KEY/GROQ_API_KEY/OPENROUTER_API_KEY/LLM_API_KEY+LLM_VISION_MODEL)");
   }
@@ -324,6 +328,11 @@ export async function extractInvoice(
         provider.kind === "gemini"
           ? await callGemini(provider, buffer, mimeType)
           : await callOpenAI(provider, buffer, mimeType);
+      const u = parseLlmUsage(result.usage, provider.name, provider.model);
+      recordLlmUsage({
+        source: "facturas", provider: provider.name, model: provider.model,
+        ...u, success: true, latencyMs: Date.now() - started,
+      });
       return { ...result, usedProvider: provider.name };
     } catch (e) {
       lastError = e instanceof Error ? e : new Error(String(e));
@@ -331,6 +340,11 @@ export async function extractInvoice(
     }
   }
 
+  recordLlmUsage({
+    source: "facturas", provider: providers.at(-1)?.name || "desconocido",
+    model: providers.at(-1)?.model || "desconocido", success: false,
+    latencyMs: Date.now() - started,
+  });
   throw lastError || new Error("No se pudo leer el comprobante");
 }
 

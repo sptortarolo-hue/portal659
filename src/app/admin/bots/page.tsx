@@ -291,6 +291,7 @@ export default function AdminBotsPage() {
           ) : (
             <p className="text-xs text-muted-foreground">—</p>
           )}
+          <Link href="/admin/ia" className="mt-2 inline-block text-xs text-primary hover:underline">💰 Costos y cuota de IA →</Link>
         </div>
         <div className="rounded-xl border border-border bg-card p-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Cerebro (desde reinicio)</p>

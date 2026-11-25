@@ -201,6 +201,8 @@ jobs:
               "*/20 * * * * root curl -fsS \"https://www.portal659.com.ar/api/cron/transfer-expiry?secret=$CRON_SECRET_VAL\" >> /var/log/portal659-cron.log 2>&1" \
               "0 13 * * * root curl -fsS \"https://www.portal659.com.ar/api/cron/plan-reminders?secret=$CRON_SECRET_VAL\" >> /var/log/portal659-cron.log 2>&1" \
               "0 13 * * * root curl -fsS \"https://www.portal659.com.ar/api/cron/equipment-recalls?secret=$CRON_SECRET_VAL\" >> /var/log/portal659-cron.log 2>&1" \
+              "0 10 * * * root curl -fsS \"https://www.portal659.com.ar/api/cron/llm-budget?secret=$CRON_SECRET_VAL\" >> /var/log/portal659-cron.log 2>&1" \
+              "10 4 * * 0 root curl -fsS \"https://www.portal659.com.ar/api/cron/llm-cleanup?secret=$CRON_SECRET_VAL\" >> /var/log/portal659-cron.log 2>&1" \
               > /etc/cron.d/portal659-reminders
             chmod 644 /etc/cron.d/portal659-reminders
             systemctl enable --now cron >/dev/null 2>&1 || service cron start >/dev/null 2>&1 || true

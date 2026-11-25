@@ -1,0 +1,13 @@
+{
+  "note": "Precios orientativos en USD por 1M tokens (input/output). NO es facturación: OpenRouter reporta el costo real en usage.cost; los demás se marcan como 'estimate'. Actualizar cuando cambien las tarifas.",
+  "updated": "2026-11-24",
+  "models": {
+    "gemini-flash-lite-latest": { "input": 0.1, "output": 0.4 },
+    "gemini-2.5-flash-lite": { "input": 0.1, "output": 0.4 },
+    "gemini-flash-latest": { "input": 0.3, "output": 2.5 },
+    "gemini-2.5-flash": { "input": 0.3, "output": 2.5 },
+    "qwen/qwen3.8-27b": { "input": 0, "output": 0 },
+    "openai/gpt-oss-20b": { "input": 0, "output": 0 },
+    "llama-3.3-70b-versatile": { "input": 0, "output": 0 }
+  }
+}

@@ -65,7 +65,7 @@ async function judge(persona, transcript, catalogText) {
     const out = await llmChat([
       { role: "system", content: `${JUDGE_SYSTEM}\n\nCatálogo real:\n${catalogText}\n\nObjetivo del cliente simulado: ${persona.description}` },
       { role: "user", content: t },
-    ], { max_tokens: 400, temperature: 0, timeout: 25000 });
+    ], { max_tokens: 400, temperature: 0, timeout: 25000, source: "lab" });
     if (!out) return null;
     const raw = (out.content || "").replace(/```json|```/g, "").trim();
     const a = raw.indexOf("{"), b = raw.lastIndexOf("}");

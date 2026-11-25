@@ -3,6 +3,8 @@ import { config } from "./config.mjs";
 import { matchProduct } from "./menu.mjs";
 import { loadCorrections, formatFewShot } from "./learning.mjs";
 import { toolSchemasForLlm, dispatchTool } from "./tools.mjs";
+import { isSandbox } from "./sandbox.mjs";
+import { extractUsage, recordUsage } from "./llm-accounting.mjs";
 import llmModels from "./llm-models.json" with { type: "json" };
 
 /** Resuelve el override de modelo por agente (slug completo → proveedor). */
@@ -262,6 +264,25 @@ function markProviderCooldown(provider) {
 }
 
 export async function llmChat(messages, opts = {}) {
+  const started = Date.now();
+  const source = opts.source || (isSandbox() ? "playground" : "bot");
+  const log = (data, provider, model, success = true, res = null) => {
+    const meta = {};
+    if (provider === "groq" && res) {
+      meta.remainingRequests = res.headers?.get?.("x-ratelimit-remaining-requests") || null;
+      meta.remainingTokens = res.headers?.get?.("x-ratelimit-remaining-tokens") || null;
+    }
+    recordUsage({
+      source,
+      agentKey: opts.agentKey || null,
+      vendorId: opts.vendorId || null,
+      provider,
+      model,
+      usage: data ? extractUsage(data, provider, model, meta) : { prompt: 0, completion: 0, total: 0, cost_source: "none", meta },
+      success,
+      latencyMs: Date.now() - started,
+    });
+  };
   const providers = Array.isArray(config.llmProviders) && config.llmProviders.length
     ? config.llmProviders
     : [{ name: "legacy", baseUrl: config.llmBaseUrl, apiKey: config.llmApiKey, model: config.llmModel }];
@@ -338,6 +359,7 @@ export async function llmChat(messages, opts = {}) {
     }
 
     const data = await res.json().catch(() => null);
+    log(data, provider, body.model, true, res);
     // Tokens consumidos (para llmStats.usage)
     const _u = data?.usage;
     if (_u && typeof _u === "object") {
@@ -372,6 +394,7 @@ export async function llmChat(messages, opts = {}) {
   }
 
   llmStats.fail++;
+  log(null, providers[0]?.name || "desconocido", opts.agentModel || config.llmModel || "desconocido", false);
   return null;
 }
 
@@ -502,7 +525,8 @@ async function callOnce(message, products, ctx = null) {
       { role: "user", content: `Productos disponibles:\n${menu}\n\nMensaje del cliente: "${message}"${contextBlock}` },
     ],
     { max_tokens: Number(ctx?.agentMaxTokens) || 600, temperature: Number(ctx?.agentTemperature) ?? 0,
-      timeout: 25000, response_format: "json", tools: TOOLS, tool_choice: 'required', agentModel: ctx?.agentModel }
+      timeout: 25000, response_format: "json", tools: TOOLS, tool_choice: 'required',
+      agentModel: ctx?.agentModel, agentKey: ctx?.agentKey, vendorId: ctx?.vendorId, source: "bot" }
   );
   if (!llmResult) return null;
 

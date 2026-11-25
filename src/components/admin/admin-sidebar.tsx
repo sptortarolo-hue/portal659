@@ -23,6 +23,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Shield,
+  Coins,
 } from "lucide-react";
 import { PanelUiSwitch } from "@/components/panel-ui/panel-ui-switch";
 
@@ -33,6 +34,7 @@ const NAV_ITEMS = [
   { href: "/admin/logisticas", label: "Portal Envíos", short: "Envíos", icon: Truck },
   { href: "/admin/portal-wa", label: "WA del Portal", short: "WA", icon: Phone },
   { href: "/admin/bots", label: "Bots WhatsApp", short: "Bots", icon: MessageCircle },
+  { href: "/admin/ia", label: "Costos de IA", short: "IA", icon: Coins },
   { href: "/admin/comercios", label: "Comercios", short: "Comercios", icon: Store },
   { href: "/admin/suscripciones", label: "Suscripciones", short: "Suscrip.", icon: CreditCard },
   { href: "/admin/usuarios", label: "Usuarios", short: "Usuarios", icon: Users },

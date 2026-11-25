@@ -202,6 +202,7 @@ export async function handleInbound({ vendor, waId, body, waPhone, timestamp, ag
   const state = (await getState(vendor.id, waId)) || { ...DEFAULT_STATE };
   if (cfg) {
     state._agentPrompt = buildAgentPrompt(cfg);
+    state._agentKey = cfg.key || null;
     state._agentModel = cfg.model || null;
     state._agentTemperature = cfg.temperature;
     state._agentMaxTokens = cfg.maxTokens;
@@ -364,6 +365,7 @@ function llmCtx(state, vendor) {
     agentTemperature: state._agentTemperature,
     agentMaxTokens: state._agentMaxTokens,
     agentMemoryLimit: state._agentMemoryLimit,
+    agentKey: state._agentKey || null,
     vendorId: vendor?.id || vendor?.vendorId || null,
     vertical: vendor?.vertical || null,
     storeName: vendor?.store_name || vendor?.storeName || vendor?.slug || vendor?.vendorId || 'el comercio',
@@ -3220,6 +3222,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp, age
   let state = (await getState(vendor.id, waId)) || { ...DEFAULT_STATE };
   if (agentConfig) {
     state._agentPrompt = buildAgentPrompt(agentConfig);
+    state._agentKey = agentConfig.key || null;
     state._agentModel = agentConfig.model || null;
     state._agentTemperature = agentConfig.temperature;
     state._agentMaxTokens = agentConfig.maxTokens;

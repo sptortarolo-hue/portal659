@@ -461,6 +461,16 @@ export function MarginListsManager({
       {/* Regla global del comercio */}
       <VendorRoundingCard />
 
+      <div className="flex justify-end">
+        <button
+          type="button"
+          className="text-sm text-primary underline underline-offset-2"
+          onClick={() => { window.location.href = "/vendor/precios/asistente?step=5"; }}
+        >
+          Abrir asistente de precios →
+        </button>
+      </div>
+
       {/* Alta de lista */}
       <div className="rounded-xl border border-border bg-card p-4 space-y-2">
         <p className="font-medium text-sm">Nueva lista de margen</p>

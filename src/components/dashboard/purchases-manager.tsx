@@ -36,7 +36,14 @@ type BuyLine = {
   total_paid: string;
   expires_at: string;
   skip?: boolean;
-  extracted?: { description: string; unit_price: number; unit: string };
+  extracted?: {
+    description: string;
+    unit_price: number;
+    unit: string;
+    unit_price_net?: number;
+    unit_price_total?: number;
+    iva_discriminado?: boolean;
+  };
 };
 
 /** Mezcla lo creado en el momento con la lista del padre, sin duplicar IDs. */
@@ -73,6 +80,7 @@ function QuickCreateSheet({
   initial,
   supplierId,
   supplierName,
+  lists = [],
   onClose,
   onCreated,
 }: {
@@ -81,6 +89,7 @@ function QuickCreateSheet({
   initial?: { name: string; cost: string; unit: string };
   supplierId?: string | null;
   supplierName?: string;
+  lists?: { id: string; name: string }[];
   onClose: () => void;
   onCreated: (created: CreatedItem) => void;
 }) {
@@ -97,6 +106,9 @@ function QuickCreateSheet({
   // Producto.
   const [price, setPrice] = useState("");
   const [unit, setUnit] = useState(initUnit === "kg" ? "kg" : "unidad");
+  // Lista de margen elegida al crear el producto (decisión del usuario).
+  const [listId, setListId] = useState(lists.length > 0 ? lists[0].id : "");
+  const [skipReason, setSkipReason] = useState("");
   // Variante.
   const [productId, setProductId] = useState("");
   const [color, setColor] = useState("");
@@ -160,6 +172,9 @@ function QuickCreateSheet({
           })(),
           supplier_id: supplierId || undefined,
           supplier_name: supplierId ? undefined : supplierName || undefined,
+          margin_list_id: listId || undefined,
+          price_source: listId ? "lista" : "manual",
+          pricing_skipped: listId ? undefined : { list: skipReason.trim() || "Precio manual" },
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -300,6 +315,32 @@ function QuickCreateSheet({
                 </select>
               </div>
             </div>
+            {kind === "prod" && (
+              <div className="rounded-lg border border-border bg-muted/40 p-2 space-y-1.5">
+                <Label className="text-xs">Lista de margen</Label>
+                <select
+                  value={listId}
+                  onChange={(e) => setListId(e.target.value)}
+                  className="w-full rounded-lg border border-input bg-background px-2 py-2 text-sm"
+                >
+                  {lists.map((l) => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                  <option value="">Sin lista (precio manual)</option>
+                </select>
+                {!listId && (
+                  <Input
+                    value={skipReason}
+                    onChange={(e) => setSkipReason(e.target.value)}
+                    placeholder="¿Por qué no usás lista? (opcional)"
+                    className="h-8 text-xs"
+                  />
+                )}
+                <p className="text-[11px] text-muted-foreground">
+                  La lista define el recargo o margen para calcular el precio de venta.
+                </p>
+              </div>
+            )}
             <p className="text-xs text-muted-foreground">
               Nace con stock 0 y el costo de la factura; el precio de venta, foto y categoría se completan en el catálogo.
             </p>
@@ -365,6 +406,9 @@ function PurchaseForm({
   variants = [],
   allowMerchandise = false,
   initial = null,
+  ivaRecuperable = null,
+  lists = [],
+  onIvaChange,
   onSupplierCreated,
   onItemCreated,
   onDone,
@@ -389,6 +433,9 @@ function PurchaseForm({
     allowDuplicate: boolean;
     duplicateReason: string;
   } | null;
+  ivaRecuperable?: boolean | null;
+  lists?: { id: string; name: string }[];
+  onIvaChange?: (value: boolean) => void;
   onSupplierCreated: () => void;
   /** Creado un insumo/producto/variante sin salir de la compra. */
   onItemCreated: (created: CreatedItem) => void;
@@ -417,6 +464,7 @@ function PurchaseForm({
   const [allowDuplicate] = useState(initial?.allowDuplicate || false);
   const [duplicateReason] = useState(initial?.duplicateReason || "");
   const [sourceHash] = useState(initial?.sourceHash || null);
+  const [ivaState, setIvaState] = useState<boolean>(ivaRecuperable === true);
   // Línea creando ítem nuevo sin salir de la compra (sheet abierto).
   const [creating, setCreating] = useState<{ lineKey: number; kind: BuyLine["kind"] } | null>(null);
   // Aviso post-compra: listas de margen con costo cambiado.
@@ -470,6 +518,29 @@ function PurchaseForm({
   });
   const grand = preview.reduce((s, p) => s + (isFinite(p.lineTotal) ? p.lineTotal : 0), 0);
 
+  function costForLine(l: BuyLine, recover: boolean): number {
+    if (!l.extracted) return Number(l.unit_cost) || 0;
+    const net = l.extracted.unit_price_net ?? l.extracted.unit_price;
+    const total = l.extracted.unit_price_total ?? l.extracted.unit_price;
+    return Math.round((recover ? net : total) * 10000) / 10000;
+  }
+
+  function applyIva(value: boolean) {
+    setIvaState(value);
+    setLines((prev) =>
+      prev.map((l) => {
+        if (!l.extracted) return l;
+        const cost = costForLine(l, value);
+        return {
+          ...l,
+          unit_cost: String(cost),
+          total_paid: String(Math.round(Number(l.qty || 1) * cost * 100) / 100),
+        };
+      })
+    );
+    onIvaChange?.(value);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -509,6 +580,7 @@ function PurchaseForm({
         source_hash: sourceHash || undefined,
         allow_duplicate: allowDuplicate,
         duplicate_reason: duplicateReason || undefined,
+        iva_recuperable: ivaState,
         items: clean.map((l) =>
           l.kind === "ing"
             ? {
@@ -657,8 +729,38 @@ function PurchaseForm({
           </div>
         </div>
 
+        {lines.some((l) => l.extracted) && (
+          <div className="rounded-xl border border-border bg-muted/40 p-3 space-y-2">
+            <p className="text-xs font-medium">¿Recuperás el IVA de esta compra?</p>
+            {ivaRecuperable === null ? (
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" variant={!ivaState ? "default" : "outline"} onClick={() => applyIva(false)}>
+                  No recupero — Monotributo / Factura B o C
+                </Button>
+                <Button type="button" size="sm" variant={ivaState ? "default" : "outline"} onClick={() => applyIva(true)}>
+                  Sí, recupero — Factura A
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
+                <span>{ivaState ? "Recuperás IVA: usamos el costo neto." : "No recuperás IVA: usamos el total pagado."}</span>
+                <button
+                  type="button"
+                  className="underline underline-offset-2"
+                  onClick={() => applyIva(!ivaState)}
+                >
+                  Cambiar
+                </button>
+              </div>
+            )}
+            <p className="text-[11px] text-muted-foreground">
+              El valor se guarda por comercio y no se vuelve a preguntar.
+            </p>
+          </div>
+        )}
+
         <div className="space-y-2">
-          <Label className="text-xs">Mercadería (costos netos, sin IVA)</Label>
+          <Label className="text-xs">Costo de compra (según tu elección de IVA)</Label>
           {lines.map((l, idx) => {
             const ing = ingMap.get(l.ingredient_id);
             const units = ing
@@ -861,12 +963,13 @@ function PurchaseForm({
               const unit = l.extracted.unit;
               return {
                 name: l.extracted.description,
-                cost: String(l.extracted.unit_price),
+                cost: String(costForLine(l, ivaState)),
                 unit: unit === "kg" ? "g" : unit === "g" || unit === "ml" || unit === "l" || unit === "u" ? unit : "u",
               };
             })()}
             supplierId={supplierId || null}
             supplierName={newSupplier.trim() || undefined}
+            lists={lists}
             onClose={() => setCreating(null)}
             onCreated={(created) => {
               if (created.kind === "ing") {
@@ -1200,6 +1303,8 @@ export function PurchasesManager({
   } | null>(null);
   const [duplicate, setDuplicate] = useState<any | null>(null);
   const [duplicateReason, setDuplicateReason] = useState("");
+  const [ivaRecuperable, setIvaRecuperable] = useState<boolean | null>(null);
+  const [marginLists, setMarginLists] = useState<{ id: string; name: string }[]>([]);
   const [showSuppliers, setShowSuppliers] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | "new" | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -1272,6 +1377,9 @@ export function PurchasesManager({
                   description: String(it?.description || ""),
                   unit_price: Number(it?.unit_price) || 0,
                   unit: String(it?.unit || "u"),
+                  unit_price_net: it?.unit_price_net != null ? Number(it.unit_price_net) : undefined,
+                  unit_price_total: it?.unit_price_total != null ? Number(it.unit_price_total) : undefined,
+                  iva_discriminado: it?.iva_discriminado === true,
                 },
               };
             })
@@ -1331,12 +1439,17 @@ export function PurchasesManager({
   }
 
   const loadAll = useCallback(async () => {
-    const [s, p] = await Promise.all([
+    const [s, p, me, ml] = await Promise.all([
       getJson<{ suppliers: Supplier[] }>("/api/vendor/suppliers"),
       getJson<{ purchases: PurchaseRow[] }>("/api/vendor/purchases"),
+      getJson<{ vendor?: Record<string, any> }>("/api/vendor/me").catch(() => null),
+      getJson<{ lists?: { id: string; name: string }[]; ok?: boolean }>("/api/vendor/margin-lists").catch(() => null),
     ]);
     if (s?.suppliers) setSuppliers(s.suppliers);
     if (p?.purchases) setPurchases(p.purchases);
+    if (Array.isArray(ml?.lists)) setMarginLists(ml.lists);
+    const iva = me?.vendor?.iva_recuperable;
+    setIvaRecuperable(iva === true || iva === false ? !!iva : null);
     setLoading(false);
   }, []);
 
@@ -1511,7 +1624,18 @@ export function PurchasesManager({
         </div>
       )}
 
-      {msg && <p className="text-sm text-green-600">{msg}</p>}
+      {msg && (
+        <div className="flex items-center gap-3 flex-wrap">
+          <p className="text-sm text-green-600">{msg}</p>
+          <button
+            type="button"
+            className="text-sm text-primary underline underline-offset-2"
+            onClick={() => { window.location.href = "/vendor/precios/asistente?step=5"; }}
+          >
+            Terminar precios →
+          </button>
+        </div>
+      )}
 
       {showForm && (
         <PurchaseForm
@@ -1522,6 +1646,18 @@ export function PurchasesManager({
           products={listProducts}
           variants={listVariants}
           allowMerchandise={allowMerchandise}
+          ivaRecuperable={ivaRecuperable}
+          lists={marginLists}
+          onIvaChange={async (value) => {
+            setIvaRecuperable(value);
+            try {
+              await apiJson("/api/vendor/me", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ iva_recuperable: value }),
+              });
+            } catch { /* best-effort */ }
+          }}
           onSupplierCreated={loadAll}
           onItemCreated={handleItemCreated}
           onDone={() => {

@@ -9,6 +9,7 @@ import { ProductImage } from "@/components/product-image";
 import { isGiftProductRow } from "@/lib/gift-card-share";
 import { gainFromPriceCost } from "@/lib/price-rounding";
 import { GiftcardManageButton } from "@/components/dashboard/giftcard-manage-button";
+import { getPricingStatus } from "@/lib/pricing-status";
 
 type Offer = {
   id: string;
@@ -32,6 +33,9 @@ type Offer = {
   promo_only?: boolean;
   /** SKU (las giftcards van por sku GC-<monto> o categoría). */
   sku?: string | null;
+  margin_list_id?: string | null;
+  price_source?: string | null;
+  pricing_skipped?: unknown;
 };
 
 type CostInfo = { cost: number | null; pct: number | null; status: "ok" | "warn" | "bad" | "none" };
@@ -232,6 +236,19 @@ export function ProductsTable({
                             Pausado
                           </Badge>
                         )}
+                        {(() => {
+                          const st = getPricingStatus(offer);
+                          if (st.stage === "listo" && st.priceSource !== "manual") return null;
+                          return (
+                            <Badge
+                              variant="secondary"
+                              className={`text-[10px] px-1.5 py-0 ${st.tone === "warning" ? "bg-amber-100 text-amber-800" : "bg-muted text-muted-foreground"}`}
+                              title={st.missing.length ? `Falta: ${st.missing.join(", ")}` : "Precio cargado a mano"}
+                            >
+                              {st.label}
+                            </Badge>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>

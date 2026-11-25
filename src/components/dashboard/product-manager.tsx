@@ -1042,7 +1042,16 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
         onChange={handleImportFile}
       />
       <div className="flex items-center justify-between">
-        <h2 className="font-display text-xl font-semibold">{isModa || isComercio ? "Catálogo" : "Menú y catálogo"}</h2>
+        <div className="flex items-center gap-2 flex-wrap">
+          <h2 className="font-display text-xl font-semibold">{isModa || isComercio ? "Catálogo" : "Menú y catálogo"}</h2>
+          <button
+            type="button"
+            className="text-sm text-primary underline underline-offset-2"
+            onClick={() => { window.location.href = "/vendor/precios/asistente"; }}
+          >
+            Asistente de precios →
+          </button>
+        </div>
         {(!catalogViews || view === "productos") && (
           <div className="flex items-center gap-2">
             <MoreActionsMenu

@@ -416,6 +416,20 @@ export async function POST(request: Request) {
     extraCols.push("cost_last");
     extraVals.push(Math.round(costLastNum * 100) / 100);
   }
+  // Estado del flujo de precios (migración opcional).
+  const hasFlowCols = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_schema='public' AND table_name='products' AND column_name='price_source'
+     ) AS exists`
+  ).catch(() => ({ exists: false }));
+  if (hasFlowCols?.exists === true) {
+    const src = body?.price_source === "lista" || body?.price_source === "factura" ? body.price_source : "manual";
+    extraCols.push("price_source");
+    extraVals.push(src);
+    extraCols.push("pricing_skipped");
+    extraVals.push(JSON.stringify(body?.pricing_skipped && typeof body.pricing_skipped === "object" ? body.pricing_skipped : {}));
+  }
   if (supplierId != null) { extraCols.push("supplier_id"); extraVals.push(supplierId); }
   if (expiresAt != null) { extraCols.push("expires_at"); extraVals.push(expiresAt); }
   // Presentaciones (migrate-product-presentations.sql): tolerante a migración sin aplicar.

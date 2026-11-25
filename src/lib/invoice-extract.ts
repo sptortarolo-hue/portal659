@@ -14,6 +14,9 @@ export type ExtractedInvoiceItem = {
   unit: string;
   unit_price: number;
   line_total: number;
+  unit_price_net?: number;
+  unit_price_total?: number;
+  iva_discriminado?: boolean;
   confidence?: number;
 };
 
@@ -42,9 +45,12 @@ Extraé los siguientes campos del comprobante:
   - description: descripción del artículo tal como figura (string).
   - qty: cantidad (número).
   - unit: unidad de la cantidad ("kg", "g", "l", "ml", "u", etc.).
-  - unit_price: precio unitario. Si la factura discrimina IVA, devolvé el precio NETO sin IVA; si no, el precio tal como figura.
-  - line_total: total de la línea (qty * unit_price). Si no figura, calculalo.
-  - confidence: número entre 0 y 1 con tu confianza en esa línea.
+  - unit_price: precio unitario tal como figura en el comprobante.
+  - unit_price_net: si el IVA está discriminado, precio unitario SIN IVA; si no, el mismo que unit_price.
+  - unit_price_total: precio unitario FINAL con IVA (el que se paga); si no hay discriminación, el mismo que unit_price.
+  - iva_discriminado: true si el comprobante discrimina IVA, false si no (remito, factura C).
+  - line_total: total de la línea (qty * unit_price_total). Si no figura, calculalo.
+  - confidence: número entre 0 y 1 con tu confianza en esa línea. Bajá confidence si no hay discriminación de IVA.
 
 REGLAS IMPORTANTES:
 - NO incluyas líneas de subtotal, IVA, descuentos, fletes, redondeos ni totales como items.
@@ -181,17 +187,26 @@ function normalizeParsed(parsed: unknown, raw: string): { extracted: ExtractedIn
       const safeQty = qty > 0 ? qty : 1;
       const unit = normalizeUnit(String(o.unit || "u"));
       const unitPrice = toNum(o.unit_price, 0);
+      const discriminado = o.iva_discriminado === true;
+      const netRaw = o.unit_price_net;
+      const totalRaw = o.unit_price_total;
+      const unitNet = netRaw != null && String(netRaw).trim() !== "" ? toNum(netRaw, unitPrice) : unitPrice;
+      const unitTotal = totalRaw != null && String(totalRaw).trim() !== "" ? toNum(totalRaw, unitPrice) : unitPrice;
       const lineTotalRaw = o.line_total;
       const lineTotal =
         lineTotalRaw != null && String(lineTotalRaw).trim() !== ""
-          ? toNum(lineTotalRaw, safeQty * unitPrice)
-          : safeQty * unitPrice;
+          ? toNum(lineTotalRaw, safeQty * unitTotal)
+          : safeQty * unitTotal;
       const conf = o.confidence != null ? toNum(o.confidence, 1) : undefined;
+      const round4 = (n: number) => Math.round(n * 10000) / 10000;
       return {
         description: desc,
         qty: safeQty,
         unit,
-        unit_price: Math.round(unitPrice * 10000) / 10000,
+        unit_price: round4(unitTotal),
+        unit_price_net: round4(unitNet),
+        unit_price_total: round4(unitTotal),
+        iva_discriminado: discriminado,
         line_total: Math.round(lineTotal * 100) / 100,
         confidence: conf != null ? Math.max(0, Math.min(1, conf)) : undefined,
       };

@@ -80,6 +80,7 @@ export async function POST(request: Request) {
     body?.duplicate_reason != null && String(body.duplicate_reason).trim() !== ""
       ? String(body.duplicate_reason).trim().slice(0, 300)
       : null;
+  const ivaRecuperable = body?.iva_recuperable === true;
 
   if (supplier_id) {
     const s = await queryOne<{ id: string }>(
@@ -107,14 +108,16 @@ export async function POST(request: Request) {
   const hasItemExpiry = colSet.has("purchase_items.expires_at");
   let hasSourceHash = false;
   let hasOverrideReason = false;
+  let hasIvaRecuperable = false;
   try {
     const dedupeCols = await queryMany<{ column_name: string }>(
       `SELECT column_name FROM information_schema.columns
         WHERE table_schema='public' AND table_name='purchases'
-          AND column_name IN ('source_hash','duplicate_override_reason')`
+          AND column_name IN ('source_hash','duplicate_override_reason','iva_recuperable')`
     );
     hasSourceHash = (dedupeCols || []).some((c) => c.column_name === "source_hash");
     hasOverrideReason = (dedupeCols || []).some((c) => c.column_name === "duplicate_override_reason");
+    hasIvaRecuperable = (dedupeCols || []).some((c) => c.column_name === "iva_recuperable");
   } catch { /* sin migración: se ignora */ }
 
   const ingIds = Array.from(
@@ -296,8 +299,8 @@ export async function POST(request: Request) {
   try {
     purchaseId = await withTransaction(async (tx) => {
     const p = await tx.queryOne<{ id: string }>(
-      `INSERT INTO purchases (vendor_id, supplier_id, purchased_at, receipt_type, receipt_number, notes, total, attachment_urls${hasSourceHash ? ", source_hash" : ""}${hasOverrideReason ? ", duplicate_override_reason" : ""})
-       VALUES ($1, $2, COALESCE($3::date, CURRENT_DATE), $4, $5, $6, $7, $8${hasSourceHash ? ", $9" : ""}${hasOverrideReason ? `, $${hasSourceHash ? 10 : 9}` : ""}) RETURNING id`,
+      `INSERT INTO purchases (vendor_id, supplier_id, purchased_at, receipt_type, receipt_number, notes, total, attachment_urls${hasSourceHash ? ", source_hash" : ""}${hasOverrideReason ? ", duplicate_override_reason" : ""}${hasIvaRecuperable ? ", iva_recuperable" : ""})
+       VALUES ($1, $2, COALESCE($3::date, CURRENT_DATE), $4, $5, $6, $7, $8${hasSourceHash ? ", $9" : ""}${hasOverrideReason ? `, $${hasSourceHash ? 10 : 9}` : ""}${hasIvaRecuperable ? `, $${hasSourceHash && hasOverrideReason ? 11 : hasSourceHash || hasOverrideReason ? 10 : 9}` : ""}) RETURNING id`,
       [
         gate.vendor.id,
         supplier_id,
@@ -309,6 +312,7 @@ export async function POST(request: Request) {
         JSON.stringify(attachment_urls),
         ...(hasSourceHash ? [sourceHash] : []),
         ...(hasOverrideReason ? [duplicateReason] : []),
+        ...(hasIvaRecuperable ? [ivaRecuperable] : []),
       ]
     );
     if (!p) throw new Error("No se pudo crear la compra");

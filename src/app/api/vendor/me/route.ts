@@ -193,6 +193,7 @@ export async function POST(request: Request) {
     price_round_step,
     price_round_mode,
     price_round_tail,
+    iva_recuperable,
   } = body;
 
   // Limpia y valida delivery_extra_days. Devuelve el objeto podado o false
@@ -590,6 +591,7 @@ export async function POST(request: Request) {
     payload.price_round_mode = r.mode;
     payload.price_round_tail = r.tail;
   }
+  if (iva_recuperable !== undefined) payload.iva_recuperable = !!iva_recuperable;
   // Etiquetas de balanza: formato con el que imprime la balanza (jsonb). Se
   // sanea acá para que un valor basura nunca rompa el Mostrador; apagar el
   // switch conserva el formato cargado (enabled:false).
@@ -676,6 +678,7 @@ export async function POST(request: Request) {
         "price_round_step",
         "price_round_mode",
         "price_round_tail",
+        "iva_recuperable",
       ].filter((k) => k in payload && msg.includes(k));
       if (droppable.length > 0) {
         for (const k of droppable) delete payload[k];

@@ -18,6 +18,7 @@ import {
   useFormDraft,
 } from "@/components/dashboard/shared";
 import { clearDraft } from "@/lib/draft";
+import { getPricingStatus } from "@/lib/pricing-status";
 import { toDateOnly } from "@/lib/expiry";
 import { HeladeriaKitCard, ProductModifiersBlock } from "@/components/dashboard/modifier-editor";
 import { ProductOptionsEditor } from "@/components/dashboard/product-options-editor";
@@ -364,7 +365,7 @@ export function MenuStudio({
   // Toolbar desktop: búsqueda + filtros + selección.
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "paused" | "nostock">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "paused" | "nostock" | "incomplete">("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   // Precios masivos.
@@ -932,6 +933,8 @@ export function MenuStudio({
       if (statusFilter === "paused" && o.available) return false;
       if (statusFilter === "nostock" && !(o.stock_control && o.stock !== null && o.stock === 0))
         return false;
+      if (statusFilter === "incomplete" && getPricingStatus(o).stage === "listo")
+        return false;
       return true;
     });
   }, [offers, search, catFilter, statusFilter]);
@@ -1310,7 +1313,7 @@ export function MenuStudio({
               <select
                 value={statusFilter}
                 onChange={(e) =>
-                  setStatusFilter(e.target.value as "all" | "active" | "paused" | "nostock")
+                  setStatusFilter(e.target.value as "all" | "active" | "paused" | "nostock" | "incomplete")
                 }
                 className="h-10 rounded-md border border-input bg-background px-3 text-sm"
                 aria-label="Filtrar por estado"
@@ -1319,7 +1322,17 @@ export function MenuStudio({
                 <option value="active">Activos</option>
                 <option value="paused">Pausados</option>
                 <option value="nostock">Sin stock</option>
+                <option value="incomplete">Flujo incompleto</option>
               </select>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => { window.location.href = "/vendor/precios/asistente"; }}
+                title="Completar costo, lista y precio paso a paso"
+              >
+                Asistente de precios
+              </Button>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Button

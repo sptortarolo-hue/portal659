@@ -76,7 +76,7 @@ function buildProviders(): Provider[] {
       kind: "gemini",
       baseUrl: "https://generativelanguage.googleapis.com/v1beta",
       apiKey: geminiKey,
-      model: process.env.GEMINI_MODEL || "gemini-2.0-flash",
+      model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
     });
   }
   const groqKey = process.env.GROQ_API_KEY || "";
@@ -86,7 +86,7 @@ function buildProviders(): Provider[] {
       kind: "openai",
       baseUrl: "https://api.groq.com/openai/v1",
       apiKey: groqKey,
-      model: process.env.GROQ_VISION_MODEL || "llama-3.2-11b-vision-preview",
+      model: process.env.GROQ_VISION_MODEL || "qwen/qwen3.8-27b",
     });
   }
   const orKey = process.env.OPENROUTER_API_KEY || "";
@@ -96,7 +96,15 @@ function buildProviders(): Provider[] {
       kind: "openai",
       baseUrl: "https://openrouter.ai/api/v1",
       apiKey: orKey,
-      model: process.env.OPENROUTER_VISION_MODEL || "google/gemini-2.0-flash-001",
+      model: process.env.OPENROUTER_VISION_MODEL || "google/gemini-4-hydrogen",
+    });
+    // Último recurso: modelo gratuito con visión que hoy sirve OpenRouter.
+    out.push({
+      name: "openrouter-free",
+      kind: "openai",
+      baseUrl: "https://openrouter.ai/api/v1",
+      apiKey: orKey,
+      model: "inclusionai/ling-3.2-flash:free",
     });
   }
   // Primario configurado (NVIDIA/OpenRouter/etc.): solo si se indica un modelo
@@ -296,7 +304,7 @@ async function callOpenAI(provider: Provider, buffer: Buffer, mimeType: string):
     "Content-Type": "application/json",
     Authorization: `Bearer ${provider.apiKey}`,
   };
-  if (provider.name === "openrouter") {
+  if (provider.name === "openrouter" || provider.name === "openrouter-free") {
     headers["HTTP-Referer"] = process.env.NEXT_PUBLIC_SITE_URL || "https://www.portal659.com.ar";
     headers["X-Title"] = "Portal 659";
   }
@@ -348,9 +356,20 @@ export async function extractInvoice(
         source: "facturas", provider: provider.name, model: provider.model,
         ...u, success: true, latencyMs: Date.now() - started,
       });
+      console.log("[extract:provider] ok", {
+        provider: provider.name,
+        model: provider.model,
+        items: result.extracted.items.length,
+        latencyMs: Date.now() - started,
+      });
       return { ...result, usedProvider: provider.name };
     } catch (e) {
       lastError = e instanceof Error ? e : new Error(String(e));
+      console.warn("[extract:provider] falló", {
+        provider: provider.name,
+        model: provider.model,
+        error: lastError.message.slice(0, 240),
+      });
       // Intentar el siguiente proveedor.
     }
   }

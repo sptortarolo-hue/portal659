@@ -65,7 +65,6 @@ const TABS = [
   { id: "lab", label: "🧪 Laboratorio" },
   { id: "knowledge", label: "📚 Conocimiento" },
   { id: "channel", label: "📱 Canal" },
-  { id: "playground", label: "💬 Playground" },
   { id: "metrics", label: "📊 Métricas" },
 ] as const;
 type Tab = typeof TABS[number]["id"];

@@ -51,6 +51,9 @@ type GuideDraft = {
   savedPurchaseId: string | null;
   ivaRecuperable: boolean;
   duplicateOverride: boolean;
+  selectedCostId: string | null;
+  selectedListId: string | null;
+  selectedPriceId: string | null;
 };
 
 const STEPS = [
@@ -63,6 +66,50 @@ const STEPS = [
 
 function relevant(p: Product) {
   return !p.is_combo && !(p.sku || "").startsWith("GC-");
+}
+
+function PendingChips<T>({
+  items,
+  getKey,
+  getLabel,
+  selectedKey,
+  onSelect,
+  emptyText,
+}: {
+  items: T[];
+  getKey: (item: T) => string;
+  getLabel: (item: T) => string;
+  selectedKey: string | null;
+  onSelect: (key: string) => void;
+  emptyText: string;
+}) {
+  if (items.length === 0) return <p className="text-sm text-muted-foreground">{emptyText}</p>;
+  return (
+    <div className="rounded-xl border border-border bg-muted/30 p-2 space-y-1.5">
+      <p className="text-xs font-medium">Faltan {items.length} — elegí cuál completar</p>
+      <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
+        {items.map((item) => {
+          const key = getKey(item);
+          const selected = key === selectedKey;
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => onSelect(key)}
+              title={getLabel(item)}
+              className={`max-w-[170px] truncate rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                selected
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-background hover:bg-muted"
+              }`}
+            >
+              {getLabel(item)}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export default function PricingGuidePage() {
@@ -79,6 +126,9 @@ export default function PricingGuidePage() {
   const [ivaRecuperable, setIvaRecuperable] = useState(false);
   const [duplicateOverride, setDuplicateOverride] = useState(false);
   const [duplicateInfo, setDuplicateInfo] = useState<any | null>(null);
+  const [selectedCostId, setSelectedCostId] = useState<string | null>(null);
+  const [selectedListId, setSelectedListId] = useState<string | null>(null);
+  const [selectedPriceId, setSelectedPriceId] = useState<string | null>(null);
 
   const [listChoice, setListChoice] = useState("");
   const [costInput, setCostInput] = useState("");
@@ -112,6 +162,9 @@ export default function PricingGuidePage() {
         setSavedPurchaseId(draft.savedPurchaseId || null);
         setIvaRecuperable(!!draft.ivaRecuperable);
         setDuplicateOverride(!!draft.duplicateOverride);
+        setSelectedCostId(draft.selectedCostId || null);
+        setSelectedListId(draft.selectedListId || null);
+        setSelectedPriceId(draft.selectedPriceId || null);
       } else {
         const prods = off?.offers || [];
         const missingCost = prods.filter((p) => relevant(p) && p.cost_last == null).length;
@@ -124,10 +177,13 @@ export default function PricingGuidePage() {
 
   useEffect(() => {
     if (vendorId) {
-      const draft: GuideDraft = { step, extracted, url, fileHash, lineIndex, createdLines, savedPurchaseId, ivaRecuperable, duplicateOverride };
+      const draft: GuideDraft = {
+        step, extracted, url, fileHash, lineIndex, createdLines, savedPurchaseId,
+        ivaRecuperable, duplicateOverride, selectedCostId, selectedListId, selectedPriceId,
+      };
       saveDraft(vendorId, "pricing-guide", draft);
     }
-  }, [vendorId, step, extracted, url, fileHash, lineIndex, createdLines, savedPurchaseId, ivaRecuperable, duplicateOverride]);
+  }, [vendorId, step, extracted, url, fileHash, lineIndex, createdLines, savedPurchaseId, ivaRecuperable, duplicateOverride, selectedCostId, selectedListId, selectedPriceId]);
 
   const missingCost = useMemo(
     () => products.filter((p) => relevant(p) && p.cost_last == null),
@@ -153,10 +209,14 @@ export default function PricingGuidePage() {
     } as Record<number, boolean>;
   }, [extracted, lineIndex, missingCost, missingList, missingPrice, products]);
 
+  function pickById(list: Product[], id: string | null): Product | null {
+    return list.find((p) => p.id === id) || list[0] || null;
+  }
+
   const currentLine = extracted?.items?.[lineIndex] || null;
-  const currentCostProduct = missingCost[0] || null;
-  const currentListProduct = missingList[0] || null;
-  const currentPriceProduct = missingPrice[0] || null;
+  const currentCostProduct = pickById(missingCost, selectedCostId);
+  const currentListProduct = pickById(missingList, selectedListId);
+  const currentPriceProduct = pickById(missingPrice, selectedPriceId);
 
   useEffect(() => {
     setCostInput(currentCostProduct?.cost_last != null ? String(currentCostProduct.cost_last) : "");
@@ -303,6 +363,7 @@ export default function PricingGuidePage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.ok === false) throw new Error(data?.error || "No se pudo guardar");
       await reloadProducts();
+      setSelectedCostId(null);
       setMsg("Costo guardado. Vamos con el siguiente.");
     } catch (e: any) {
       setMsg(e?.message || "No se pudo guardar el costo");
@@ -321,6 +382,7 @@ export default function PricingGuidePage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.ok === false) throw new Error(data?.error || "No se pudo guardar");
       await reloadProducts();
+      setSelectedListId(null);
       setMsg("Lista asignada. Vamos con el siguiente.");
     } catch (e: any) {
       setMsg(e?.message || "No se pudo asignar la lista");
@@ -356,6 +418,7 @@ export default function PricingGuidePage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.ok === false) throw new Error(data?.error || "No se pudo aplicar");
       await reloadProducts();
+      setSelectedPriceId(null);
       setSuggested(null);
       setMsg("Precio aplicado. Vamos con el siguiente.");
     } catch (e: any) {
@@ -366,6 +429,7 @@ export default function PricingGuidePage() {
   function startOver() {
     setExtracted(null); setUrl(null); setFileHash(null); setLineIndex(0);
     setCreatedLines([]); setSavedPurchaseId(null); setDuplicateInfo(null);
+    setSelectedCostId(null); setSelectedListId(null); setSelectedPriceId(null);
     go(1);
   }
 
@@ -450,6 +514,17 @@ export default function PricingGuidePage() {
 
         {step === 2 && (
           <div className="space-y-4">
+            <PendingChips
+              items={(extracted?.items || []).map((it, i) => ({
+                key: String(i),
+                label: `${i < lineIndex ? "✓ " : ""}${i + 1}. ${it.description}`,
+              }))}
+              getKey={(x) => x.key}
+              getLabel={(x) => x.label}
+              selectedKey={String(lineIndex)}
+              onSelect={(key) => { setLineIndex(Number(key)); setMsg(""); }}
+              emptyText="No hay líneas para revisar."
+            />
             {currentLine ? (
               <>
                 <p className="text-xs text-muted-foreground">Línea {lineIndex + 1} de {extracted?.items?.length || 0}</p>
@@ -522,9 +597,20 @@ export default function PricingGuidePage() {
               </div>
             </div>
 
+            <PendingChips
+              items={missingCost}
+              getKey={(p) => p.id}
+              getLabel={(p) => p.name}
+              selectedKey={currentCostProduct?.id || null}
+              onSelect={setSelectedCostId}
+              emptyText="✓ Ningún producto esperando costo."
+            />
+
             {currentCostProduct ? (
               <div className="rounded-xl border border-border p-4 space-y-3">
-                <p className="text-xs text-muted-foreground">Faltan {missingCost.length} producto(s)</p>
+                <p className="text-xs text-muted-foreground">
+                  Faltan {missingCost.length} · producto {missingCost.findIndex((p) => p.id === currentCostProduct.id) + 1} de {missingCost.length}
+                </p>
                 <p className="font-medium">{currentCostProduct.name}</p>
                 <p className="text-sm text-muted-foreground">
                   Cargá el costo de compra. {ivaRecuperable ? "Si recuperás IVA, cargá el precio neto." : "Si no recuperás IVA, cargá el total que pagaste."}
@@ -551,9 +637,20 @@ export default function PricingGuidePage() {
 
         {step === 4 && (
           <div className="space-y-4">
+            <PendingChips
+              items={missingList}
+              getKey={(p) => p.id}
+              getLabel={(p) => p.name}
+              selectedKey={currentListProduct?.id || null}
+              onSelect={setSelectedListId}
+              emptyText="✓ Ningún producto esperando lista."
+            />
+
             {currentListProduct ? (
               <div className="rounded-xl border border-border p-4 space-y-3">
-                <p className="text-xs text-muted-foreground">Faltan {missingList.length} producto(s)</p>
+                <p className="text-xs text-muted-foreground">
+                  Faltan {missingList.length} · producto {missingList.findIndex((p) => p.id === currentListProduct.id) + 1} de {missingList.length}
+                </p>
                 <p className="font-medium">{currentListProduct.name}</p>
                 <p className="text-sm text-muted-foreground">Elegí la lista que define cuánto se recarga sobre el costo.</p>
                 <select
@@ -577,9 +674,20 @@ export default function PricingGuidePage() {
 
         {step === 5 && (
           <div className="space-y-4">
+            <PendingChips
+              items={missingPrice}
+              getKey={(p) => p.id}
+              getLabel={(p) => p.name}
+              selectedKey={currentPriceProduct?.id || null}
+              onSelect={setSelectedPriceId}
+              emptyText="✓ Ningún producto esperando precio."
+            />
+
             {currentPriceProduct ? (
               <div className="rounded-xl border border-border p-4 space-y-3">
-                <p className="text-xs text-muted-foreground">Faltan {missingPrice.length} producto(s)</p>
+                <p className="text-xs text-muted-foreground">
+                  Faltan {missingPrice.length} · producto {missingPrice.findIndex((p) => p.id === currentPriceProduct.id) + 1} de {missingPrice.length}
+                </p>
                 <p className="font-medium">{currentPriceProduct.name}</p>
                 <p className="text-sm text-muted-foreground">
                   Costo: ${Number(currentPriceProduct.cost_last || 0).toLocaleString("es-AR")}

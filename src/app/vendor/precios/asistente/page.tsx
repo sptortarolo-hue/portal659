@@ -478,6 +478,28 @@ export default function PricingGuidePage() {
           <p className="text-sm text-muted-foreground">{STEPS[step - 1].hint}</p>
         </div>
 
+        {/* Aviso de compra parecida: visible en TODOS los pasos (al leer se
+            salta al paso 2, así que dentro del paso 1 nunca se veía). */}
+        {duplicateInfo && (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 space-y-2">
+            <p className="font-medium">
+              ⚠️ {duplicateInfo.type === "exact_file"
+                ? "Este comprobante ya fue registrado"
+                : "Hay una compra parecida (no te bloquea)"}
+            </p>
+            <p className="text-xs">
+              {duplicateInfo.reason || (duplicateInfo.type === "exact_file" ? "Es el mismo archivo" : "Mismo proveedor y monto cercano")}.
+              {" "}Compra del {duplicateInfo.purchased_at || "—"} · {duplicateInfo.receipt_number || "sin n°"} · ${Number(duplicateInfo.total || 0).toLocaleString("es-AR")}
+            </p>
+            {duplicateInfo.type !== "exact_file" && (
+              <p className="text-xs">Si es una factura nueva, seguí con los pasos normalmente.</p>
+            )}
+            <Button size="sm" onClick={() => { setDuplicateOverride(true); setDuplicateInfo(null); }}>
+              {duplicateInfo.type === "exact_file" ? "Cargar igual" : "Es nueva, continuar"}
+            </Button>
+          </div>
+        )}
+
         {step === 1 && (
           <div className="space-y-4">
             <p className="text-sm">
@@ -491,17 +513,6 @@ export default function PricingGuidePage() {
               className="w-full text-base file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:text-primary-foreground file:px-4 file:py-3 file:text-sm file:font-medium"
             />
             {busy && <p className="text-sm text-muted-foreground">Leyendo factura…</p>}
-            {duplicateInfo && (
-              <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 space-y-2">
-                <p className="font-medium">⚠️ Esta factura ya está registrada</p>
-                <p className="text-xs">
-                  Compra del {duplicateInfo.purchased_at || "—"} · {duplicateInfo.receipt_number || "sin n°"} · ${Number(duplicateInfo.total || 0).toLocaleString("es-AR")}
-                </p>
-                <Button size="sm" variant="outline" onClick={() => { setDuplicateOverride(true); setDuplicateInfo(null); }}>
-                  Cargar igual
-                </Button>
-              </div>
-            )}
             {!extracted && products.length > 0 && (
               <div className="rounded-xl border border-border bg-muted/40 p-3 text-sm">
                 Ya tenés {products.length} productos en el catálogo. Si solo querés completar costos, listas o precios,

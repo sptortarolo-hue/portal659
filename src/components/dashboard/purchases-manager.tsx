@@ -1583,11 +1583,17 @@ export function PurchasesManager({
       {duplicate && (
         <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200 space-y-2">
           <p className="font-medium">
-            ⚠️ {duplicate.type === "exact_file" ? "Este comprobante ya fue registrado" : "Posible compra duplicada"}
+            ⚠️ {duplicate.type === "exact_file"
+              ? "Este comprobante ya fue registrado"
+              : "Hay una compra parecida (no te bloquea)"}
           </p>
           <p className="text-xs">
-            Compra del {duplicate.purchased_at || "—"} · {duplicate.receipt_number || "sin n°"} · ${Number(duplicate.total || 0).toLocaleString("es-AR")}
+            {duplicate.reason || (duplicate.type === "exact_file" ? "Es el mismo archivo" : "Mismo proveedor y monto cercano")}.
+            {" "}Compra del {duplicate.purchased_at || "—"} · {duplicate.receipt_number || "sin n°"} · ${Number(duplicate.total || 0).toLocaleString("es-AR")}
           </p>
+          {duplicate.type !== "exact_file" && (
+            <p className="text-xs">Si es una factura nueva, seguí cargando con normalidad.</p>
+          )}
           <div className="flex flex-wrap items-center gap-2">
             <Input
               value={duplicateReason}
@@ -1597,7 +1603,6 @@ export function PurchasesManager({
             />
             <Button
               size="sm"
-              variant="outline"
               onClick={() => {
                 setFormInitial((prev) =>
                   prev ? { ...prev, allowDuplicate: true, duplicateReason } : prev
@@ -1606,7 +1611,7 @@ export function PurchasesManager({
                 setDuplicate(null);
               }}
             >
-              Cargar igual
+              Es nueva, cargar igual
             </Button>
             <Button
               size="sm"

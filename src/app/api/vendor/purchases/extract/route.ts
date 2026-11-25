@@ -107,7 +107,8 @@ export async function POST(request: Request) {
       return { ...it, suggestions, bestMatch: best };
     });
 
-    // Dedupe: hash del archivo + match fuerte/débil con compras existentes.
+    // Dedupe: hash del archivo + advertencias por n°/monto/fecha/líneas.
+    // Solo el mismo archivo bloquea; ver purchase-dedupe-core.ts.
     const supplierName = String(extracted.supplier_name || "").trim();
     const supplier = supplierName
       ? await queryOne<{ id: string }>(
@@ -117,6 +118,12 @@ export async function POST(request: Request) {
         ).catch(() => null)
       : null;
     const total = extracted.items.reduce((s, i) => s + (Number(i.line_total) || 0), 0);
+    const dedupeLines = itemsWithSuggestions.map((it) => ({
+      key: String(it.bestMatch?.id || it.description || ""),
+      qty: Number(it.qty) || 0,
+      unit: String(it.unit || "u"),
+      total: Number(it.line_total) || 0,
+    }));
     const duplicate = await findDuplicatePurchase({
       vendorId: gate.vendor.id,
       supplierId: supplier?.id || null,
@@ -124,6 +131,7 @@ export async function POST(request: Request) {
       total,
       purchasedAt: extracted.purchased_at,
       fileHash: fileSha256(buffer),
+      lines: dedupeLines,
     }).catch(() => null);
 
     console.log("[extract] ok", { usedProvider, items: extracted.items.length, duplicate: duplicate?.type || null });

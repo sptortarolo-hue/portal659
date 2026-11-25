@@ -274,8 +274,15 @@ export async function POST(request: Request) {
 
   const total = round2(items.reduce((s, i) => s + i.line_total, 0));
 
-  // Deduplicación: el hash exacto del comprobante bloquea; los matches
-  // por n°/monto/fecha advierten. El usuario puede forzar con motivo.
+  // Deduplicación: SOLO el mismo archivo (hash) bloquea. Los matches por
+  // n°/monto/fecha son ADVERTENCIAS: una compra recurrente del mismo
+  // proveedor con los mismos productos y monto es una factura nueva.
+  const dedupeLines = items.map((it) => ({
+    key: it.kind === "ingredient" ? it.ingredient_id : it.kind === "product" ? it.product_id : it.variant_id,
+    qty: it.qty,
+    unit: it.kind === "ingredient" ? it.unit : "u",
+    total: it.line_total,
+  }));
   const duplicate = await findDuplicatePurchase({
     vendorId: gate.vendor.id,
     supplierId: supplier_id,
@@ -283,17 +290,23 @@ export async function POST(request: Request) {
     total,
     purchasedAt: purchased_at,
     fileHash: sourceHash,
+    lines: dedupeLines,
   }).catch(() => null);
-  if (duplicate && !allowDuplicate) {
+  if (duplicate?.type === "exact_file" && !allowDuplicate) {
     return NextResponse.json(
       {
-        error: "Esta compra ya está registrada",
-        code: duplicate.type === "exact_file" ? "duplicate_file" : "duplicate_purchase",
+        error: "Este comprobante ya fue registrado",
+        code: "duplicate_file",
         duplicate,
       },
       { status: 409 }
     );
   }
+  const duplicateWarning =
+    duplicate && duplicate.type !== "exact_file" && !allowDuplicate
+      ? { type: duplicate.type, reason: duplicate.reason, purchase_id: duplicate.purchase_id,
+          purchased_at: duplicate.purchased_at, receipt_number: duplicate.receipt_number, total: duplicate.total }
+      : null;
 
   let purchaseId: string;
   try {
@@ -623,5 +636,10 @@ export async function POST(request: Request) {
     costChangedLists = null;
   }
 
-  return NextResponse.json({ purchase_id: purchaseId, total, ...(costChangedLists ? { cost_changed_lists: costChangedLists } : {}) });
+  return NextResponse.json({
+    purchase_id: purchaseId,
+    total,
+    ...(duplicateWarning ? { duplicate_warning: duplicateWarning } : {}),
+    ...(costChangedLists ? { cost_changed_lists: costChangedLists } : {}),
+  });
 }

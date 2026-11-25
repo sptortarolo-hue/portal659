@@ -5,7 +5,6 @@ import { priceFromCost, clampPrice, type MarginRule } from "@/lib/cost-reprice";
 import { resolveRounding, type Rounding } from "@/lib/price-rounding";
 
 export const dynamic = "force-dynamic";
-
 const GATE_MSG = "La administración de precios forma parte del plan Gestión integral";
 
 type ProductRow = {
@@ -19,10 +18,12 @@ type ProductRow = {
   is_combo: boolean;
   price_source?: string | null;
 };
+type ListRow = { id: string; name: string; rule: string; pct: number; step: number | null; mode: string | null; tail: number | null };
 
 /**
  * Vista previa / aplicación del paso 5 del asistente de precios.
- * Body: { productIds: string[], listId?: string|null, includePromos?: boolean, apply?: boolean }
+ * Body: { productIds, listId?, overrides?: {productId: listId|null}, includePromos?, apply? }
+ * Cada producto usa su override, o listId global, o su lista actual.
  */
 export async function POST(request: Request) {
   const gate = await gateRequest(request);
@@ -34,10 +35,15 @@ export async function POST(request: Request) {
   const ids = Array.isArray(body?.productIds) ? body.productIds.map(String).filter(Boolean) : [];
   if (ids.length === 0) return NextResponse.json({ ok: false, error: "Sin productos" }, { status: 400 });
   const listId = body?.listId ? String(body.listId) : null;
+  const overrides: Record<string, string | null> =
+    body?.overrides && typeof body.overrides === "object" && !Array.isArray(body.overrides)
+      ? Object.fromEntries(
+          Object.entries(body.overrides).map(([k, v]) => [String(k), v ? String(v) : null])
+        )
+      : {};
   const includePromos = body?.includePromos === true;
   const apply = body?.apply === true;
 
-  // Esquema tolerante.
   const cols = await queryMany<{ table_name: string; column_name: string }>(
     `SELECT table_name, column_name FROM information_schema.columns
       WHERE table_schema='public'
@@ -63,22 +69,6 @@ export async function POST(request: Request) {
   ).catch(() => []);
   const hasListRound = roundCols.length > 0;
 
-  type ListRow = { id: string; name: string; rule: string; pct: number; step: number | null; mode: string | null; tail: number | null };
-  let list: ListRow | null = null;
-  if (listId) {
-    const row = await queryOne<ListRow>(
-      hasListRound
-        ? `SELECT id, name, rule, pct::float8 AS pct,
-                  price_round_step::float8 AS step, price_round_mode AS mode, price_round_tail::float8 AS tail
-             FROM margin_lists WHERE id=$1 AND vendor_id=$2 LIMIT 1`
-        : `SELECT id, name, rule, pct::float8 AS pct, NULL::numeric AS step, NULL::text AS mode, NULL::numeric AS tail
-             FROM margin_lists WHERE id=$1 AND vendor_id=$2 LIMIT 1`,
-      [listId, gate.vendor.id]
-    ).catch(() => null);
-    list = row || null;
-    if (!list) return NextResponse.json({ ok: false, error: "Lista no encontrada" }, { status: 404 });
-  }
-
   const products = await queryMany<ProductRow>(
     `SELECT id, name, price, ${has("products", "promo_price") ? "promo_price" : "NULL::numeric AS promo_price"},
             ${has("products", "cost_last") ? "cost_last" : "NULL::numeric AS cost_last"},
@@ -89,9 +79,32 @@ export async function POST(request: Request) {
     [gate.vendor.id, ids]
   ).catch(() => []);
 
+  const effectiveListId = (p: ProductRow): string | null => {
+    if (Object.prototype.hasOwnProperty.call(overrides, p.id)) return overrides[p.id];
+    if (listId) return listId;
+    return p.margin_list_id;
+  };
+
+  const needed = [...new Set((products || []).map(effectiveListId).filter(Boolean) as string[])];
+  const listsById = new Map<string, ListRow>();
+  if (needed.length > 0) {
+    const rows = await queryMany<ListRow>(
+      hasListRound
+        ? `SELECT id, name, rule, pct::float8 AS pct,
+                  price_round_step::float8 AS step, price_round_mode AS mode, price_round_tail::float8 AS tail
+             FROM margin_lists WHERE vendor_id=$1 AND id = ANY($2::uuid[])`
+        : `SELECT id, name, rule, pct::float8 AS pct, NULL::numeric AS step, NULL::text AS mode, NULL::numeric AS tail
+             FROM margin_lists WHERE vendor_id=$1 AND id = ANY($2::uuid[])`,
+      [gate.vendor.id, needed]
+    ).catch(() => []);
+    for (const l of rows || []) listsById.set(l.id, l);
+  }
+
   const rows = (products || []).map((p) => {
+    const finalListId = effectiveListId(p);
+    const list = finalListId ? listsById.get(finalListId) || null : null;
     const isGift = (p.sku || "").startsWith("GC-");
-    const skipReason = p.is_combo || isGift ? "combo/giftcard" : p.cost_last == null ? "sin_costo" : null;
+    const skipReason = p.is_combo || isGift ? "combo/giftcard" : p.cost_last == null ? "sin_costo" : !list ? "sin_lista" : null;
     const rounding = list ? resolveRounding({ step: list.step, mode: list.mode, tail: list.tail }) : globalRounding;
     const suggested =
       !skipReason && list
@@ -108,15 +121,15 @@ export async function POST(request: Request) {
       cost: p.cost_last != null ? Number(p.cost_last) : null,
       oldPrice: p.price != null ? Number(p.price) : null,
       newPrice: suggested,
-      rounding: list ? list.name : null,
+      listId: finalListId,
+      listName: list?.name || null,
+      rounding: list?.name || null,
       newPromo,
-      skip: skipReason || (!list ? "sin_lista" : null),
+      skip: skipReason,
     };
   });
 
-  if (!apply) {
-    return NextResponse.json({ ok: true, items: rows });
-  }
+  if (!apply) return NextResponse.json({ ok: true, items: rows, lists: [...listsById.values()] });
 
   await withTransaction(async (tx) => {
     for (const r of rows) {
@@ -125,11 +138,11 @@ export async function POST(request: Request) {
       if (r.newPromo != null && has("products", "promo_price")) {
         await tx.queryVoid(`UPDATE products SET promo_price=$2::numeric WHERE id=$1 AND vendor_id=$3`, [r.id, r.newPromo, gate.vendor.id]);
       }
-      if (list && has("products", "margin_list_id")) {
-        await tx.queryVoid(`UPDATE products SET margin_list_id=$2 WHERE id=$1 AND vendor_id=$3`, [r.id, list.id, gate.vendor.id]);
+      if (has("products", "margin_list_id")) {
+        await tx.queryVoid(`UPDATE products SET margin_list_id=$2 WHERE id=$1 AND vendor_id=$3`, [r.id, r.listId, gate.vendor.id]);
       }
       if (has("products", "price_source")) {
-        await tx.queryVoid(`UPDATE products SET price_source='lista' WHERE id=$1 AND vendor_id=$3`, [r.id, gate.vendor.id]);
+        await tx.queryVoid(`UPDATE products SET price_source=$2 WHERE id=$1 AND vendor_id=$3`, [r.id, r.listId ? "lista" : "manual", gate.vendor.id]);
       }
     }
   });

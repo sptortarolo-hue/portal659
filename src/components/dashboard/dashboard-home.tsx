@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import type { Order, Booking, Vendor } from "@/types/database";
 import { StorePreviewCard } from "@/components/vendor/store-preview-card";
+import { PricingCard } from "@/components/dashboard/pricing-card";
 import {
   Badge,
   Card,
@@ -298,6 +299,7 @@ export function DashboardHome({
       {!isStaffMember && (
         <StorePreviewCard vendor={vendor} onChanged={onChanged} canManageTokens={!isPreview} />
       )}
+      {!isStaffMember && canInventory && <PricingCard vendorId={vendor.id} />}
       {sellsOrders ? (
         <>
           {/* KPIs */}

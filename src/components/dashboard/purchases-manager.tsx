@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { apiJson, getJson } from "@/components/dashboard/shared";
+import { CategorySelect, type CategoryOption } from "@/components/dashboard/category-select";
 import { Modal } from "@/components/ui/modal";
 import { ProductImage } from "@/components/product-image";
 import type { Ingredient, Supplier } from "@/types/database";
@@ -81,6 +82,8 @@ function QuickCreateSheet({
   supplierId,
   supplierName,
   lists = [],
+  categories = [],
+  onCategoryCreated,
   onClose,
   onCreated,
 }: {
@@ -90,6 +93,8 @@ function QuickCreateSheet({
   supplierId?: string | null;
   supplierName?: string;
   lists?: { id: string; name: string }[];
+  categories?: CategoryOption[];
+  onCategoryCreated?: (category: CategoryOption) => void;
   onClose: () => void;
   onCreated: (created: CreatedItem) => void;
 }) {
@@ -109,6 +114,8 @@ function QuickCreateSheet({
   // Lista de margen elegida al crear el producto (decisión del usuario).
   const [listId, setListId] = useState(lists.length > 0 ? lists[0].id : "");
   const [skipReason, setSkipReason] = useState("");
+  // Categoría: vacío = "otras" (igual que el alta historial del catálogo).
+  const [category, setCategory] = useState("");
   // Variante.
   const [productId, setProductId] = useState("");
   const [color, setColor] = useState("");
@@ -175,6 +182,7 @@ function QuickCreateSheet({
           margin_list_id: listId || undefined,
           price_source: listId ? "lista" : "manual",
           pricing_skipped: listId ? undefined : { list: skipReason.trim() || "Precio manual" },
+          category: category || undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -316,6 +324,14 @@ function QuickCreateSheet({
               </div>
             </div>
             {kind === "prod" && (
+              <CategorySelect
+                categories={categories}
+                value={category}
+                onChange={setCategory}
+                onCategoryCreated={onCategoryCreated}
+              />
+            )}
+            {kind === "prod" && (
               <div className="rounded-lg border border-border bg-muted/40 p-2 space-y-1.5">
                 <Label className="text-xs">Lista de margen</Label>
                 <select
@@ -342,7 +358,7 @@ function QuickCreateSheet({
               </div>
             )}
             <p className="text-xs text-muted-foreground">
-              Nace con stock 0 y el costo de la factura; el precio de venta, foto y categoría se completan en el catálogo.
+              Nace con stock 0 y el costo de la factura; la foto se completa en el catálogo.
             </p>
           </>
         )}
@@ -408,6 +424,8 @@ function PurchaseForm({
   initial = null,
   ivaRecuperable = null,
   lists = [],
+  categories = [],
+  onCategoryCreated,
   onIvaChange,
   onSupplierCreated,
   onItemCreated,
@@ -419,6 +437,8 @@ function PurchaseForm({
   products?: { id: string; name: string; cost_last?: number | null; stock?: number | null }[];
   variants?: { id: string; product_id: string; color: string; talle: string; price: number; stock: number; cost_last?: number | null }[];
   allowMerchandise?: boolean;
+  categories?: CategoryOption[];
+  onCategoryCreated?: (category: CategoryOption) => void;
   initial?: {
     supplierId: string;
     newSupplier: string;
@@ -970,6 +990,8 @@ function PurchaseForm({
             supplierId={supplierId || null}
             supplierName={newSupplier.trim() || undefined}
             lists={lists}
+            categories={categories}
+            onCategoryCreated={onCategoryCreated}
             onClose={() => setCreating(null)}
             onCreated={(created) => {
               if (created.kind === "ing") {
@@ -1305,6 +1327,7 @@ export function PurchasesManager({
   const [duplicateReason, setDuplicateReason] = useState("");
   const [ivaRecuperable, setIvaRecuperable] = useState<boolean | null>(null);
   const [marginLists, setMarginLists] = useState<{ id: string; name: string }[]>([]);
+  const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [showSuppliers, setShowSuppliers] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | "new" | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -1439,15 +1462,17 @@ export function PurchasesManager({
   }
 
   const loadAll = useCallback(async () => {
-    const [s, p, me, ml] = await Promise.all([
+    const [s, p, me, ml, cats] = await Promise.all([
       getJson<{ suppliers: Supplier[] }>("/api/vendor/suppliers"),
       getJson<{ purchases: PurchaseRow[] }>("/api/vendor/purchases"),
       getJson<{ vendor?: Record<string, any> }>("/api/vendor/me").catch(() => null),
       getJson<{ lists?: { id: string; name: string }[]; ok?: boolean }>("/api/vendor/margin-lists").catch(() => null),
+      getJson<{ categories?: CategoryOption[] }>("/api/vendor/categories").catch(() => null),
     ]);
     if (s?.suppliers) setSuppliers(s.suppliers);
     if (p?.purchases) setPurchases(p.purchases);
     if (Array.isArray(ml?.lists)) setMarginLists(ml.lists);
+    if (Array.isArray(cats?.categories)) setCategories(cats.categories);
     const iva = me?.vendor?.iva_recuperable;
     setIvaRecuperable(iva === true || iva === false ? !!iva : null);
     setLoading(false);
@@ -1653,6 +1678,8 @@ export function PurchasesManager({
           allowMerchandise={allowMerchandise}
           ivaRecuperable={ivaRecuperable}
           lists={marginLists}
+          categories={categories}
+          onCategoryCreated={(cat) => setCategories((prev) => [...prev.filter((c) => c.id !== cat.id), cat])}
           onIvaChange={async (value) => {
             setIvaRecuperable(value);
             try {

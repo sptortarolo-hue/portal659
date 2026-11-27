@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { getJson } from "@/components/dashboard/shared";
+import { CategorySelect, type CategoryOption } from "@/components/dashboard/category-select";
 import { loadDraft, saveDraft } from "@/lib/draft";
 import { getPricingStatus } from "@/lib/pricing-status";
 
@@ -131,6 +132,8 @@ export default function PricingGuidePage() {
   const [selectedPriceId, setSelectedPriceId] = useState<string | null>(null);
 
   const [listChoice, setListChoice] = useState("");
+  const [categoryChoice, setCategoryChoice] = useState("");
+  const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [costInput, setCostInput] = useState("");
   const [suggested, setSuggested] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -146,11 +149,13 @@ export default function PricingGuidePage() {
       getJson<{ vendor?: { id: string; iva_recuperable?: boolean | null } }>("/api/vendor/me").catch(() => null),
       getJson<{ offers?: Product[] }>("/api/vendor/offers").catch(() => null),
       getJson<{ lists?: ListRow[] }>("/api/vendor/margin-lists").catch(() => null),
-    ]).then(([me, off, ml]) => {
+      getJson<{ categories?: CategoryOption[] }>("/api/vendor/categories").catch(() => null),
+    ]).then(([me, off, ml, cats]) => {
       setVendorId(me?.vendor?.id || null);
       setIvaRecuperable(me?.vendor?.iva_recuperable === true);
       setProducts(off?.offers || []);
       setLists(ml?.lists || []);
+      setCategories(cats?.categories || []);
       const draft = loadDraft<GuideDraft>(me?.vendor?.id, "pricing-guide");
       if (draft) {
         setStep(draft.step || 1);
@@ -287,6 +292,7 @@ export default function PricingGuidePage() {
           price_source: listChoice ? "lista" : "manual",
           pricing_skipped: listChoice ? undefined : { list: "Precio manual" },
           supplier_name: extracted?.supplier_name || null,
+          category: categoryChoice || undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -564,6 +570,12 @@ export default function PricingGuidePage() {
                       </select>
                     </div>
                   </div>
+                  <CategorySelect
+                    categories={categories}
+                    value={categoryChoice}
+                    onChange={setCategoryChoice}
+                    onCategoryCreated={(cat) => setCategories((prev) => [...prev.filter((c) => c.id !== cat.id), cat])}
+                  />
                   <div className="flex gap-2">
                     <Button onClick={createCurrentLine} disabled={busy}>{busy ? "Creando…" : "Crear y siguiente"}</Button>
                     <Button variant="outline" onClick={skipCurrentLine} disabled={busy}>Omitir</Button>

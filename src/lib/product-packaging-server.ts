@@ -46,7 +46,7 @@ export async function loadPackagingDefaults(vendorId: string): Promise<Packaging
     }>(
       `SELECT d.id, d.category_key, c.name AS category
          FROM packaging_defaults d
-         LEFT JOIN categories c
+         LEFT JOIN vendor_categories c
            ON c.vendor_id = d.vendor_id AND lower(trim(c.name)) = d.category_key
         WHERE d.vendor_id = $1
         ORDER BY d.category_key ASC`,
@@ -87,8 +87,10 @@ export async function loadPackagingDefaults(vendorId: string): Promise<Packaging
       category: d.category ?? null,
       lines: byDefault.get(String(d.id)) || [],
     }));
-  } catch {
-    // Sin tabla categories (o defaults): devolver vacío es seguro.
+  } catch (e) {
+    // Si falla la consulta (tabla vendor_categories/defaults ausente), se
+    // reporta en logs en vez de tragar el error en silencio.
+    console.error("[product-packaging] loadPackagingDefaults:", e);
     return [];
   }
 }

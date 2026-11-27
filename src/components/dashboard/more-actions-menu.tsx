@@ -8,6 +8,10 @@ export type ActionItem = {
   icon?: string;
   onClick: () => void;
   destructive?: boolean;
+  /** Acción sin sentido en el momento (ej: no hay productos): no ejecuta ni cierra. */
+  disabled?: boolean;
+  /** Texto secundario (ej: cuántos productos quedan tras los filtros). */
+  detail?: string;
 };
 
 export type ActionGroup = {
@@ -103,13 +107,17 @@ export function MoreActionsMenu({
                   <button
                     key={ii}
                     type="button"
-                    onClick={() => { item.onClick(); close(); }}
-                    className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted/50 transition-colors ${
-                      item.destructive ? "text-red-600" : "text-foreground"
-                    }`}
+                    disabled={item.disabled}
+                    onClick={() => { if (item.disabled) return; item.onClick(); close(); }}
+                    className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
+                      item.disabled ? "opacity-40 cursor-not-allowed" : "hover:bg-muted/50"
+                    } ${item.destructive ? "text-red-600" : "text-foreground"}`}
                   >
                     {item.icon && <span className="text-base">{item.icon}</span>}
-                    {item.label}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{item.label}</span>
+                      {item.detail && <span className="block text-[11px] text-muted-foreground truncate">{item.detail}</span>}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -139,13 +147,17 @@ export function MoreActionsMenu({
                     <button
                       key={ii}
                       type="button"
-                      onClick={() => { item.onClick(); close(); }}
-                      className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm text-left hover:bg-muted/50 transition-colors ${
-                        item.destructive ? "text-red-600" : "text-foreground"
-                      }`}
+                      disabled={item.disabled}
+                      onClick={() => { if (item.disabled) return; item.onClick(); close(); }}
+                      className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm text-left transition-colors ${
+                        item.disabled ? "opacity-40 cursor-not-allowed" : "hover:bg-muted/50"
+                      } ${item.destructive ? "text-red-600" : "text-foreground"}`}
                     >
                       {item.icon && <span className="text-lg">{item.icon}</span>}
-                      {item.label}
+                      <span className="min-w-0 flex-1">
+                        <span className="block">{item.label}</span>
+                        {item.detail && <span className="block text-[11px] text-muted-foreground">{item.detail}</span>}
+                      </span>
                     </button>
                   ))}
                 </div>

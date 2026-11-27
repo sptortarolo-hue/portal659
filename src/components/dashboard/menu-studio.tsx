@@ -128,6 +128,17 @@ type Props = {
 type View = "productos" | "categorias" | "opciones" | "volumen" | "combos" | "listas" | "sugerencias";
 type StatusFilter = "all" | "active" | "paused" | "nostock" | "incomplete" | "sin_costo" | "falta_lista" | "falta_precio";
 
+const STATUS_OPTIONS: { id: StatusFilter; label: string }[] = [
+  { id: "all", label: "Todos" },
+  { id: "active", label: "Activos" },
+  { id: "paused", label: "Pausados" },
+  { id: "nostock", label: "Sin stock" },
+  { id: "incomplete", label: "Flujo incompleto" },
+  { id: "sin_costo", label: "Sin costo" },
+  { id: "falta_lista", label: "Falta lista" },
+  { id: "falta_precio", label: "Falta precio" },
+];
+
 /**
  * Vista previa de la etiqueta de góndola (estilo supermercado): nombre
  * (hasta 2 líneas) a la izquierda + logo del comercio justificado a la
@@ -436,6 +447,8 @@ export function MenuStudio({
       : "all";
   });
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  /** Buscador/filtros en celular (los mismos estados que el toolbar desktop). */
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
   // Precios masivos.
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -1039,6 +1052,28 @@ export function MenuStudio({
     ).length,
   };
 
+  // Contadores del header: visibles también en celular (antes eran desktop-only).
+  const statsChips = (
+    <>
+      <span className="rounded-full border border-border px-2 py-0.5 tabular-nums">
+        {stats.total} {itemLabelPlural}
+      </span>
+      <span className="rounded-full border border-border px-2 py-0.5 tabular-nums">
+        {stats.active} activos
+      </span>
+      {stats.noPhoto > 0 && (
+        <span className="rounded-full border border-border px-2 py-0.5 tabular-nums">
+          {stats.noPhoto} sin foto
+        </span>
+      )}
+      {stats.lowStock > 0 && (
+        <span className="rounded-full border border-red-200 bg-red-50 px-2 py-0.5 tabular-nums text-red-700">
+          {stats.lowStock} stock bajo
+        </span>
+      )}
+    </>
+  );
+
   // --- Toolbar: filtrado ---------------------------------------------------
   const filteredOffers = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -1078,6 +1113,36 @@ export function MenuStudio({
       else ids.forEach((id) => next.add(id));
       return next;
     });
+  }
+
+  const hasActiveFilters = search.trim() !== "" || catFilter !== "all" || statusFilter !== "all";
+  const activeFilterChips: { label: string; clear: () => void }[] = [
+    ...(search.trim() ? [{ label: `🔍 ${search.trim()}`, clear: () => setSearch("") }] : []),
+    ...(catFilter !== "all" ? [{ label: `🗂️ ${catFilter}`, clear: () => setCatFilter("all") }] : []),
+    ...(statusFilter !== "all"
+      ? [{ label: `⚙️ ${STATUS_OPTIONS.find((o) => o.id === statusFilter)?.label ?? statusFilter}`, clear: () => setStatusFilter("all" as StatusFilter) }]
+      : []),
+  ];
+
+  function clearFilters() {
+    setSearch("");
+    setCatFilter("all");
+    setStatusFilter("all");
+  }
+
+  // Disparadores compartidos por el toolbar desktop y el sheet «Más» del celular.
+  // Sin selección, las acciones masivas aplican a los productos filtrados.
+  function openBulkPrice() {
+    if (filteredOffers.length === 0) return;
+    setBulkOpen(true);
+  }
+
+  function openPackBulk() {
+    if (filteredOffers.length === 0) return;
+    setPackBulkIng(offPackagingCatalog[0]?.id || "");
+    setPackModalTab("categorias");
+    setPackModalKey((k) => k + 1);
+    setPackBulkOpen(true);
   }
 
   // Etiquetas: toggle del lote + el preview sigue al último tildado.
@@ -1414,22 +1479,7 @@ export function MenuStudio({
         <div className="flex items-center gap-3 min-w-0">
           <h2 className="font-display text-xl font-semibold flex-shrink-0">{isComercio ? "Catálogo" : "Menú"}</h2>
           <div className="hidden lg:flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <span className="rounded-full border border-border px-2 py-0.5 tabular-nums">
-              {stats.total} {itemLabelPlural}
-            </span>
-            <span className="rounded-full border border-border px-2 py-0.5 tabular-nums">
-              {stats.active} activos
-            </span>
-            {stats.noPhoto > 0 && (
-              <span className="rounded-full border border-border px-2 py-0.5 tabular-nums">
-                {stats.noPhoto} sin foto
-              </span>
-            )}
-            {stats.lowStock > 0 && (
-              <span className="rounded-full border border-red-200 bg-red-50 px-2 py-0.5 tabular-nums text-red-700">
-                {stats.lowStock} stock bajo
-              </span>
-            )}
+            {statsChips}
           </div>
         </div>
         <div className="flex rounded-xl border border-border overflow-x-auto max-w-full text-sm font-medium">
@@ -1455,6 +1505,11 @@ export function MenuStudio({
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Contadores en celular (en desktop van al lado del título). */}
+      <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground lg:hidden">
+        {statsChips}
       </div>
 
       {view === "productos" && (
@@ -1490,14 +1545,9 @@ export function MenuStudio({
                 className="h-10 rounded-md border border-input bg-background px-3 text-sm"
                 aria-label="Filtrar por estado"
               >
-                <option value="all">Todos</option>
-                <option value="active">Activos</option>
-                <option value="paused">Pausados</option>
-                <option value="nostock">Sin stock</option>
-                <option value="incomplete">Flujo incompleto</option>
-                <option value="sin_costo">Sin costo</option>
-                <option value="falta_lista">Falta lista</option>
-                <option value="falta_precio">Falta precio</option>
+                {STATUS_OPTIONS.map((o) => (
+                  <option key={o.id} value={o.id}>{o.label}</option>
+                ))}
               </select>
               <Button
                 type="button"
@@ -1516,7 +1566,7 @@ export function MenuStudio({
                 variant="outline"
                 className="hidden lg:inline-flex"
                 disabled={filteredOffers.length === 0}
-                onClick={() => setBulkOpen(true)}
+                onClick={openBulkPrice}
               >
                 💲 Modificar precios{selected.size > 0 ? ` (${selected.size})` : ""}
               </Button>
@@ -1527,18 +1577,53 @@ export function MenuStudio({
                   variant="outline"
                   className="hidden lg:inline-flex"
                   disabled={filteredOffers.length === 0}
-                  onClick={() => {
-                    setPackBulkIng(offPackagingCatalog[0]?.id || "");
-                    setPackModalTab("categorias");
-                    setPackModalKey((k) => k + 1);
-                    setPackBulkOpen(true);
-                  }}
+                  onClick={openPackBulk}
                 >
                   📦 Empaque{selected.size > 0 ? ` (${selected.size})` : ""}
                 </Button>
               )}
               <MoreActionsMenu
                 groups={[
+                  {
+                    label: "Buscar y filtrar",
+                    items: [
+                      {
+                        label: "Buscar y filtrar",
+                        icon: "🔍",
+                        detail: hasActiveFilters
+                          ? `${filteredOffers.length} de ${offers.length} ${itemLabelPlural}`
+                          : `${offers.length} ${itemLabelPlural}`,
+                        onClick: () => setMobileFiltersOpen(true),
+                      },
+                    ],
+                  },
+                  {
+                    label: "Precios y empaque",
+                    items: [
+                      {
+                        label: "Modificar precios",
+                        icon: "💲",
+                        detail: selected.size > 0 ? `${selected.size} seleccionados` : `${filteredOffers.length} filtrados`,
+                        disabled: filteredOffers.length === 0,
+                        onClick: openBulkPrice,
+                      },
+                      ...(isComercio && canEditCost
+                        ? [{
+                            label: "Empaque",
+                            icon: "📦",
+                            detail: selected.size > 0 ? `${selected.size} seleccionados` : `${filteredOffers.length} filtrados`,
+                            disabled: filteredOffers.length === 0,
+                            onClick: openPackBulk,
+                          }]
+                        : []),
+                      {
+                        label: "Asistente de precios",
+                        icon: "🧮",
+                        detail: "Completar costo, lista y precio",
+                        onClick: () => { window.location.href = "/vendor/precios/asistente"; },
+                      },
+                    ],
+                  },
                   {
                     label: "Importar",
                     items: [
@@ -1579,12 +1664,36 @@ export function MenuStudio({
 
           {msg && <p className="text-sm text-green-700">{msg}</p>}
 
+          {/* Filtros activos en celular: se pueden quitar sin reabrir el menú. */}
+          {hasActiveFilters && (
+            <div className="lg:hidden flex flex-wrap items-center gap-1.5">
+              {activeFilterChips.map((chip) => (
+                <button
+                  key={chip.label}
+                  type="button"
+                  onClick={chip.clear}
+                  className="rounded-full border border-border bg-muted/50 px-2.5 py-1 text-[11px] text-muted-foreground hover:bg-muted"
+                  title="Quitar filtro"
+                >
+                  {chip.label} ✕
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="text-[11px] text-primary underline underline-offset-2"
+              >
+                Limpiar filtros
+              </button>
+            </div>
+          )}
+
           {showForm && !editingId && <div className="lg:hidden">{offerFormInline}</div>}
 
-          {/* Mobile: cards como siempre. Desktop: tabla densa. */}
+          {/* Mobile: cards filtradas. Desktop: tabla densa. */}
           <div className="lg:hidden">
             <OfferList
-              offers={offers}
+              offers={filteredOffers}
               onEdit={startEdit}
               onToggleFeatured={toggleFeatured}
               onToggleSuggestible={toggleSuggestible}
@@ -1595,7 +1704,11 @@ export function MenuStudio({
               onEditModifiers={(offer) => startEdit(offer)}
               costByProduct={showCosts ? costByProduct : undefined}
               showBuyCost={canEditCost}
-              emptyText={isComercio ? "Todavía no cargaste productos." : undefined}
+              emptyText={
+                offers.length === 0
+                  ? isComercio ? "Todavía no cargaste productos." : undefined
+                  : "No hay productos con esos filtros."
+              }
               onTogglePromoOnly={togglePromoOnly}
             />
           </div>
@@ -1955,6 +2068,68 @@ export function MenuStudio({
             </button>
           </div>
         )}
+      </Modal>
+
+      {/* Buscador y filtros del catálogo en celular (mismos estados que el toolbar desktop). */}
+      <Modal
+        open={mobileFiltersOpen}
+        onClose={() => setMobileFiltersOpen(false)}
+        title="🔍 Buscar y filtrar"
+        size="sm"
+        zIndex={1000}
+        footer={
+          <>
+            <Button type="button" className="flex-1" onClick={() => setMobileFiltersOpen(false)}>
+              Ver {filteredOffers.length} {itemLabelPlural}
+            </Button>
+            <Button type="button" variant="outline" onClick={clearFilters}>
+              Limpiar
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="mobile-catalog-search">Buscar</Label>
+            <Input
+              id="mobile-catalog-search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Nombre, SKU o PLU"
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <Label htmlFor="mobile-catalog-category">Categoría</Label>
+            <select
+              id="mobile-catalog-category"
+              value={catFilter}
+              onChange={(e) => setCatFilter(e.target.value)}
+              className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="all">Todas las categorías</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.name}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <Label htmlFor="mobile-catalog-status">Estado</Label>
+            <select
+              id="mobile-catalog-status"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+              className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              {STATUS_OPTIONS.map((o) => (
+                <option key={o.id} value={o.id}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+          <p className="text-xs text-muted-foreground tabular-nums">
+            {filteredOffers.length} de {offers.length} {itemLabelPlural}
+          </p>
+        </div>
       </Modal>
 
       {/* Precios masivos (desktop) */}

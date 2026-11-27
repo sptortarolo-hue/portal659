@@ -1043,6 +1043,7 @@ export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable,
                       ...(onTogglePromoOnly ? [{ label: offer.promo_only ? "Volver al menú" : "Solo promo", icon: "🏷️", onClick: () => onTogglePromoOnly(offer) }] : []),
                       { label: offer.available ? "Pausar" : "Activar", icon: offer.available ? "⏸️" : "▶️", onClick: () => onToggleAvailable(offer) },
                       ...(onToggleOnline ? [{ label: offer.online_available !== false ? "Quitar de venta online" : "Poner en venta online", icon: "🌐", onClick: () => onToggleOnline(offer) }] : []),
+                      ...(onToggleSuggestible ? [{ label: offer.suggestible ? "Quitar de sugeridos" : "Sugerir en carrito", icon: "🛒", onClick: () => onToggleSuggestible(offer) }] : []),
                       { label: "Eliminar", icon: "🗑️", onClick: () => onDelete(offer), destructive: true },
                     ]}
                   />

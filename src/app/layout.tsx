@@ -182,7 +182,7 @@ export default function RootLayout({
               <CartDrawer />
               <BottomNav />
               <MicroFeedback />
-              <footer className="border-t border-border py-6 text-center text-sm text-muted-foreground bg-card" data-portal-chrome>
+              <footer className="pv2 border-t border-border py-6 text-center text-sm text-muted-foreground bg-card" data-portal-chrome>
                 <div className="container mx-auto px-4 flex flex-col sm:flex-row items-center justify-center gap-2">
                   <span>© {new Date().getFullYear()} Portal 659 — El centro comercial de tu barrio · 0% comisión</span>
                   <span className="hidden sm:inline text-border">·</span>

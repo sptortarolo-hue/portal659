@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Store } from "lucide-react";
 import { isStoreOpen } from "@/lib/open-hours";
+import { SectionHeading } from "@/components/home/section-heading";
 import { HorizontalCarousel } from "@/components/ui/horizontal-carousel";
 import { VendorCard } from "@/components/store/vendor-card";
 import type { Vendor } from "@/types/database";
@@ -23,17 +25,13 @@ export function OpenNowSection({ vendors, onlineByVendor }: { vendors: Vendor[];
   if (!ready || open.length === 0) return null;
 
   return (
-    <section className="container mx-auto px-4 pb-6" id="abiertos">
-      <div className="flex items-center gap-3 mb-4">
-        <span className="relative flex h-3 w-3">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-60" />
-          <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500" />
-        </span>
-        <div>
-          <h2 className="font-display text-xl font-semibold">Abiertos ahora</h2>
-          <p className="text-xs text-muted-foreground">Pedíles en este momento</p>
-        </div>
-      </div>
+    <section className="container mx-auto px-4 pb-10 sm:pb-12" id="abiertos">
+      <SectionHeading
+        icon={Store}
+        live
+        title="Abiertos ahora"
+        description="Pedíles en este momento"
+      />
       <HorizontalCarousel>
         {open.map((v) => (
           <VendorCard

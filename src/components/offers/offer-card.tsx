@@ -1,7 +1,5 @@
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
 import { ProductImage } from "@/components/product-image";
 
 type OfferCardProps = {
@@ -44,78 +42,59 @@ export function OfferCard({
     ? `/tienda/${storeSlug}?menu=1&oferta=${encodeURIComponent(offerId)}`
     : `/tienda/${storeSlug}?menu=1`;
   return (
-    <Link href={href} className="block h-full">
-      <Card
-        className={cn(
-          "h-full hover:shadow-xl transition-all duration-200 hover:-translate-y-1 cursor-pointer overflow-hidden",
-          featured && "ring-2 ring-sun"
-        )}
-      >
-        {imageUrl ? (
-          <div className="h-40 bg-muted overflow-hidden">
+    <Link href={href} className="group block h-full">
+      <Card className="pv2-card flex h-full flex-col overflow-hidden">
+        <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+          {imageUrl ? (
             <ProductImage
               src={imageUrl}
               name={name}
               category={category}
               vertical={vertical}
               alt={name}
-              className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
+              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
             />
-          </div>
-        ) : (
-          <div className="h-40 flex items-center justify-center">
+          ) : (
             <ProductImage
               src={null}
               name={name}
               category={category}
               vertical={vertical}
               alt={name}
-              className="w-full h-full"
+              className="h-full w-full"
               iconClassName="h-12 w-12"
             />
-          </div>
-        )}
-        <CardHeader className="pb-2">
+          )}
+          {pct != null && <span className="pv2-discount">-{pct}%</span>}
+        </div>
+        <CardHeader className="px-5 pb-1 pt-4">
           <div className="flex items-center gap-2">
-            {featured && (
-              <Badge className="bg-sun text-ink hover:bg-sun">
-                Hoy
-              </Badge>
-            )}
-            {pct != null && (
-              <span className="rounded-full bg-red-500 text-white text-[10px] font-bold px-2 py-0.5">
-                -{pct}%
-              </span>
-            )}
+            {featured && <span className="pv2-chip">Hoy</span>}
             {category && (
               <span className="text-xs text-muted-foreground capitalize">
                 {category}
               </span>
             )}
           </div>
-          <CardTitle className="font-display text-lg">{name}</CardTitle>
+          <CardTitle className="pv2-title mt-2 line-clamp-2 text-lg">{name}</CardTitle>
         </CardHeader>
-        <CardContent className="pb-3">
-          <p className="text-sm text-muted-foreground line-clamp-2">
+        <CardContent className="flex-1 px-5 pb-3">
+          <p className="pv2-subtitle line-clamp-2 min-h-[2.5rem] text-sm">
             {description}
           </p>
         </CardContent>
-        <div className="px-6 pb-4 flex items-center justify-between gap-2">
-          {promo != null ? (
-            <span className="flex items-baseline gap-1.5 min-w-0">
-              <span className="text-xs text-muted-foreground line-through tabular-nums">
+        <div className="mt-auto px-5 pb-5">
+          <div className="flex items-baseline gap-2">
+            {promo != null && (
+              <span className="pv2-price-old">
                 ${Number(price).toLocaleString("es-AR")}
               </span>
-              <span className="font-bold text-lg text-primary tabular-nums">
-                ${promo.toLocaleString("es-AR")}
-              </span>
+            )}
+            <span className="pv2-price">
+              ${(promo ?? Number(price)).toLocaleString("es-AR")}
             </span>
-          ) : (
-            <span className="font-bold text-lg text-foreground">
-              ${Number(price).toLocaleString("es-AR")}
-            </span>
-          )}
-          <span className="text-xs text-muted-foreground flex-shrink-0">{storeName}</span>
+          </div>
+          <p className="mt-1 truncate text-xs text-muted-foreground">{storeName}</p>
         </div>
       </Card>
     </Link>

@@ -33,20 +33,20 @@ export function ZoneSelector() {
 
   if (ACTIVE_ZONES.length === 1) {
     return (
-      <span className="flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-muted-foreground">
-        <MapPin className="h-3.5 w-3.5 text-primary" />
+      <span className="pv2 flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground">
+        <MapPin className="pv2-icon-accent h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
         <span>{currentZ.name}</span>
       </span>
     );
   }
 
   return (
-    <div className="relative flex-shrink-0">
+    <div className="pv2 relative flex-shrink-0">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+        className="flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
       >
-        <MapPin className="h-3.5 w-3.5 text-primary" />
+        <MapPin className="pv2-icon-accent h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
         <span>{currentZ.name}</span>
         <ChevronDown className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
@@ -59,7 +59,7 @@ export function ZoneSelector() {
                 key={z.slug}
                 onClick={() => select(z.slug)}
                 className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                  z.slug === slug ? "bg-primary/10 text-primary font-medium" : "hover:bg-muted"
+                  z.slug === slug ? "pv2-active" : "hover:bg-muted"
                 }`}
               >
                 {z.name}

@@ -1,0 +1,282 @@
+/* Portal 659 — sistema visual público v2 (Home + chrome público).
+   Scope: SOLO bajo .pv2. Nunca en :root: el panel (.ts-ui) y los micrositios
+   siguen con sus tokens actuales. Ver AGENTS.md (regla de oro de .ts-ui). */
+
+.pv2 {
+  --pv2-bg: #f6f7f9;
+  --pv2-surface: #ffffff;
+  --pv2-ink: #0f1e5a;
+  --pv2-muted: #64748b;
+  --pv2-line: #e2e8f0;
+  --pv2-accent: #5cc618;
+  --pv2-accent-hover: #4bae0f;
+  --pv2-shadow: 0 4px 20px rgba(15, 30, 90, 0.05);
+  --pv2-shadow-hover: 0 12px 32px rgba(15, 30, 90, 0.1);
+
+  /* Los utilitarios de Tailwind leen estas variables: al redefinirlas acá
+     abajo cambia el color dentro del scope, sin tocar el tema global. */
+  --color-background: var(--pv2-bg);
+  --color-card: var(--pv2-surface);
+  --color-foreground: var(--pv2-ink);
+  --color-muted: #f1f5f9;
+  --color-muted-foreground: var(--pv2-muted);
+  --color-border: var(--pv2-line);
+  --color-input: var(--pv2-line);
+  --color-ink: var(--pv2-ink);
+  --color-primary: var(--pv2-ink);
+  --font-display: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  color: var(--pv2-ink);
+}
+
+/* El fondo gris es del CONTENIDO; el chrome (nav/footer/carrito) sigue blanco. */
+main.pv2 { background: var(--pv2-bg); }
+body:has(main.pv2) { background: #f6f7f9; }
+
+/* El sistema público v2 es SIEMPRE claro (paleta de marca 60-30-10), inclusive
+   si el tema heredado del sitio está en oscuro. El panel/admin conserva su tema. */
+html:has(main.pv2) {
+  background: #f6f7f9 !important;
+}
+
+/* --- Superficies y tipografía ------------------------------------------- */
+
+.pv2-hero {
+  background: linear-gradient(180deg, #ffffff 0%, var(--pv2-bg) 100%);
+  border-bottom: 1px solid var(--pv2-line);
+}
+.pv2-title {
+  color: var(--pv2-ink);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+}
+
+.pv2-subtitle {
+  color: var(--pv2-muted);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.pv2-eyebrow {
+  color: var(--pv2-accent-hover);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.pv2-card {
+  background: var(--pv2-surface);
+  border: 1px solid var(--pv2-line);
+  border-radius: 16px;
+  box-shadow: var(--pv2-shadow);
+  transition: box-shadow 200ms ease, transform 200ms ease, border-color 200ms ease;
+}
+.pv2-card:hover {
+  box-shadow: var(--pv2-shadow-hover);
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--pv2-accent) 35%, var(--pv2-line));
+}
+
+.pv2-pill {
+  background: var(--pv2-surface);
+  border: 1px solid var(--pv2-line);
+  border-radius: 9999px;
+  box-shadow: var(--pv2-shadow);
+  color: var(--pv2-ink);
+  transition: box-shadow 180ms ease, border-color 180ms ease, transform 180ms ease;
+}
+.pv2-pill:hover {
+  border-color: color-mix(in srgb, var(--pv2-accent) 45%, var(--pv2-line));
+  box-shadow: var(--pv2-shadow-hover);
+  transform: translateY(-1px);
+}
+
+.pv2-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.pv2-section-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--pv2-accent) 12%, var(--pv2-surface));
+  color: var(--pv2-accent-hover);
+}
+
+.pv2-count {
+  flex-shrink: 0;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--pv2-ink) 6%, var(--pv2-surface));
+  color: var(--pv2-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.3rem 0.7rem;
+}
+
+/* --- Botones ------------------------------------------------------------ */
+
+.pv2-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 9999px;
+  font-weight: 700;
+  transition: background-color 180ms ease, transform 180ms ease, box-shadow 180ms ease;
+}
+.pv2-btn:active { transform: scale(0.97); }
+
+.pv2-btn-primary {
+  background: var(--pv2-accent);
+  color: #0f1e5a;
+  box-shadow: 0 6px 18px rgba(92, 198, 24, 0.25);
+}
+.pv2-btn-primary:hover { background: var(--pv2-accent-hover); }
+
+.pv2-btn-outline {
+  background: transparent;
+  border: 1px solid currentColor;
+}
+.pv2-btn-outline:hover { background: rgba(255, 255, 255, 0.12); }
+
+/* --- Buscador del hero --------------------------------------------------- */
+
+.pv2-search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 9999px;
+  background: var(--pv2-surface);
+  border: 1px solid var(--pv2-line);
+  padding: 0.4rem;
+  box-shadow: 0 10px 30px rgba(15, 30, 90, 0.1);
+}
+.pv2-search input {
+  flex: 1;
+  min-width: 0;
+  height: 2.75rem;
+  padding: 0 0.9rem;
+  background: transparent;
+  color: var(--pv2-ink);
+  font-size: 0.95rem;
+  outline: none;
+}
+.pv2-search input::placeholder { color: #94a3b8; }
+
+/* --- Tarjetas de comercio ------------------------------------------------ */
+
+.pv2-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.3rem 0.65rem;
+  white-space: nowrap;
+}
+.pv2-badge-open { background: #dcfce7; color: #166534; }
+.pv2-badge-closed { background: #f1f5f9; color: #475569; }
+
+.pv2-card-logo {
+  border: 3px solid #ffffff;
+  border-radius: 9999px;
+  box-shadow: var(--pv2-shadow-hover);
+}
+
+.pv2-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--pv2-accent) 12%, var(--pv2-surface));
+  color: var(--pv2-accent-hover);
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.25rem 0.55rem;
+}
+
+.pv2-chip-muted {
+  background: color-mix(in srgb, var(--pv2-muted) 12%, var(--pv2-surface));
+  color: var(--pv2-muted);
+}
+
+.pv2-icon-accent { color: var(--pv2-accent-hover); }
+.pv2-active {
+  background: color-mix(in srgb, var(--pv2-accent) 14%, var(--pv2-surface));
+  color: var(--pv2-accent-hover);
+  font-weight: 700;
+}
+
+/* --- CTA final del portal ------------------------------------------------ */
+
+.pv2-cta {
+  background: #0f1e5a;
+  border-radius: 24px;
+}
+.pv2-cta .pv2-eyebrow { color: #5cc618; }
+.pv2-cta .pv2-title,
+.pv2-cta h2 { color: #ffffff; }
+.pv2-cta-lead { color: #cbd5e1; }
+
+/* --- Tarjetas de oferta -------------------------------------------------- */
+
+.pv2-discount {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 1;
+  border-radius: 9999px;
+  background: var(--pv2-accent);
+  color: #0f1e5a;
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 0.3rem 0.65rem;
+  box-shadow: 0 4px 12px rgba(15, 30, 90, 0.12);
+}
+
+.pv2-price {
+  color: var(--pv2-ink);
+  font-size: 1.4rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.pv2-price-old {
+  color: #94a3b8;
+  font-size: 0.8rem;
+  text-decoration: line-through;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Navegación inferior ------------------------------------------------- */
+
+.pv2-bottom-nav {
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-top: 1px solid var(--pv2-line);
+}
+
+.pv2-nav-item { color: var(--pv2-muted); }
+.pv2-nav-item[data-active="true"] { color: var(--pv2-accent-hover); }
+
+.pv2-cart-badge {
+  background: var(--pv2-accent);
+  color: #0f1e5a;
+  font-weight: 800;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pv2, .pv2-card, .pv2-pill, .pv2-btn { transition: none; }
+}

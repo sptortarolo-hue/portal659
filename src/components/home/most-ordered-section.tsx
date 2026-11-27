@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { Flame, TrendingUp } from "lucide-react";
+import { SectionHeading } from "@/components/home/section-heading";
 import { HorizontalCarousel } from "@/components/ui/horizontal-carousel";
 
 type MostOrderedItem = {
@@ -30,22 +32,13 @@ export function MostOrderedSection() {
   if (loading || items.length === 0) return null;
 
   return (
-    <section className="container mx-auto px-4 py-8">
-      <div className="rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/5 to-accent/30 p-6 mb-6">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <span className="rounded-full bg-primary text-primary-foreground px-3 py-1 text-xs font-semibold uppercase tracking-widest">
-            Popular
-          </span>
-          <div>
-            <h2 className="font-display text-2xl font-semibold">
-              Lo más pedido del barrio
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Lo que más pidieron en los últimos 7 días
-            </p>
-          </div>
-        </div>
-      </div>
+    <section className="container mx-auto px-4 py-10 sm:py-12">
+      <SectionHeading
+        icon={TrendingUp}
+        eyebrow="Popular"
+        title="Lo más pedido del barrio"
+        description="Lo que más pidieron en los últimos 7 días"
+      />
       <HorizontalCarousel>
         {items.map((item) => (
           <Link
@@ -53,20 +46,20 @@ export function MostOrderedSection() {
             href={`/tienda/${item.store_slug}?menu=1&oferta=${encodeURIComponent(item.product_id)}`}
             className="min-w-[220px] max-w-[260px] snap-start block group"
           >
-            <div className="rounded-2xl border border-border bg-card p-4 hover:shadow-xl transition-all duration-200 hover:-translate-y-1">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-lg">🔥</span>
-                <span className="text-[10px] font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
-                  {item.total_qty} vendidos
+            <div className="pv2-card h-full p-5">
+              <div className="mb-3 flex items-center gap-2">
+                <span className="pv2-section-icon h-8 w-8">
+                  <Flame className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
                 </span>
+                <span className="pv2-chip">{item.total_qty} vendidos</span>
               </div>
-              <p className="font-medium text-sm leading-tight truncate">
+              <p className="pv2-title truncate text-sm leading-tight">
                 {item.product_name}
               </p>
-              <p className="text-xs text-muted-foreground mt-1 truncate">
+              <p className="pv2-subtitle mt-1 truncate text-xs">
                 {item.store_name}
               </p>
-              <p className="text-xs text-primary font-medium mt-2">
+              <p className="mt-3 text-xs font-medium text-muted-foreground">
                 Ver tienda →
               </p>
             </div>

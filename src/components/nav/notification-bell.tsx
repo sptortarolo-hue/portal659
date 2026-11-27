@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { createPortal } from "react-dom";
+import { Bell, X } from "lucide-react";
 
 type Notification = {
   id: string;
@@ -143,7 +144,7 @@ export function NotificationBell() {
               className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-xs text-red-600 hover:text-red-700"
               title="Borrar"
             >
-              ✕
+              <X className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
             </button>
           </div>
         ))
@@ -160,9 +161,7 @@ export function NotificationBell() {
         onClick={toggleOpen}
         className="relative p-2 text-muted-foreground hover:text-foreground"
       >
-        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-        </svg>
+        <Bell className="h-5 w-5" strokeWidth={1.8} aria-hidden="true" />
         {unread > 0 && (
           <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center font-bold">
             {unread > 9 ? "9+" : unread}
@@ -173,7 +172,7 @@ export function NotificationBell() {
       {open && (
         <>
           {/* Desktop: dropdown anclado a la campana */}
-          <div className="hidden sm:block absolute right-0 top-full mt-2 w-80 border border-border rounded-xl bg-card shadow-lg z-50 max-h-96 overflow-y-auto">
+          <div className="pv2 hidden sm:block absolute right-0 top-full mt-2 w-80 border border-border rounded-xl bg-card shadow-lg z-50 max-h-96 overflow-y-auto">
             {panelContent}
           </div>
 
@@ -181,7 +180,7 @@ export function NotificationBell() {
           {createPortal(
             <div
               ref={panelRef}
-              className="sm:hidden fixed inset-x-0 border-y border-border bg-card shadow-lg z-[60] max-h-[60vh] overflow-y-auto"
+              className="pv2 sm:hidden fixed inset-x-0 border-y border-border bg-card shadow-lg z-[60] max-h-[60vh] overflow-y-auto"
               style={{ top: panelTop }}
             >
               {panelContent}

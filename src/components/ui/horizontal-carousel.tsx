@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 type HorizontalCarouselProps = {
   children: React.ReactNode;
@@ -20,24 +21,24 @@ export function HorizontalCarousel({ children, className = "" }: HorizontalCarou
     <div className={`relative group ${className}`}>
       <button
         onClick={() => scroll("left")}
-        className="absolute left-0 top-1/2 -translate-y-1/2 z-10 h-10 w-10 rounded-full bg-card/90 border border-border shadow-lg flex items-center justify-center text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity -ml-3"
+        className="absolute left-0 top-1/2 -translate-y-1/2 z-10 h-10 w-10 rounded-full bg-card/90 border border-border shadow-lg flex items-center justify-center text-muted-foreground hover:text-foreground opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity -ml-3"
         aria-label="Anterior"
       >
-        ‹
+        <ChevronLeft className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
       </button>
       <div
         ref={ref}
-        className="flex gap-4 overflow-x-auto scrollbar-none snap-x snap-mandatory scroll-smooth pb-2"
+        className="flex items-stretch gap-4 overflow-x-auto scrollbar-none snap-x snap-mandatory scroll-smooth pb-2"
         style={{ scrollbarWidth: "none" }}
       >
         {children}
       </div>
       <button
         onClick={() => scroll("right")}
-        className="absolute right-0 top-1/2 -translate-y-1/2 z-10 h-10 w-10 rounded-full bg-card/90 border border-border shadow-lg flex items-center justify-center text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity -mr-3"
+        className="absolute right-0 top-1/2 -translate-y-1/2 z-10 h-10 w-10 rounded-full bg-card/90 border border-border shadow-lg flex items-center justify-center text-muted-foreground hover:text-foreground opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity -mr-3"
         aria-label="Siguiente"
       >
-        ›
+        <ChevronRight className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
       </button>
     </div>
   );

@@ -5,7 +5,23 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTheme } from "@/components/ui/theme-provider";
 import { ProductImage } from "@/components/product-image";
-import { Shield } from "lucide-react";
+import {
+  Bike,
+  BookOpen,
+  CreditCard,
+  Heart,
+  KeyRound,
+  LogOut,
+  Menu,
+  Moon,
+  Package,
+  Shield,
+  Store,
+  Sun,
+  Truck,
+  User,
+  UserPlus,
+} from "lucide-react";
 
 type MeUser = {
   id: string;
@@ -108,7 +124,9 @@ export function UserMenu() {
         {vendorImg ? (
           <ProductImage src={vendorImg} name={vendor?.store_name || "Mi comercio"} vertical={vendor?.vertical ?? null} alt={vendor?.store_name || "Mi comercio"} className="h-8 w-8 rounded-full flex-shrink-0" eager />
         ) : (
-          <span className="w-8 h-8 flex items-center justify-center rounded-full bg-primary/10 text-primary text-lg">☰</span>
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-muted-foreground">
+            <Menu className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
+          </span>
         )}
         <span className="hidden sm:inline">Menú</span>
       </button>
@@ -118,7 +136,11 @@ export function UserMenu() {
             onClick={() => { cycleTheme(); }}
             className="w-full flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
           >
-            <span>{resolved === "dark" ? "🌙" : "☀️"}</span>
+            {resolved === "dark" ? (
+              <Sun className="h-4 w-4 flex-shrink-0 text-muted-foreground" strokeWidth={1.8} aria-hidden="true" />
+            ) : (
+              <Moon className="h-4 w-4 flex-shrink-0 text-muted-foreground" strokeWidth={1.8} aria-hidden="true" />
+            )}
             <span>{resolved === "dark" ? "Modo claro" : "Modo oscuro"}</span>
           </button>
 
@@ -137,14 +159,14 @@ export function UserMenu() {
                   className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
                   onClick={() => setMenuOpen(false)}
                 >
-                  <span>👤</span> Mi perfil
+                  <User className="h-4 w-4 flex-shrink-0 text-muted-foreground" strokeWidth={1.8} aria-hidden="true" /> Mi perfil
                 </Link>
                 <Link
                   href="/vendor/dashboard"
                   className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
                   onClick={() => setMenuOpen(false)}
                 >
-                  <span>🏪</span> Mi comercio
+                  <Store className="h-4 w-4 flex-shrink-0 text-muted-foreground" strokeWidth={1.8} aria-hidden="true" /> Mi comercio
                 </Link>
                 <div className="border-t border-border my-1" />
                 <Link
@@ -152,14 +174,14 @@ export function UserMenu() {
                   className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
                   onClick={() => setMenuOpen(false)}
                 >
-                  <span>📘</span> Manuales y guías
+                  <BookOpen className="h-4 w-4 flex-shrink-0 text-muted-foreground" strokeWidth={1.8} aria-hidden="true" /> Manuales y guías
                 </Link>
                 <div className="border-t border-border my-1" />
                 <button
                   onClick={handleLogout}
                   className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-600 font-medium hover:bg-red-50 dark:hover:bg-red-950 transition-colors"
                 >
-                  <span>🚪</span> Cerrar sesión
+                  <LogOut className="h-4 w-4 flex-shrink-0" strokeWidth={1.8} aria-hidden="true" /> Cerrar sesión
                 </button>
               </>
             ) : (
@@ -169,21 +191,21 @@ export function UserMenu() {
                 className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
                 onClick={() => setMenuOpen(false)}
               >
-                <span>👤</span> Mi perfil
+                <User className="h-4 w-4 flex-shrink-0 text-muted-foreground" strokeWidth={1.8} aria-hidden="true" /> Mi perfil
               </Link>
               <Link
                 href="/mis-pedidos"
                 className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
                 onClick={() => setMenuOpen(false)}
               >
-                <span>📦</span> Mis pedidos
+                <Package className="h-4 w-4 flex-shrink-0 text-muted-foreground" strokeWidth={1.8} aria-hidden="true" /> Mis pedidos
               </Link>
               <Link
                 href="/favoritos"
                 className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
                 onClick={() => setMenuOpen(false)}
               >
-                <span>❤️</span> Mis favoritos
+                <Heart className="h-4 w-4 flex-shrink-0 text-muted-foreground" strokeWidth={1.8} aria-hidden="true" /> Mis favoritos
               </Link>
               {isCarrier && (
                 <Link
@@ -191,7 +213,7 @@ export function UserMenu() {
                   className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
                   onClick={() => setMenuOpen(false)}
                 >
-                  <span>🚚</span> Mis envíos (logística)
+                  <Truck className="h-4 w-4 flex-shrink-0 text-muted-foreground" strokeWidth={1.8} aria-hidden="true" /> Mis envíos (logística)
                 </Link>
               )}
               {!isBuyer && (
@@ -202,7 +224,7 @@ export function UserMenu() {
                       className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
                       onClick={() => setMenuOpen(false)}
                     >
-                      <span>🛵</span> Mi reparto
+                      <Bike className="h-4 w-4 flex-shrink-0 text-muted-foreground" strokeWidth={1.8} aria-hidden="true" /> Mi reparto
                     </Link>
                   ) : (
                     <Link
@@ -210,7 +232,7 @@ export function UserMenu() {
                       className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
                       onClick={() => setMenuOpen(false)}
                     >
-                      <span>🏪</span> Mi comercio
+                      <Store className="h-4 w-4 flex-shrink-0 text-muted-foreground" strokeWidth={1.8} aria-hidden="true" /> Mi comercio
                     </Link>
                   )}
                   <Link
@@ -218,7 +240,7 @@ export function UserMenu() {
                     className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
                     onClick={() => setMenuOpen(false)}
                   >
-                    <span>💳</span> Planes
+                    <CreditCard className="h-4 w-4 flex-shrink-0 text-muted-foreground" strokeWidth={1.8} aria-hidden="true" /> Planes
                   </Link>
                 </>
               )}
@@ -239,14 +261,14 @@ export function UserMenu() {
                 className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
                 onClick={() => setMenuOpen(false)}
               >
-                <span>📘</span> Manuales y guías
+                <BookOpen className="h-4 w-4 flex-shrink-0 text-muted-foreground" strokeWidth={1.8} aria-hidden="true" /> Manuales y guías
               </Link>
               <div className="border-t border-border my-1" />
               <button
                 onClick={handleLogout}
                 className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-600 font-medium hover:bg-red-50 dark:hover:bg-red-950 transition-colors"
               >
-                <span>🚪</span> Cerrar sesión
+                <LogOut className="h-4 w-4 flex-shrink-0" strokeWidth={1.8} aria-hidden="true" /> Cerrar sesión
               </button>
             </>
             )
@@ -257,35 +279,35 @@ export function UserMenu() {
                 className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
                 onClick={() => setMenuOpen(false)}
               >
-                <span>🔑</span> Iniciar sesión
+                <KeyRound className="h-4 w-4 flex-shrink-0 text-muted-foreground" strokeWidth={1.8} aria-hidden="true" /> Iniciar sesión
               </Link>
               <Link
                 href="/registro"
                 className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
                 onClick={() => setMenuOpen(false)}
               >
-                <span>🙋</span> Crear mi cuenta
+                <UserPlus className="h-4 w-4 flex-shrink-0 text-muted-foreground" strokeWidth={1.8} aria-hidden="true" /> Crear mi cuenta
               </Link>
               <Link
                 href="/register"
                 className="flex items-center gap-3 px-4 py-3 text-sm text-primary font-medium hover:bg-primary/10 transition-colors"
                 onClick={() => setMenuOpen(false)}
               >
-                <span>🏪</span> Sumá tu comercio
+                <Store className="h-4 w-4 flex-shrink-0 text-muted-foreground" strokeWidth={1.8} aria-hidden="true" /> Sumá tu comercio
               </Link>
               <Link
                 href="/vincular"
                 className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
                 onClick={() => setMenuOpen(false)}
               >
-                <span>🛵</span> Unirme como repartidor
+                <Bike className="h-4 w-4 flex-shrink-0 text-muted-foreground" strokeWidth={1.8} aria-hidden="true" /> Unirme como repartidor
               </Link>
               <Link
                 href="/manuales"
                 className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
                 onClick={() => setMenuOpen(false)}
               >
-                <span>📘</span> Manuales y guías
+                <BookOpen className="h-4 w-4 flex-shrink-0 text-muted-foreground" strokeWidth={1.8} aria-hidden="true" /> Manuales y guías
               </Link>
             </>
           )}

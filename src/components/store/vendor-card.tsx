@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { MessageCircle, ShoppingBag, Star } from "lucide-react";
 import { isStoreOpen, openStatusText } from "@/lib/open-hours";
 import { ProductImage } from "@/components/product-image";
 
@@ -42,29 +43,28 @@ export function VendorCard({ id, slug, store_name, image_url, logo_url, descript
   if (!slug) return null;
 
   return (
-    <Link href={href ?? `/tienda/${slug}`} className="min-w-[260px] max-w-[300px] snap-start block group">
-      <div className="relative rounded-2xl border border-border bg-card overflow-hidden hover:shadow-xl transition-all duration-200 hover:-translate-y-1">
+    <Link
+      href={href ?? `/tienda/${slug}`}
+      className="pv2-card group flex min-w-[260px] max-w-[300px] snap-start flex-col overflow-hidden"
+    >
+      <div className="relative aspect-[16/9] overflow-hidden bg-muted">
         {image_url ? (
-          <div className="h-36 overflow-hidden">
-            <ProductImage
-              src={image_url}
-              name={store_name}
-              vertical={vertical}
-              alt={store_name}
-              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-            />
-          </div>
+          <ProductImage
+            src={image_url}
+            name={store_name}
+            vertical={vertical}
+            alt={store_name}
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          />
         ) : (
-          <div className="h-36 flex items-center justify-center">
-            <ProductImage
-              src={null}
-              name={store_name}
-              vertical={vertical}
-              alt={store_name}
-              className="w-full h-full"
-              iconClassName="h-12 w-12"
-            />
-          </div>
+          <ProductImage
+            src={null}
+            name={store_name}
+            vertical={vertical}
+            alt={store_name}
+            className="h-full w-full"
+            iconClassName="h-12 w-12"
+          />
         )}
         {logo_url && (
           <ProductImage
@@ -72,46 +72,41 @@ export function VendorCard({ id, slug, store_name, image_url, logo_url, descript
             name={store_name}
             vertical={vertical}
             alt={`Logo de ${store_name}`}
-            className="absolute left-3 top-3 h-12 w-12 rounded-full border-2 border-white shadow-md"
+            className="pv2-card-logo absolute bottom-3 left-3 h-12 w-12"
           />
         )}
         {isOpen !== null && (
-          <span
-            className={`absolute top-3 right-3 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-              isOpen
-                ? "bg-green-500 text-white"
-                : "bg-red-500 text-white"
-            }`}
-          >
+          <span className={`pv2-badge absolute right-3 top-3 ${isOpen ? "pv2-badge-open" : "pv2-badge-closed"}`}>
             {openStatusText(isOpen)}
           </span>
         )}
-        <div className="p-4">
-          <h3 className="font-display text-base font-semibold truncate">{store_name}</h3>
-          {description && (
-            <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{description}</p>
-          )}
-          {avgRating !== null && (
-            <div className="flex items-center gap-1 mt-2">
-              <span className="text-amber-400 text-sm">★</span>
-              <span className="text-xs font-medium">{avgRating.toFixed(1)}</span>
-              <span className="text-[10px] text-muted-foreground">({reviewCount})</span>
-            </div>
-          )}
-          <div className="flex items-center justify-between mt-2 gap-2">
-            <p className="text-xs text-primary font-medium">
-              {acceptsCart === false || vertical === "servicio" ? "Ver y contactar →" : "Ver y pedir →"}
-            </p>
-            {acceptsCart !== null && acceptsCart !== undefined && (
-              <span
-                className={`flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full tabular-nums ${
-                  acceptsCart ? "bg-green-100 text-green-700" : "bg-muted text-muted-foreground"
-                }`}
-              >
-                {acceptsCart ? "🛒 Pedí online" : "💬 Solo contacto"}
-              </span>
-            )}
+      </div>
+
+      <div className="flex flex-1 flex-col p-5">
+        <h3 className="pv2-title truncate text-base">{store_name}</h3>
+        {description && (
+          <p className="pv2-subtitle mt-2 line-clamp-2 min-h-[2.5rem] text-xs">
+            {description}
+          </p>
+        )}
+        {avgRating !== null && (
+          <div className="mt-3 flex items-center gap-1">
+            <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" aria-hidden="true" />
+            <span className="text-xs font-semibold">{avgRating.toFixed(1)}</span>
+            <span className="text-[10px] text-muted-foreground">({reviewCount})</span>
           </div>
+        )}
+        <div className="mt-auto pt-4">
+          {acceptsCart !== null && acceptsCart !== undefined && (
+            <span className={`pv2-chip ${acceptsCart ? "" : "pv2-chip-muted"}`}>
+              {acceptsCart ? (
+                <ShoppingBag className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
+              ) : (
+                <MessageCircle className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
+              )}
+              {acceptsCart ? "Pedí online" : "Solo contacto"}
+            </span>
+          )}
         </div>
       </div>
     </Link>

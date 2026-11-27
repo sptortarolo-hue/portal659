@@ -10,7 +10,10 @@ import { VendorCard } from "@/components/store/vendor-card";
 import { MostOrderedSection } from "@/components/home/most-ordered-section";
 import { OpenNowSection } from "@/components/home/open-now-section";
 import { BackButtonGuard } from "@/components/home/back-button-guard";
+import { SectionHeading } from "@/components/home/section-heading";
+import { VerticalIcon, verticalIconComponent } from "@/components/home/vertical-icon";
 import { fetchRankStats, rankVendors } from "@/lib/ranking";
+import { Compass, Flame, MapPin, Sparkles, TrendingUp } from "lucide-react";
 import { itemListJsonLd, organizationJsonLd, websiteJsonLd } from "@/lib/json-ld";
 import type { Vendor, Plan, Product } from "@/types/database";
 
@@ -162,39 +165,37 @@ export default async function HomePage() {
   ];
 
   return (
-    <main>
+    <main className="pv2">
       <BackButtonGuard />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      {/* Hero corto: buscador + zone */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-primary via-primary/90 to-primary">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(163,230,53,0.15),transparent_50%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_80%,rgba(255,255,255,0.08),transparent_50%)]" />
-        <div className="container mx-auto px-4 pt-8 pb-8 sm:pt-12 sm:pb-12 relative z-10">
-          <p className="text-[11px] font-semibold tracking-widest uppercase text-sun mb-2">
-            📍 {zone.name} · 0% comisión
+      {/* Hero corto: buscador + zona (solo cambia el diseño) */}
+      <section className="pv2-hero relative overflow-hidden">
+        <div className="container mx-auto px-4 pt-10 pb-10 sm:pt-14 sm:pb-14 relative">
+          <p className="pv2-eyebrow mb-3 inline-flex items-center gap-1.5">
+            <MapPin className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+            {zone.name} · 0% comisión
           </p>
-          <h1 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl lg:text-5xl text-white max-w-2xl">
+          <h1 className="pv2-title text-3xl sm:text-4xl lg:text-5xl max-w-2xl">
             ¿Qué te hace falta hoy?
           </h1>
-          <p className="mt-2 text-sm text-white/80 max-w-xl">
+          <p className="pv2-subtitle mt-3 max-w-xl">
             Pediles directo a los comercios de tu barrio, sin vueltas.
           </p>
 
           {/* Buscador grande */}
-          <form action="/buscar" method="GET" className="mt-5 max-w-xl">
-            <div className="flex items-center gap-2 rounded-2xl bg-white shadow-lg p-1.5">
+          <form action="/buscar" method="GET" className="mt-7 max-w-2xl">
+            <div className="pv2-search">
               <input
                 type="search"
                 name="q"
                 placeholder="Buscá: pizza, farmacia, ropa, electricista..."
-                className="flex-1 min-w-0 bg-transparent px-3 text-sm text-ink placeholder:text-gray-400 outline-none h-10"
               />
               <button
                 type="submit"
-                className="flex-shrink-0 rounded-xl bg-sun text-ink px-4 sm:px-6 h-10 text-sm font-bold hover:bg-sun/90 transition-colors"
+                className="pv2-btn pv2-btn-primary h-11 px-5 sm:px-7 text-sm flex-shrink-0"
               >
                 Buscar
               </button>
@@ -202,37 +203,40 @@ export default async function HomePage() {
           </form>
 
           {/* Chips de acceso rápido */}
-          <div className="mt-4 flex flex-wrap gap-2">
-            <a href="#ofertas" className="rounded-full bg-white/10 border border-white/20 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-white/20 transition-colors">
-              🔥 Oferta de hoy
+          <div className="mt-5 flex flex-wrap gap-2">
+            <a href="#ofertas" className="pv2-pill inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold">
+              <Flame className="h-3.5 w-3.5 pv2-icon-accent" strokeWidth={2} aria-hidden="true" />
+              Oferta de hoy
             </a>
-            <a href="#populares" className="rounded-full bg-white/10 border border-white/20 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-white/20 transition-colors">
-              ⭐ Lo más pedido
+            <a href="#populares" className="pv2-pill inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold">
+              <TrendingUp className="h-3.5 w-3.5 pv2-icon-accent" strokeWidth={2} aria-hidden="true" />
+              Lo más pedido
             </a>
-            <Link href="/buscar" className="rounded-full bg-white/10 border border-white/20 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-white/20 transition-colors">
-              🧭 Ver todo
+            <Link href="/buscar" className="pv2-pill inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold">
+              <Compass className="h-3.5 w-3.5 pv2-icon-accent" strokeWidth={2} aria-hidden="true" />
+              Ver todo
             </Link>
           </div>
         </div>
       </section>
 
-      {/* Categorías */}
-      <section className="container mx-auto px-4 py-6" id="categorias">
-        <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+      {/* Categorías: carrusel de píldoras con íconos vectoriales */}
+      <section className="container mx-auto px-4 py-10 sm:py-12" id="categorias">
+        <HorizontalCarousel>
           {VERTICALS.map((vert, i) => (
             <Link
               key={vert.slug}
               href={`/buscar?vertical=${vert.slug}`}
-              className="flex flex-col items-center gap-2 p-3 rounded-2xl border border-border bg-card hover:shadow-lg hover:border-primary/30 transition-all duration-200 hover:-translate-y-0.5 animate-fade-in-up"
+              className="pv2-pill flex min-w-[168px] snap-start items-center gap-2.5 px-4 py-3 text-sm font-semibold animate-fade-in-up"
               style={{ animationDelay: `${i * 0.05}s` }}
             >
-              <span className="text-3xl">{vert.emoji}</span>
-              <span className="text-[11px] font-medium text-muted-foreground text-center leading-tight">
-                {vert.name}
+              <span className="pv2-section-icon h-8 w-8">
+                <VerticalIcon slug={vert.slug} className="h-4 w-4" />
               </span>
+              {vert.name}
             </Link>
           ))}
-        </div>
+        </HorizontalCarousel>
       </section>
 
       {/* Abiertos ahora (cliente — zona horaria del usuario) */}
@@ -240,26 +244,17 @@ export default async function HomePage() {
 
       {/* Oferta de hoy (productos y servicios destacados, uno por comercio) */}
       {featuredItems.length > 0 && (
-        <section className="container mx-auto px-4 py-6" id="ofertas">
-          <div className="rounded-2xl border border-sun/40 bg-gradient-to-r from-warm to-accent p-4 sm:p-6 mb-4">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-              <span className="rounded-full bg-sun px-3 py-1 text-xs font-semibold uppercase tracking-widest text-ink">
-                Hoy
-              </span>
-              <div>
-                <h2 className="font-display text-xl sm:text-2xl font-semibold">
-                  La oferta de hoy
-                </h2>
-                <p className="text-sm text-muted-foreground">
-                  Lo que los comercios de {zone.name} te recomiendan hoy
-                </p>
-              </div>
-            </div>
-          </div>
+        <section className="container mx-auto px-4 py-10 sm:py-12 scroll-mt-20" id="ofertas">
+          <SectionHeading
+            icon={Flame}
+            eyebrow="Hoy"
+            title="La oferta de hoy"
+            description={`Lo que los comercios de ${zone.name} te recomiendan hoy`}
+          />
           <HorizontalCarousel>
             {featuredItems.map((it) =>
               it.kind === "product" ? (
-                <div key={`p-${it.id}`} className="min-w-[280px] max-w-[320px] snap-start">
+                <div key={`p-${it.id}`} className="flex min-w-[280px] max-w-[320px] snap-start">
                   <OfferCard
                     name={it.data.name}
                     description={it.data.description}
@@ -275,7 +270,7 @@ export default async function HomePage() {
                   />
                 </div>
               ) : (
-                <div key={`s-${it.id}`} className="min-w-[280px] max-w-[320px] snap-start">
+                <div key={`s-${it.id}`} className="flex min-w-[280px] max-w-[320px] snap-start">
                   <ServiceOfferCard
                     name={it.data.name}
                     description={it.data.description}
@@ -303,20 +298,12 @@ export default async function HomePage() {
 
       {/* Destacados del barrio */}
       {destacados.length > 0 && (
-        <section className="container mx-auto px-4 py-6" id="destacados">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">⭐</span>
-              <div>
-                <h2 className="font-display text-xl sm:text-2xl font-semibold">
-                  Destacados del barrio
-                </h2>
-                <p className="text-sm text-muted-foreground">
-                  Comercios que la comunidad elige en {zone.name}
-                </p>
-              </div>
-            </div>
-          </div>
+        <section className="container mx-auto px-4 py-10 sm:py-12 scroll-mt-20" id="destacados">
+          <SectionHeading
+            icon={Sparkles}
+            title="Destacados del barrio"
+            description={`Comercios que la comunidad elige en ${zone.name}`}
+          />
           <HorizontalCarousel>
             {destacados.map((v) => (
               <VendorCard
@@ -344,25 +331,15 @@ export default async function HomePage() {
         return (
           <section
             key={vert.slug}
-            className="container mx-auto px-4 mb-6 scroll-mt-20"
+            className="container mx-auto px-4 py-10 sm:py-12 scroll-mt-20"
             id={vert.slug}
           >
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">{vert.emoji}</span>
-                <div>
-                  <h2 className="font-display text-xl font-semibold">
-                    {vert.name}
-                  </h2>
-                  <p className="text-sm text-muted-foreground">
-                    {vert.description}
-                  </p>
-                </div>
-              </div>
-              <span className="text-xs text-muted-foreground bg-muted px-2.5 py-1 rounded-full">
-                {list.length}
-              </span>
-            </div>
+            <SectionHeading
+              icon={verticalIconComponent(vert.slug)}
+              title={vert.name}
+              description={vert.description}
+              count={list.length}
+            />
             <HorizontalCarousel>
               {list.map((v) => (
                 <VendorCard
@@ -385,29 +362,26 @@ export default async function HomePage() {
       })}
 
       {/* CTA vendor al final */}
-      <section className="container mx-auto px-4 py-10">
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary to-primary/80 p-6 sm:p-10 text-center">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_30%,rgba(163,230,53,0.2),transparent_50%)]" />
+      <section className="container mx-auto px-4 py-12 sm:py-16">
+        <div className="pv2-cta relative overflow-hidden px-6 py-10 sm:px-10 sm:py-14 text-center">
           <div className="relative z-10">
-            <p className="text-xs font-semibold tracking-widest uppercase text-sun mb-3">
-              Para comercios
-            </p>
-            <h2 className="font-display text-2xl sm:text-3xl font-semibold text-white max-w-2xl mx-auto">
+            <p className="pv2-eyebrow mb-3">Para comercios</p>
+            <h2 className="pv2-title text-2xl sm:text-3xl max-w-2xl mx-auto">
               ¿Tenés un comercio? Hacelo trabajar mejor
             </h2>
-            <p className="mt-3 text-sm sm:text-base text-white/80 max-w-xl mx-auto">
+            <p className="pv2-cta-lead mt-3 text-sm sm:text-base max-w-xl mx-auto">
               Pedidos ordenados, catálogo, QR y WhatsApp directo. Empezá gratis, 0% comisión.
             </p>
-            <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <div className="mt-7 flex flex-col sm:flex-row items-center justify-center gap-3">
               <Link
                 href="/register"
-                className="inline-block rounded-full bg-sun text-ink px-8 py-3 text-sm font-bold hover:bg-sun/90 transition-all hover:scale-105 active:scale-95 shadow-lg"
+                className="pv2-btn pv2-btn-primary px-8 py-3 text-sm"
               >
                 Creá tu comercio gratis
               </Link>
               <Link
                 href="/comercios"
-                className="inline-block rounded-full border border-white/40 bg-white/10 text-white px-7 py-3 text-sm font-medium hover:bg-white/20 transition-colors"
+                className="pv2-btn pv2-btn-outline border-white/40 px-7 py-3 text-sm text-white"
               >
                 Conocé cómo funciona →
               </Link>

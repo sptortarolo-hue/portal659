@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Smartphone } from "lucide-react";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -78,16 +79,16 @@ export function InstallAppButton() {
         className="flex-shrink-0 inline-flex items-center gap-1.5 rounded-full bg-primary/10 text-primary px-3 py-1.5 text-xs font-medium hover:bg-primary/20 transition-colors"
         title="Instalar la app de Portal 659 en tu dispositivo"
       >
-        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-        </svg>
+        <Smartphone className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
         Descargar app
       </button>
 
       {showHelp && (
         <div className="fixed inset-0 z-[80] bg-black/50 flex items-center justify-center p-4" onClick={() => setShowHelp(false)}>
           <div className="bg-card rounded-2xl p-6 max-w-sm w-full text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="text-4xl mb-3">📲</div>
+            <div className="pv2-section-icon mx-auto mb-3 h-14 w-14">
+              <Smartphone className="h-7 w-7" strokeWidth={1.8} aria-hidden="true" />
+            </div>
             <h3 className="font-display text-lg font-semibold mb-1">Instalá la app</h3>
             <p className="text-sm text-muted-foreground mb-4">
               Abrí el menú del navegador y tocá <strong>"Agregar a pantalla de inicio"</strong>. La app queda en tu celular para pedir más rápido.

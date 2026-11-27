@@ -3,6 +3,9 @@
 /* Tasty Station UI (diseño del panel): tokens scoped bajo .ts-ui + kit.
    No pisa el sitio público. Ver src/app/styles/tasty-station.css */
 @import "./styles/tasty-station.css";
+/* Diseño público v2 (Home + chrome público): tokens scoped bajo .pv2.
+   No pisa el tema global ni el panel (.ts-ui). Ver src/app/styles/public-v2.css */
+@import "./styles/public-v2.css";
 
 @theme {
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;

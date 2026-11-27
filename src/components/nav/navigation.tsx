@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { ShoppingBag } from "lucide-react";
+import { useCart } from "@/lib/cart";
 import { UserMenu } from "./user-menu";
 import { NotificationBell } from "./notification-bell";
 import { ZoneSelector } from "./zone-selector";
@@ -12,6 +14,7 @@ import { isImmersivePath } from "@/lib/immersive";
 
 export function Navigation() {
   const pathname = usePathname();
+  const { count, setOpen } = useCart();
   // Pantalla TV: es una pantalla de local, no una página del portal → sin nav.
   if (isImmersivePath(pathname)) return null;
   const isBackoffice =
@@ -23,7 +26,7 @@ export function Navigation() {
   // dejar al usuario sin acceso a la cuenta.
   if (isBackoffice) {
     return (
-      <nav data-portal-chrome className="sticky top-0 z-50 bg-card border-b border-border sm:hidden">
+      <nav data-portal-chrome className="pv2 sticky top-0 z-50 bg-card border-b border-border sm:hidden">
         <div className="container mx-auto px-3 h-14 flex items-center gap-2">
           <Link href="/" aria-label="Portal 659 — Inicio" className="flex-shrink-0 h-full flex items-center">
             <Logo />
@@ -37,7 +40,7 @@ export function Navigation() {
   }
 
   return (
-    <nav data-portal-chrome className="border-b border-border bg-card sticky top-0 z-50">
+    <nav data-portal-chrome className="pv2 border-b border-border bg-card sticky top-0 z-50">
       {/* Desktop: una sola fila (igual que antes) */}
       <div className="hidden sm:flex container mx-auto px-4 h-16 items-center gap-2">
         <Link href="/" aria-label="Portal 659 — Inicio" className="flex-shrink-0 h-full flex items-center">
@@ -49,6 +52,19 @@ export function Navigation() {
         </div>
         <InstallAppButton />
         <NotificationBell />
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-label="Ver carrito"
+          className="relative flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-[var(--pv2-accent-hover)]"
+        >
+          <ShoppingBag className="h-5 w-5" strokeWidth={1.8} aria-hidden="true" />
+          {count > 0 && (
+            <span className="pv2-cart-badge absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px]">
+              {count}
+            </span>
+          )}
+        </button>
         <UserMenu />
       </div>
 

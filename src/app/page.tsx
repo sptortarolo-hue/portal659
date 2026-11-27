@@ -10,7 +10,7 @@ import { OpenNowSection } from "@/components/home/open-now-section";
 import { BackButtonGuard } from "@/components/home/back-button-guard";
 import { SectionHeading } from "@/components/home/section-heading";
 import { VerticalIcon, verticalIconComponent } from "@/components/home/vertical-icon";
-import { PromoCarousel } from "@/components/home/promo-carousel";
+import { OffersSection, type FeaturedOfferItem } from "@/components/home/offers-section";
 import { fetchRankStats, rankVendors } from "@/lib/ranking";
 import { ArrowRight, CalendarDays, Compass, Flame, MapPin, Newspaper, Sparkles, TrendingUp } from "lucide-react";
 import { itemListJsonLd, organizationJsonLd, websiteJsonLd } from "@/lib/json-ld";
@@ -93,32 +93,42 @@ export default async function HomePage() {
     featuredServicesRaw = [];
   }
 
-  // Oferta del día: una sola por comercio (los destacados viejos con más de
-  // una oferta se deduplican acá; el server ya enforcea 1 por vendor).
-  // Mezcla productos y servicios: si un comercio tuviera los dos, gana el
-  // producto (como hoy) y el servicio queda fuera.
-  const seenFeaturedVendors = new Set<string>();
-  const featuredProducts =
-    (offers || [])?.filter((o) => {
-      if (!o.featured_today || o.vendors?.vertical === "servicio") return false;
-      const vid = o.vendors?.id;
-      if (!vid || seenFeaturedVendors.has(vid)) return false;
-      seenFeaturedVendors.add(vid);
-      return true;
-    }) || [];
-  const featuredServices =
-    (featuredServicesRaw || []).filter((s: any) => {
-      if (!s || !s.vendors?.id || seenFeaturedVendors.has(s.vendors.id)) return false;
-      seenFeaturedVendors.add(s.vendors.id);
-      return true;
-    }) || [];
-  // Intercalados para que los servicios no queden siempre al final.
-  type FeaturedItem = { kind: "product"; id: string; data: OfferWithVendor } | { kind: "service"; id: string; data: (typeof featuredServices)[number] };
-  const featuredItems: FeaturedItem[] = [];
-  for (let i = 0; i < Math.max(featuredProducts.length, featuredServices.length); i++) {
-    if (featuredProducts[i]) featuredItems.push({ kind: "product", id: featuredProducts[i].id, data: featuredProducts[i] });
-    if (featuredServices[i]) featuredItems.push({ kind: "service", id: featuredServices[i].id, data: featuredServices[i] });
-  }
+  // Todas las ofertas que los comercios marcaron como destacadas: sin slice
+  // ni dedupe por comercio. Cada tarjeta usa su propia foto.
+  const featuredProducts = (offers || []).filter(
+    (o) => o.featured_today && o.vendors?.vertical !== "servicio"
+  );
+  const featuredServices = featuredServicesRaw || [];
+
+  const offerSectionItems: FeaturedOfferItem[] = [
+    ...featuredProducts.map((o) => ({
+      kind: "product" as const,
+      id: o.id,
+      name: o.name,
+      description: o.description,
+      price: Number(o.price),
+      promoPrice: o.promo_price != null ? Number(o.promo_price) : null,
+      category: o.category,
+      storeName: o.vendors?.store_name || "",
+      storeSlug: o.vendors?.slug || "",
+      imageUrl: o.image_url,
+      vertical: o.vendors?.vertical || null,
+    })),
+    ...featuredServices.map((s) => ({
+      kind: "service" as const,
+      id: s.id,
+      name: s.name,
+      description: s.description,
+      durationMin: s.duration_min != null ? Number(s.duration_min) : null,
+      price: s.price != null ? Number(s.price) : null,
+      priceFrom: s.price_from != null ? Number(s.price_from) : null,
+      priceTo: s.price_to != null ? Number(s.price_to) : null,
+      storeName: s.vendors?.store_name || "",
+      storeSlug: s.vendors?.slug || "",
+      imageUrl: s.image_url,
+      vertical: s.vendors?.vertical || null,
+    })),
+  ];
   const destacados = (vendors || []).filter((v) => {
     if (v.featured) return true;
     // Prioridad del plan Oficios: servicios con plan vigente también destacan.
@@ -199,46 +209,6 @@ export default async function HomePage() {
   } catch {
     barrioNews = [];
   }
-
-  const vendorById = new Map((vendors || []).map((v) => [v.id, v]));
-  const fallbackImage = featuredItems[0]?.data.image_url || (vendors || [])[0]?.image_url || null;
-
-  const promoSlides = [
-    {
-      title: "Lo mejor del barrio, en un solo lugar",
-      subtitle: "Pedí online o escribí por WhatsApp. 0% comisión.",
-      cta: "Ver ofertas",
-      href: "/buscar",
-      imageUrl: fallbackImage,
-      name: "Ofertas de Sicardi y Garibaldi",
-      vertical: null as string | null,
-    },
-    ...featuredItems.slice(0, 4).map((it) => {
-      const slug = it.data.vendors?.slug || "";
-      const vendor = vendorById.get(it.data.vendors?.id || "");
-      return {
-        title: it.data.name,
-        subtitle: it.data.vendors?.store_name || "",
-        cta: it.kind === "product" ? "Ver oferta" : "Reservar turno",
-        href:
-          it.kind === "product"
-            ? `/tienda/${slug}?menu=1&oferta=${it.id}`
-            : `/tienda/${slug}#reservar-turno`,
-        imageUrl: it.data.image_url || vendor?.image_url || null,
-        name: it.data.name,
-        vertical: it.data.vendors?.vertical || null,
-      };
-    }),
-    {
-      title: "Lo más pedido del barrio",
-      subtitle: "Lo que tus vecinos están comprando ahora",
-      cta: "Ver tendencias",
-      href: "#populares",
-      imageUrl: fallbackImage,
-      name: "Lo más pedido del barrio",
-      vertical: null as string | null,
-    },
-  ].slice(0, 6);
 
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.portal659.com.ar").replace(/\/$/, "");
   const jsonLd = [
@@ -327,16 +297,8 @@ export default async function HomePage() {
         </HorizontalCarousel>
       </section>
 
-      {/* Carrusel promocional animado: ofertas y sugerencias del día */}
-      <section className="container mx-auto px-4 py-8 sm:py-10 scroll-mt-20" id="ofertas">
-        <SectionHeading
-          icon={Flame}
-          eyebrow="Hoy"
-          title="Ofertas y sugerencias de hoy"
-          description={`Lo que los comercios de ${zone.name} te recomiendan ahora`}
-        />
-        <PromoCarousel slides={promoSlides} />
-      </section>
+      {/* Ofertas del día: una tarjeta por producto/servicio destacado */}
+      <OffersSection items={offerSectionItems} zoneName={zone.name} />
 
       {/* Lo más pedido (ranking animado) */}
       <div id="populares">

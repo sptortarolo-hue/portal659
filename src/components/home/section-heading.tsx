@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 
 /** Cabecera uniforme de las secciones de la Home (solo presentación). */
@@ -8,6 +9,7 @@ export function SectionHeading({
   description,
   count,
   live = false,
+  rightSlot,
 }: {
   icon?: LucideIcon;
   eyebrow?: string;
@@ -15,6 +17,7 @@ export function SectionHeading({
   description?: string;
   count?: number;
   live?: boolean;
+  rightSlot?: ReactNode;
 }) {
   return (
     <div className="pv2-section-heading">
@@ -36,7 +39,7 @@ export function SectionHeading({
           {description && <p className="pv2-subtitle mt-1">{description}</p>}
         </div>
       </div>
-      {count != null && <span className="pv2-count">{count}</span>}
+      {rightSlot ?? (count != null && <span className="pv2-count">{count}</span>)}
     </div>
   );
 }

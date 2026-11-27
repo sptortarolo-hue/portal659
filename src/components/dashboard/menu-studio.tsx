@@ -32,6 +32,7 @@ import {
 } from "@/components/dashboard/product-packaging-section";
 import { CategoryPackagingManager } from "@/components/dashboard/category-packaging-manager";
 import { categoryKey } from "@/lib/product-packaging";
+import { parsePriceInput } from "@/lib/price-input";
 import {
   applyRounding,
   describeRounding,
@@ -820,8 +821,9 @@ export function MenuStudio({
   }
 
   async function handleOfferSubmit() {
-    if (!offName.trim() || !offPrice) {
-      setMsg("Completá nombre y precio");
+    const parsedPrice = parsePriceInput(offPrice);
+    if (!offName.trim() || parsedPrice == null) {
+      setMsg("Completá nombre y un precio válido (0 permitido)");
       return;
     }
     setSaving(true);
@@ -845,7 +847,7 @@ export function MenuStudio({
     const payload = {
       name: offName.trim(),
       description: offDesc,
-      price: Number(offPrice),
+      price: parsedPrice,
       category: offCategory,
       image_url: imageUrl,
       stock: offStockControl ? offStock : null,

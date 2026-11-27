@@ -25,6 +25,7 @@ import { SuggestionsManager } from "@/components/dashboard/suggestions-manager";
 import { SupplierSelect } from "@/components/dashboard/supplier-select";
 import { clearDraft } from "@/lib/draft";
 import { toDateOnly } from "@/lib/expiry";
+import { parsePriceInput } from "@/lib/price-input";
 import { isGiftProductRow } from "@/lib/gift-card-share";
 import { ProductModifiersBlock } from "@/components/dashboard/modifier-editor";
 import { ProductOptionsEditor } from "@/components/dashboard/product-options-editor";
@@ -532,8 +533,9 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
   }
 
   async function handleSubmit() {
-    if (!offName.trim() || !offPrice) {
-      setMsg("Completá nombre y precio");
+    const parsedPrice = parsePriceInput(offPrice);
+    if (!offName.trim() || parsedPrice == null) {
+      setMsg("Completá nombre y un precio válido (0 permitido)");
       return;
     }
     if (isModa && offHasVariants && variantRows.length > 0) {
@@ -574,7 +576,7 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
       ? {
           name: offName.trim(),
           description: offDesc,
-          price: Number(offPrice),
+          price: parsedPrice,
           category: offCategory,
           image_url: imageUrl,
           stock: offHasVariants ? 0 : offStock,
@@ -600,7 +602,7 @@ export function ProductManager({ isModa = false, isComercio = false, showCatalog
       : {
           name: offName.trim(),
           description: offDesc,
-          price: Number(offPrice),
+          price: parsedPrice,
           category: offCategory,
           image_url: imageUrl,
           stock: offStockControl ? offStock : null,

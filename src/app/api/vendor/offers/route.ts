@@ -6,6 +6,7 @@ import { resolveVendorPlan } from "@/lib/plans";
 import { isValidDateOnly, toDateOnly } from "@/lib/expiry";
 import { normalizePlu } from "@/lib/scale-barcode";
 import { attachPackagingToRows } from "@/lib/product-packaging-server";
+import { parsePriceInput } from "@/lib/price-input";
 import { NextResponse } from "next/server";
 import type { Plan, Vendor } from "@/types/database";
 
@@ -113,12 +114,16 @@ export async function POST(request: Request) {
         .map((x: any) => ({ product_id: String(x.product_id), qty: Math.max(1, Math.round(Number(x.qty) || 1)) }))
     : [];
 
-  // Alta desde comprobante de proveedor: se crea con nombre y costo, y el
-  // precio de venta se completa después en el catálogo.
-  if (!name || (!price && body?.from_invoice !== true)) {
+  // Precio 0 es VÁLIDO (el asistente de precios y Compras ya crean productos
+  // a precio 0 con from_invoice). Antes se usaba `!price`, así que un precio
+  // cargado en 0 —o escrito con coma "1500,50" que parseaba NaN— llegaba al
+  // servidor como null y daba "El nombre y el precio son obligatorios" aunque
+  // los campos estuvieran completos. Cliente y servidor comparten el helper.
+  const parsedPrice = parsePriceInput(price as string | number | null | undefined);
+  if (!name || (parsedPrice == null && body?.from_invoice !== true)) {
     return NextResponse.json({ error: "El nombre y el precio son obligatorios" }, { status: 400 });
   }
-  const effectivePrice = Number(price) || 0;
+  const effectivePrice = parsedPrice ?? 0;
 
   // Tolerante a migración de packs sin aplicar: sin la columna, se ignora.
   const hasPack = await queryOne<{ exists: boolean }>(

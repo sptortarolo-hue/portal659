@@ -14,8 +14,10 @@ const GATE_MSG = "El empaque por producto forma parte del plan Gestión integral
 /**
  * Empaque por defecto de una categoría (se carga UNA vez, lo heredan todos
  * los productos de esa categoría con packaging_mode='category').
- * Body: { category: string, lines: [{ ingredient_id, qty }] }
- * lines vacío = quitar el default de la categoría.
+ * Body: { category: string, lines: [{ ingredient_id, qty }], remove?: boolean }
+ * `remove: true` quita el default. Guardar con líneas vacías NO borra nada:
+ * devuelve 400 para evitar que un click accidental deje la categoría sin
+ * empaque (era la causa de "no se guarda").
  * Los triggers recalculan solos el costo de todos los productos alcanzados.
  */
 export async function POST(request: Request) {
@@ -39,6 +41,14 @@ export async function POST(request: Request) {
   const parsed = normalizePackagingLines(body?.lines);
   if (!parsed.ok) return NextResponse.json({ ok: false, error: parsed.error }, { status: 400 });
 
+  const remove = body?.remove === true;
+  if (!remove && parsed.lines.length === 0) {
+    return NextResponse.json(
+      { ok: false, error: "Agregá al menos un empaque antes de guardar, o usá 'Quitar default'." },
+      { status: 400 }
+    );
+  }
+
   try {
     await withTransaction(async (tx) => {
       const ingredientIds = [...new Set(parsed.lines.map((l) => l.ingredient_id))];
@@ -54,7 +64,7 @@ export async function POST(request: Request) {
         `SELECT id FROM packaging_defaults WHERE vendor_id = $1 AND category_key = $2 LIMIT 1`,
         [gate.vendor.id, key]
       );
-      if (parsed.lines.length === 0) {
+      if (remove) {
         if (def) {
           // El trigger BEFORE DELETE pone en 0 el costo de los productos que
           // heredaban este default.

@@ -96,7 +96,7 @@ export function CategoryPackagingManager({ categories, onChange, refreshKey }: P
       const res = await fetch("/api/vendor/product-packaging/defaults", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ category: currentCategory.name, lines: payloadLines }),
+        body: JSON.stringify({ category: currentCategory.name, lines: payloadLines, remove }),
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok || d.ok === false) throw new Error(d?.error || "No se pudo guardar");
@@ -208,19 +208,30 @@ export function CategoryPackagingManager({ categories, onChange, refreshKey }: P
                   </div>
                 </>
               )}
+              {lines.length === 0 && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  Agregá al menos un empaque con “+ Agregar empaque” para poder guardar.
+                </p>
+              )}
               <div className="flex flex-wrap gap-2 pt-1">
-                <Button size="sm" onClick={() => save(false)} disabled={busy || catalog.length === 0}>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => save(false)}
+                  disabled={busy || catalog.length === 0 || lines.length === 0}
+                >
                   {busy ? "Guardando…" : "Guardar default"}
                 </Button>
                 {hasDefault(currentCategory.name) && (
-                  <Button size="sm" variant="outline" onClick={() => save(true)} disabled={busy}>
+                  <Button type="button" size="sm" variant="outline" onClick={() => save(true)} disabled={busy}>
                     Quitar default
                   </Button>
                 )}
               </div>
+              {msg && <p className="text-xs text-muted-foreground">{msg}</p>}
             </div>
           )}
-          {msg && <p className="text-xs text-muted-foreground">{msg}</p>}
+          {!currentCategory && msg && <p className="text-xs text-muted-foreground">{msg}</p>}
         </>
       )}
     </div>

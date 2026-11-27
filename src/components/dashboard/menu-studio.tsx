@@ -446,6 +446,8 @@ export function MenuStudio({
 
   // Empaque masivo (selección múltiple del catálogo).
   const [packBulkOpen, setPackBulkOpen] = useState(false);
+  const [packModalTab, setPackModalTab] = useState<"categorias" | "productos">("categorias");
+  const [packModalKey, setPackModalKey] = useState(0);
   const [packBulkMode, setPackBulkMode] = useState<"simple" | "category" | "none">("category");
   const [packBulkIng, setPackBulkIng] = useState("");
   const [packBulkQty, setPackBulkQty] = useState("1");
@@ -1525,7 +1527,12 @@ export function MenuStudio({
                   variant="outline"
                   className="hidden lg:inline-flex"
                   disabled={filteredOffers.length === 0}
-                  onClick={() => { setPackBulkIng(offPackagingCatalog[0]?.id || ""); setPackBulkOpen(true); }}
+                  onClick={() => {
+                    setPackBulkIng(offPackagingCatalog[0]?.id || "");
+                    setPackModalTab("categorias");
+                    setPackModalKey((k) => k + 1);
+                    setPackBulkOpen(true);
+                  }}
                 >
                   📦 Empaque{selected.size > 0 ? ` (${selected.size})` : ""}
                 </Button>
@@ -1640,9 +1647,6 @@ export function MenuStudio({
           <p className="text-xs text-muted-foreground">
             Las categorías ordenan {isComercio ? "el catálogo" : "la carta"} del micrositio. Usá ↑↓ para cambiar el orden.
           </p>
-          {isComercio && canEditCost && (
-            <CategoryPackagingManager categories={categories} onChange={() => { loadPackaging(); reload(); }} />
-          )}
         </>
       )}
 
@@ -2080,73 +2084,110 @@ export function MenuStudio({
         </div>
       </Modal>
 
-      {/* Empaque masivo (selección múltiple del catálogo) */}
+      {/* Empaque: default por categoría + asignación a selección */}
       <Modal
         open={packBulkOpen}
         onClose={() => setPackBulkOpen(false)}
-        title="Aplicar empaque"
+        title="📦 Empaque"
         footer={
-          <>
-            <Button
-              type="button"
-              className="flex-1"
-              disabled={packBulkSaving || bulkTargets.length === 0 ||
-                (packBulkMode === "simple" && (!packBulkIng || !Number(packBulkQty)))}
-              onClick={applyBulkPackaging}
-            >
-              {packBulkSaving ? "Aplicando…" : `Aplicar a ${bulkTargets.length}`}
-            </Button>
+          packModalTab === "categorias" ? (
             <Button type="button" variant="outline" onClick={() => setPackBulkOpen(false)}>
-              Cancelar
+              Cerrar
             </Button>
-          </>
+          ) : (
+            <>
+              <Button
+                type="button"
+                className="flex-1"
+                disabled={packBulkSaving || bulkTargets.length === 0 ||
+                  (packBulkMode === "simple" && (!packBulkIng || !Number(packBulkQty)))}
+                onClick={applyBulkPackaging}
+              >
+                {packBulkSaving ? "Aplicando…" : `Aplicar a ${bulkTargets.length}`}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setPackBulkOpen(false)}>
+                Cancelar
+              </Button>
+            </>
+          )
         }
       >
         <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            {selected.size > 0
-              ? `Se aplica a los ${bulkTargets.length} ${itemLabelPlural} seleccionados.`
-              : `Sin selección: se aplica a los ${bulkTargets.length} ${itemLabelPlural} filtrados.`}{" "}
-            Los precios no se recalculan: el empaque solo entra en el costo y en el precio sugerido.
-          </p>
-          <div className="space-y-1">
-            <Label className="text-xs">Opción</Label>
-            <select
-              value={packBulkMode}
-              onChange={(e) => setPackBulkMode(e.target.value as "simple" | "category" | "none")}
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+          <div className="flex gap-1 rounded-lg bg-muted p-1">
+            <button
+              type="button"
+              onClick={() => setPackModalTab("categorias")}
+              className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                packModalTab === "categorias" ? "bg-background shadow-sm" : "text-muted-foreground"
+              }`}
             >
-              <option value="category">Usar empaque por defecto de la categoría</option>
-              <option value="simple">Cargar empaque (override) en estos productos</option>
-              <option value="none">Quitar empaque</option>
-            </select>
+              Default por categoría
+            </button>
+            <button
+              type="button"
+              onClick={() => setPackModalTab("productos")}
+              className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                packModalTab === "productos" ? "bg-background shadow-sm" : "text-muted-foreground"
+              }`}
+            >
+              Aplicar a productos
+            </button>
           </div>
-          {packBulkMode === "simple" && (
-            <div className="flex gap-2">
-              <select
-                value={packBulkIng}
-                onChange={(e) => setPackBulkIng(e.target.value)}
-                className="h-10 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm"
-              >
-                {offPackagingCatalog.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name} — ${c.unit_cost}</option>
-                ))}
-              </select>
-              <Input
-                type="number"
-                min={0.001}
-                step="any"
-                value={packBulkQty}
-                onChange={(e) => setPackBulkQty(e.target.value)}
-                className="w-20"
-                aria-label="Cantidad de empaque"
-              />
-            </div>
-          )}
-          {offPackagingCatalog.length === 0 && packBulkMode === "simple" && (
-            <p className="text-xs text-muted-foreground">
-              Cargá bolsas/etiquetas como insumos antes de aplicar el empaque.
-            </p>
+
+          {packModalTab === "categorias" ? (
+            <CategoryPackagingManager
+              categories={categories}
+              refreshKey={packModalKey}
+              onChange={() => { loadPackaging(); reload(); }}
+            />
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">
+                {selected.size > 0
+                  ? `Se aplica a los ${bulkTargets.length} ${itemLabelPlural} seleccionados.`
+                  : `Sin selección: se aplica a los ${bulkTargets.length} ${itemLabelPlural} filtrados.`}{" "}
+                Los precios no se recalculan: el empaque solo entra en el costo y en el precio sugerido.
+              </p>
+              <div className="space-y-1">
+                <Label className="text-xs">Opción</Label>
+                <select
+                  value={packBulkMode}
+                  onChange={(e) => setPackBulkMode(e.target.value as "simple" | "category" | "none")}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="category">Usar empaque por defecto de la categoría</option>
+                  <option value="simple">Cargar empaque (override) en estos productos</option>
+                  <option value="none">Quitar empaque</option>
+                </select>
+              </div>
+              {packBulkMode === "simple" && (
+                <div className="flex gap-2">
+                  <select
+                    value={packBulkIng}
+                    onChange={(e) => setPackBulkIng(e.target.value)}
+                    className="h-10 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    {offPackagingCatalog.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name} — ${c.unit_cost}</option>
+                    ))}
+                  </select>
+                  <Input
+                    type="number"
+                    min={0.001}
+                    step="any"
+                    value={packBulkQty}
+                    onChange={(e) => setPackBulkQty(e.target.value)}
+                    className="w-20"
+                    aria-label="Cantidad de empaque"
+                  />
+                </div>
+              )}
+              {offPackagingCatalog.length === 0 && packBulkMode === "simple" && (
+                <p className="text-xs text-muted-foreground">
+                  Cargá bolsas/etiquetas como insumos antes de aplicar el empaque.
+                </p>
+              )}
+            </>
           )}
         </div>
       </Modal>

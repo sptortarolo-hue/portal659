@@ -5,7 +5,7 @@
  * los productos de esa categoría (patrón Dots / InnoBooks).
  * Los productos pueden salirse con el override del editor de producto.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getJson } from "@/components/dashboard/shared";
@@ -26,11 +26,13 @@ type DefaultRow = {
 type Props = {
   categories: { id: string; name: string }[];
   onChange?: () => void;
+  /** Cambia para forzar la recarga al abrir el modal. */
+  refreshKey?: string | number;
 };
 
 const money = (n: number) => `$${Number(n || 0).toLocaleString("es-AR", { maximumFractionDigits: 2 })}`;
 
-export function CategoryPackagingManager({ categories, onChange }: Props) {
+export function CategoryPackagingManager({ categories, onChange, refreshKey }: Props) {
   const [catalog, setCatalog] = useState<PackagingCatalogItem[]>([]);
   const [defaults, setDefaults] = useState<DefaultRow[]>([]);
   const [active, setActive] = useState("");
@@ -46,15 +48,27 @@ export function CategoryPackagingManager({ categories, onChange }: Props) {
     setCatalog(d?.ingredients || []);
     setDefaults(d?.defaults || []);
   }, []);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, refreshKey]);
 
-  const currentCategory = categories.find((c) => c.id === active) || null;
+  // La DB puede tener categorías repetidas (o con distinto id): se muestran
+  // una sola vez por nombre normalizado, igual que la clave del default.
+  const uniqueCategories = useMemo(() => {
+    const seen = new Set<string>();
+    return categories.filter((c) => {
+      const k = categoryKey(c.name);
+      if (!k || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  }, [categories]);
+
+  const currentCategory = uniqueCategories.find((c) => c.id === active) || null;
   const hasDefault = (name: string) => defaults.some((d) => d.category_key === categoryKey(name));
 
   function selectCategory(id: string) {
     setActive(id);
     setMsg("");
-    const cat = categories.find((c) => c.id === id);
+    const cat = uniqueCategories.find((c) => c.id === id);
     const def = cat ? defaults.find((d) => d.category_key === categoryKey(cat.name)) : null;
     setLines((def?.lines || []).map((l) => ({ ...l })));
   }
@@ -87,6 +101,7 @@ export function CategoryPackagingManager({ categories, onChange }: Props) {
       const d = await res.json().catch(() => ({}));
       if (!res.ok || d.ok === false) throw new Error(d?.error || "No se pudo guardar");
       setMsg(remove ? "Default quitado." : "Empaque por defecto guardado. Ya aplica a todos los productos de la categoría.");
+      if (remove) setLines([]);
       await load();
       onChange?.();
     } catch (e) {
@@ -106,12 +121,12 @@ export function CategoryPackagingManager({ categories, onChange }: Props) {
         </p>
       </div>
 
-      {categories.length === 0 ? (
+      {uniqueCategories.length === 0 ? (
         <p className="text-xs text-muted-foreground">Creá una categoría primero.</p>
       ) : (
         <>
           <div className="flex flex-wrap gap-1.5">
-            {categories.map((c) => (
+            {uniqueCategories.map((c) => (
               <button
                 key={c.id}
                 type="button"

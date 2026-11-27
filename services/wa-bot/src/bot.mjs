@@ -4,6 +4,7 @@ import { config } from "./config.mjs";
 import { getState, setState, clearState, forEachConversation } from "./state.mjs";
 import { getMenu, getMenuSync, getMenuWithStatus, matchProduct, matchAllProducts, normalizeForMatch, menuSummary } from "./menu.mjs";
 import { normalizeDraftItem, isValidDraftItem } from "./draft.mjs";
+import { sanitizeParsed, upsertItems } from "./order-intent.mjs";
 import { greetingTextTone, summaryTextTone, pendingQuestionsTone, lowConfidenceTone, reorderTone, confirmTone, noMatchTone, answerTone, portalNavFooter } from "./talk.mjs";
 import { parseWithLlm, parseByRules, normalizeEs, extractFromText, bareName, stripAddVerb,
 classifyIntent, llmStats } from "./nlu.mjs";
@@ -449,6 +450,15 @@ async function parseItems(state, vendor, text, products) {
     console.error(`[bot] reconcile fail: ${e?.message}`);
   }
   if (!parsed) return null;
+  // Contrato estricto: el LLM propone, acá se valida ANTES de tocar el estado.
+  // Sin esto un producto se guardaba como nombre del cliente y un parse parcial
+  // reemplazaba el carrito (bugs reportados desde WhatsApp).
+  parsed = sanitizeParsed(parsed, {
+    text: t,
+    products,
+    cart: state.items,
+    pending: missingFields(state, vendor),
+  });
   parsed.items = resolveOfferIds(products, parsed.items);
   // Sanitized audit event: NO datos de contacto (dirección, nombre, teléfono),
   // solo la intención y los ítems con qty. Adeceo para meter en analytics:
@@ -681,7 +691,7 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
     if (/^(s[i\u00ed]|si|yes|ok|dale|confirmo|claro)$/i.test(t)) {
       const lo = state._pendingReorder;
       const products = await getMenu(vendor.id);
-      mergeItems(state, vendor.id, (lo.items || []).map((p) => ({
+      mergeItems(state, (lo.items || []).map((p) => ({
         offerId: p.offerId || p.id,
         variantId: p.variantId,
         name: p.name,
@@ -689,7 +699,7 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
         unit: p.unit,
         weightKg: p.weightKg,
         modifiers: p.modifiers || [],
-      })));
+      })), vendor.id);
       state.customerName = state.customerName || lo.customerName || null;
       state.customerAddress = state.customerAddress || lo.customerAddress || null;
       state.method = state.method || lo.method || null;
@@ -803,7 +813,7 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
     if (/^(s[i\u00ed]|si|yes|ok|dale|confirmo|claro)\b/i.test(t)) {
       const items = pc.items || [];
       if (items.length) {
-        mergeItems(state, vendor.id, items.map((p) => ({ offerId: p.offerId || p.id, variantId: p.variantId, name: p.name, qty: Math.max(1, Number(p.qty) || 1), modifiers: p.modifiers || [] })));
+        mergeItems(state, items.map((p) => ({ offerId: p.offerId || p.id, variantId: p.variantId, name: p.name, qty: Math.max(1, Number(p.qty) || 1), modifiers: p.modifiers || [] })), vendor.id);
         applyContactFields(state, pc.parsed || {});
       }
       state.pendingConfirm = null;
@@ -933,13 +943,13 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
         }
         itemsToAdd.push(p);
       }
-      mergeItems(state, vendor.id, itemsToAdd.map((p) => ({
+      mergeItems(state, itemsToAdd.map((p) => ({
         offerId: p.offerId || p.id,
         variantId: p.variantId,
         name: p.name,
         qty: Math.max(1, Number(p.qty) || 1),
         modifiers: p.modifiers || [],
-      })));
+      })), vendor.id);
       applyContactFields(state, parsed);
     } else {
       applyParsed(state, parsed, waId);
@@ -1232,13 +1242,13 @@ async function handleStep({ vendor, text, state, replies, waId }) {
 
       if (chosenVariant) {
         // Agregar el ítem al carrito con la variante elegida
-        mergeItems(state, vendor.id, [{
+        mergeItems(state, [{
           offerId: pv.productId,
           variantId: chosenVariant.id,
           name: pv.productName,
           qty: pv.qty,
           modifiers: [],
-        }]);
+        }], vendor.id);
         state.pendingVariant = null;
         state.handoffCount = 0;
         const talleStr = chosenVariant.talle ? ` talle ${chosenVariant.talle}` : '';
@@ -1357,7 +1367,7 @@ async function handleStep({ vendor, text, state, replies, waId }) {
           replies.push("✅ Pedido confirmado. Quedó pendiente de pago.");
         }
         replies.push(transferText(vendor, order.total));
-        if (order.trackToken) {
+        if (order.trackToken && config.waTone !== "humano") {
           replies.push(`📦 Seguí tu pedido acá: ${trackUrl(order.trackToken)}`);
         }
         replies.push("Mandame el comprobante (foto o PDF) por acá. Después de verificarlo, te confirmo. 🙌");
@@ -1367,7 +1377,7 @@ async function handleStep({ vendor, text, state, replies, waId }) {
         } else {
           replies.push("✅ ¡Pedido confirmado! Te avisamos por acá cuando esté listo.");
         }
-        if (order.trackToken) {
+        if (order.trackToken && config.waTone !== "humano") {
           replies.push(`📦 Seguí tu pedido acá: ${trackUrl(order.trackToken)}`);
         }
         state._cleared = true;
@@ -1411,13 +1421,13 @@ async function handleStep({ vendor, text, state, replies, waId }) {
     if (parsed?.items?.length) {
       const isAddition = /\b(agrega|agreg[áa]|agregame|agregalo|agregala|agregar|tambi[ée]n|tambien|sum[áa]|suma|sumar|m[áa]s|mas)(?=[\s.,!]|$)/i.test(t);
       if (isAddition && state.items.length > 0) {
-        mergeItems(state, vendor.id, (parsed.items || []).map((p) => ({
+        mergeItems(state, (parsed.items || []).map((p) => ({
           offerId: p.offerId || p.id,
           variantId: p.variantId,
           name: p.name,
           qty: Math.max(1, Number(p.qty) || 1),
           modifiers: p.modifiers || [],
-        })));
+        })), vendor.id);
       } else {
         applyParsed(state, parsed, waId);
       }
@@ -2259,23 +2269,9 @@ function shortReGreet(state, vendor) {
 // ———————————————————————————————————————————————————————————————————————————
 
 function applyParsed(state, parsed, waId) {
-  state.items = (parsed.items || []).map((p) => {
-    const normalized = normalizeDraftItem(p);
-    const existing = state.items.find((i) => String(i.offerId) === String(p.offerId || p.id));
-    const mods = Array.isArray(p.modifiers) && p.modifiers.length > 0
-      ? p.modifiers
-      : (existing?.modifiers || []);
-    return {
-      offerId: p.offerId || p.id,
-      variantId: p.variantId,
-      price: p.price ?? existing?.price ?? null,
-      name: p.name,
-      qty: normalized.qty,
-      unit: normalized.unit,
-      weightKg: normalized.weightKg,
-      modifiers: mods.length ? mods : (existing?.modifiers || []),
-    };
-  });
+  // Nunca reemplazar el carrito: actualizar/agregar sobre una copia. Así un
+  // parse incompleto no borra lo que el cliente ya había pedido.
+  state.items = upsertItems(state.items, parsed.items || [], parsed.op === "setQty" ? "setQty" : "add");
   applyContactFields(state, parsed);
 }
 

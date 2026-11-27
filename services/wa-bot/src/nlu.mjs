@@ -515,10 +515,17 @@ async function callOnce(message, products, ctx = null) {
   };
   const stageLabel = STAGE_LABEL[ctx?.stage] || `${ctx?.stage || 'BROWSING'}`;
   const storeName = ctx?.storeName || 'Portal 659';
+  const CONTRACT = [
+    "REGLAS DEL PEDIDO:",
+    "- customerName/customerAddress: sólo datos de contacto. Si parece producto del menú, dejalo null.",
+    "- items: sólo productos del menú, con el id exacto. Lo que no esté va en unknownItems.",
+    "- op: 'add' si dice agregar/sumá/también; 'setQty' si dice solo/mejor/cambiar por; 'remove' si dice sacar/quitar.",
+  ].join("\n");
   const systemWithVertical =
     SYSTEM.replace('{vertical}', ctx?.vertical || 'desconocida').replace('{stage}', stageLabel)
     + `\nTu comercio es: ${storeName}. Eres el asistente de ${storeName}, no de otro comercio, y tu misión es ayudar a este comercio y sus productos.`
-    + (ctx?.agentPrompt || "");
+    + (ctx?.agentPrompt || "")
+    + `\n\n${CONTRACT}`;
   const llmResult = await llmChat(
     [
       { role: "system", content: systemWithVertical + fewShot },

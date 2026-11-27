@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Badge } from "@/components/ui/badge";
+import { Package, ShoppingBag } from "lucide-react";
 import { AddToCartButton } from "@/components/offers/add-to-cart-button";
 import { ProductImage } from "@/components/product-image";
 import { CashPrice } from "@/components/store/cash-price";
@@ -167,7 +167,7 @@ function WeightPicker({
             type="button"
             onClick={(e) => { stop(e); if (!addDisabled) onAdd(); }}
             disabled={addDisabled}
-            className="rounded-md px-3 py-1.5 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="pv2-btn pv2-btn-primary px-3 py-1.5 text-sm disabled:opacity-50"
           >
             {addLabel}
           </button>
@@ -180,7 +180,7 @@ function WeightPicker({
               key={w}
               type="button"
               onClick={(e) => { stop(e); onChange(weightToInput(w)); }}
-              className="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-muted transition-colors"
+              className="pv2-pill px-2 py-0.5 text-[10px] font-medium"
             >
               {weightToInput(w)} kg
             </button>
@@ -498,40 +498,40 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
     <div
       onClick={openSheet}
       title="Ver detalle"
-      className="hidden sm:block border border-border rounded-xl p-4 bg-card hover:shadow-md transition-shadow scroll-mt-24 cursor-pointer"
+      className="pv2-card hidden sm:block p-4 scroll-mt-24 cursor-pointer"
     >
       <div className="flex items-start justify-between gap-4">
       <div className="flex items-start gap-3 min-w-0">
         {product.image_url ? (
-          <div className="h-20 w-20 rounded-xl overflow-hidden flex-shrink-0">
+          <div className="w-20 aspect-square overflow-hidden rounded-xl flex-shrink-0">
             <ProductImage src={product.image_url} name={product.name} category={product.category} vertical={vendor.vertical} alt={product.name} className="w-full h-full object-cover" />
           </div>
         ) : (
-          <div className="h-20 w-20 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden">
+          <div className="w-20 aspect-square flex items-center justify-center flex-shrink-0 overflow-hidden rounded-xl">
             <ProductImage src={null} name={product.name} category={product.category} vertical={vendor.vertical} alt={product.name} className="w-full h-full" iconClassName="h-8 w-8" />
           </div>
         )}
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
             <p className="font-semibold leading-tight truncate min-w-0 flex-1">{product.name}</p>
-            {product.featured_today && <Badge className="bg-sun text-ink hover:bg-sun">Hoy</Badge>}
+            {product.featured_today && <span className="pv2-chip">Hoy</span>}
             {promoPct > 0 ? (
-              <span className="text-[10px] font-bold text-white bg-red-500 rounded-full px-2 py-0.5 whitespace-nowrap flex-shrink-0">
+              <span className="pv2-chip whitespace-nowrap flex-shrink-0">
                 −{promoPct}%
               </span>
             ) : (product as any).promo_only ? (
-              <span className="text-[10px] font-bold text-white bg-red-500 rounded-full px-2 py-0.5 whitespace-nowrap flex-shrink-0">
+              <span className="pv2-chip whitespace-nowrap flex-shrink-0">
                 PROMO
               </span>
             ) : null}
-            {pack > 1 && <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] whitespace-nowrap">De a {pack}</Badge>}
-          {outStock && <Badge variant="secondary" className="bg-red-100 text-red-700 text-[10px]">Sin stock</Badge>}
+            {pack > 1 && <span className="pv2-chip">De a {pack}</span>}
+          {outStock && <span className="pv2-chip pv2-chip-muted">Sin stock</span>}
           {volBadge && acceptsCart && !outStock && volGroup && (
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); openPack(volGroup.id); }}
               title={hasCombo ? "Ver pack combinable" : "Ver precio por cantidad"}
-              className={`text-[10px] font-semibold rounded-full px-1.5 py-0.5 whitespace-nowrap border cursor-pointer ${volColor ? `${volColor.soft} ${volColor.border} ${volColor.text}` : "bg-emerald-50 border-emerald-200 text-emerald-700"}`}
+              className="pv2-chip whitespace-nowrap cursor-pointer"
             >{volBadge}</button>
           )}
           </div>
@@ -543,27 +543,27 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
       <div className="flex flex-col items-end gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
         {pack > 1 ? (
           <div className="text-right">
-            <span className="font-bold">${basePrice.toLocaleString("es-AR")}</span>
+            <span className="pv2-price">${basePrice.toLocaleString("es-AR")}</span>
             {showCash && (
-              <span className="block text-xs font-semibold text-emerald-700">efvo ${cashPrice(basePrice, Number(vendor.cashDiscountPct)).toLocaleString("es-AR")}</span>
+              <span className="block text-xs font-semibold pv2-icon-accent">efvo ${cashPrice(basePrice, Number(vendor.cashDiscountPct)).toLocaleString("es-AR")}</span>
             )}
             <span className="block text-xs text-muted-foreground">de a {pack} · c/u ${baseUnit.toLocaleString("es-AR")}</span>
           </div>
         ) : showCash ? (
-          <CashPrice price={basePrice} hasPromo={hasPromo} excluded={product.cash_discount_excluded} cashPct={vendor.cashDiscountPct} />
+          <CashPrice price={basePrice} hasPromo={hasPromo} excluded={product.cash_discount_excluded} cashPct={vendor.cashDiscountPct} plainClassName="pv2-price" />
         ) : product.promo_price ? (
           <div className="text-right">
-            <span className="font-bold text-primary">${Number(product.promo_price).toLocaleString("es-AR")}</span>
-            <span className="block text-xs text-muted-foreground line-through">${Number(product.price).toLocaleString("es-AR")}</span>
+            <span className="pv2-price">${Number(product.promo_price).toLocaleString("es-AR")}</span>
+            <span className="block pv2-price-old">${Number(product.price).toLocaleString("es-AR")}</span>
           </div>
         ) : showDesde ? (
-          <FromPrice min={desdeRange!.min} max={desdeRange!.max} valueClassName="font-bold" />
+          <FromPrice min={desdeRange!.min} max={desdeRange!.max} valueClassName="pv2-price" />
         ) : singleTotal != null ? (
-          <span className="font-bold">
+          <span className="pv2-price">
             ${singleTotal.toLocaleString("es-AR")}
           </span>
         ) : (
-          <span className="font-bold">
+          <span className="pv2-price">
             ${Number(product.price).toLocaleString("es-AR")}
             {isKg && <span className="text-xs font-medium text-muted-foreground">/kg</span>}
           </span>
@@ -585,7 +585,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
                 />
                 {showPackage && (
                   <button type="button" onClick={handleAddPackage} className="text-[11px] underline underline-offset-2 text-primary whitespace-nowrap">
-                    o 🛒 paquete — ${Number(packagePrice).toLocaleString("es-AR")}
+                    o <ShoppingBag className="inline h-3.5 w-3.5 align-[-2px]" /> paquete — ${Number(packagePrice).toLocaleString("es-AR")}
                   </button>
                 )}
               </span>
@@ -605,22 +605,22 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
     <button
       type="button"
       onClick={openSheet}
-      className="sm:hidden w-full text-left border border-border rounded-xl p-3 bg-card flex items-center gap-3 active:scale-[0.99] transition-transform scroll-mt-16"
+      className="pv2-card sm:hidden w-full text-left p-3 flex items-center gap-3 scroll-mt-16"
     >
       {product.image_url ? (
-        <div className="h-16 w-16 rounded-xl overflow-hidden flex-shrink-0">
+        <div className="w-16 aspect-square overflow-hidden rounded-xl flex-shrink-0">
           <ProductImage src={product.image_url} name={product.name} category={product.category} vertical={vendor.vertical} alt={product.name} className="w-full h-full object-cover" />
         </div>
       ) : (
-        <div className="h-16 w-16 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden bg-accent">
+        <div className="w-16 aspect-square flex items-center justify-center flex-shrink-0 overflow-hidden rounded-xl">
           <ProductImage src={null} name={product.name} category={product.category} vertical={vendor.vertical} alt={product.name} className="w-full h-full" iconClassName="h-6 w-6" />
         </div>
       )}
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 min-w-0">
           <p className="font-semibold leading-tight truncate min-w-0 flex-1">{product.name}</p>
-          {product.featured_today && <Badge className="bg-sun text-ink text-[10px] px-1.5 flex-shrink-0">Hoy</Badge>}
-          {pack > 1 && <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] px-1.5 whitespace-nowrap flex-shrink-0">De a {pack}</Badge>}
+          {product.featured_today && <span className="pv2-chip flex-shrink-0">Hoy</span>}
+          {pack > 1 && <span className="pv2-chip whitespace-nowrap flex-shrink-0">De a {pack}</span>}
         </div>
         {product.description && (
           <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{product.description}</p>
@@ -628,30 +628,30 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
           {pack > 1 ? (
             <>
-              <span className="font-bold">${basePrice.toLocaleString("es-AR")}</span>
+              <span className="pv2-price">${basePrice.toLocaleString("es-AR")}</span>
               <span className="text-xs text-muted-foreground">de a {pack}</span>
               {showCash && (
-                <span className="text-[11px] font-semibold text-emerald-700">efvo ${cashPrice(basePrice, Number(vendor.cashDiscountPct)).toLocaleString("es-AR")}</span>
+                <span className="text-[11px] font-semibold pv2-icon-accent">efvo ${cashPrice(basePrice, Number(vendor.cashDiscountPct)).toLocaleString("es-AR")}</span>
               )}
             </>
           ) : showCash ? (
-            <CashPrice price={basePrice} hasPromo={hasPromo} excluded={product.cash_discount_excluded} cashPct={vendor.cashDiscountPct} size="sm" plainClassName="font-bold" />
+            <CashPrice price={basePrice} hasPromo={hasPromo} excluded={product.cash_discount_excluded} cashPct={vendor.cashDiscountPct} size="sm" plainClassName="pv2-price" />
           ) : product.promo_price ? (
             <>
-              <span className="font-bold text-primary">${Number(product.promo_price).toLocaleString("es-AR")}</span>
-              <span className="text-xs text-muted-foreground line-through">${Number(product.price).toLocaleString("es-AR")}</span>
+              <span className="pv2-price">${Number(product.promo_price).toLocaleString("es-AR")}</span>
+              <span className="pv2-price-old">${Number(product.price).toLocaleString("es-AR")}</span>
             </>
           ) : showDesde ? (
-            <FromPrice min={desdeRange!.min} max={desdeRange!.max} valueClassName="font-bold" />
+            <FromPrice min={desdeRange!.min} max={desdeRange!.max} valueClassName="pv2-price" />
           ) : singleTotal != null ? (
-            <span className="font-bold">${singleTotal.toLocaleString("es-AR")}</span>
+            <span className="pv2-price">${singleTotal.toLocaleString("es-AR")}</span>
           ) : (
-            <span className="font-bold">${Number(product.price).toLocaleString("es-AR")}</span>
+            <span className="pv2-price">${Number(product.price).toLocaleString("es-AR")}</span>
           )}
-          {outStock && <Badge variant="secondary" className="bg-red-100 text-red-700 text-[10px]">Sin stock</Badge>}
-          {isKg && <Badge className="bg-sky-50 text-sky-700 border border-sky-200 text-[10px] whitespace-nowrap">$/kg</Badge>}
+          {outStock && <span className="pv2-chip pv2-chip-muted">Sin stock</span>}
+          {isKg && <span className="pv2-chip pv2-chip-muted whitespace-nowrap">$/kg</span>}
           {volBadge && acceptsCart && !outStock && (
-            <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-1.5 py-0.5 whitespace-nowrap">{volBadge}</span>
+            <span className="pv2-chip whitespace-nowrap">{volBadge}</span>
           )}
         </div>
       </div>
@@ -751,7 +751,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
         <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center" onClick={() => close()}>
           <div className="hidden sm:block absolute inset-0 bg-black/60" aria-hidden />
           <div
-            className="relative bg-background flex flex-col w-full h-full sm:h-fit sm:max-h-[90vh] sm:max-w-md sm:m-4 sm:rounded-2xl sm:border sm:border-border overflow-hidden"
+            className="pv2-card relative bg-background flex flex-col w-full h-full sm:h-fit sm:max-h-[90vh] sm:max-w-md sm:m-4 overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
           <header className="flex items-center gap-2 border-b border-border px-3 py-3">
@@ -775,30 +775,30 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
                 <div>
                   {pack > 1 ? (
                     <div>
-                      <span className="font-display text-2xl font-bold">${basePrice.toLocaleString("es-AR")}</span>
+                      <span className="pv2-price">${basePrice.toLocaleString("es-AR")}</span>
                       <p className="text-xs text-muted-foreground mt-0.5">Paquete de {pack} · c/u ${baseUnit.toLocaleString("es-AR")}</p>
                     </div>
                   ) : isKg ? (
                     <div>
-                      <span className="font-display text-2xl font-bold">${Number(product.price).toLocaleString("es-AR")}</span>
+                      <span className="pv2-price">${Number(product.price).toLocaleString("es-AR")}</span>
                       <span className="text-sm text-muted-foreground">/kg</span>
                     </div>
                   ) : showCash ? (
-                    <CashPrice price={basePrice} hasPromo={hasPromo} excluded={product.cash_discount_excluded} cashPct={vendor.cashDiscountPct} size="lg" plainClassName="font-display text-2xl font-bold" />
+                    <CashPrice price={basePrice} hasPromo={hasPromo} excluded={product.cash_discount_excluded} cashPct={vendor.cashDiscountPct} size="lg" plainClassName="pv2-price" />
                   ) : product.promo_price ? (
                     <div className="flex items-baseline gap-2">
-                      <span className="font-display text-2xl font-bold text-primary">${Number(product.promo_price).toLocaleString("es-AR")}</span>
-                      <span className="text-sm text-muted-foreground line-through">${Number(product.price).toLocaleString("es-AR")}</span>
+                      <span className="pv2-price">${Number(product.promo_price).toLocaleString("es-AR")}</span>
+                      <span className="pv2-price-old">${Number(product.price).toLocaleString("es-AR")}</span>
                     </div>
                   ) : showDesde ? (
-                    <FromPrice min={desdeRange!.min} max={desdeRange!.max} valueClassName="font-display text-2xl font-bold" />
+                    <FromPrice min={desdeRange!.min} max={desdeRange!.max} valueClassName="pv2-price" />
                   ) : singleTotal != null ? (
-                    <span className="font-display text-2xl font-bold">${singleTotal.toLocaleString("es-AR")}</span>
+                    <span className="pv2-price">${singleTotal.toLocaleString("es-AR")}</span>
                   ) : (
-                    <span className="font-display text-2xl font-bold">${Number(product.price).toLocaleString("es-AR")}</span>
+                    <span className="pv2-price">${Number(product.price).toLocaleString("es-AR")}</span>
                   )}
                 </div>
-                {product.featured_today && <Badge className="bg-sun text-ink">Hoy</Badge>}
+                {product.featured_today && <span className="pv2-chip">Hoy</span>}
               </div>
               {/* Precio por volumen del mismo producto (grupos de 1 o más):
                   sub-línea bajo el precio, donde sale la de packs. */}
@@ -821,12 +821,12 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
                   }}
                   className={`w-full rounded-xl border px-3 py-2 text-xs font-semibold text-left ${volColor ? `${volColor.soft} ${volColor.border} ${volColor.strong}` : ""}`}
                 >
-                  🧊 Armar pack: ver combinables
+                  <Package className="inline h-4 w-4 align-[-3px] mr-1" /> Armar pack: ver combinables
                 </button>
               )}
 
               {outStock && (
-                <p className="text-sm font-medium text-red-600 text-center py-2">Sin stock por el momento</p>
+                <p className="text-sm font-medium text-muted-foreground text-center py-2">Sin stock por el momento</p>
               )}
 
               {/* Modificadores INLINE (sin overlay) */}
@@ -988,9 +988,9 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
                     <button
                       type="button"
                       onClick={handleAddPackage}
-                      className="w-full rounded-xl border border-primary/40 text-primary text-sm font-semibold py-2.5 hover:bg-primary/5 transition-colors"
+                      className="pv2-btn w-full border border-primary/40 text-primary text-sm font-semibold py-2.5 hover:bg-primary/5"
                     >
-                      🛒 Llevar el paquete — ${Number(packagePrice).toLocaleString("es-AR")}
+                      <ShoppingBag className="inline h-4 w-4 align-[-3px] mr-1" /> Llevar el paquete — ${Number(packagePrice).toLocaleString("es-AR")}
                     </button>
                   )}
                   {/* Total + Agregar */}
@@ -998,7 +998,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
                     type="button"
                     onClick={handleAdd}
                     disabled={!allRequiredMet || (isKg && !kgOk)}
-                    className="w-full rounded-xl bg-primary text-primary-foreground text-sm font-semibold py-3 hover:bg-primary/90 transition-colors active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="pv2-btn pv2-btn-primary w-full py-3 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Agregar al pedido · ${displayTotal.toLocaleString("es-AR")}
                     {modifiers.length > 0 && !allRequiredMet && ` (te ${totalMissing === 1 ? "falta 1" : `faltan ${totalMissing}`})`}

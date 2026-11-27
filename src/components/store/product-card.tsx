@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
+import { Package, X } from "lucide-react";
 import { AddToCartButton } from "@/components/offers/add-to-cart-button";
 import { VariantSelector } from "./variant-selector";
 import { ProductImage } from "@/components/product-image";
@@ -238,7 +239,7 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
 
   return (
     <>
-      <div className="flex flex-col rounded-xl overflow-hidden border border-border bg-card shadow-sm hover:shadow-md transition-shadow">
+      <div className="pv2-card flex flex-col overflow-hidden">
         <button
           type="button"
           onClick={() => { setQty(1); setOpen(true); }}
@@ -261,12 +262,12 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
           )}
 
           {bestDiscount != null && (
-            <span className="absolute top-2 left-2 rounded-full bg-red-500 text-white text-xs font-bold px-2 py-0.5">
+            <span className="pv2-chip absolute top-2 left-2">
               -{bestDiscount}%
             </span>
           )}
           {product.featured_today && (
-            <span className="absolute top-2 right-2 rounded-full bg-sun text-ink text-xs font-bold px-2 py-0.5">Hoy</span>
+            <span className="pv2-chip absolute top-2 right-2">Hoy</span>
           )}
 
           {imgs.length > 1 && (
@@ -284,9 +285,9 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
 
           <div className="absolute inset-x-0 bottom-0 px-3 py-2 flex items-center justify-between gap-2 bg-gradient-to-t from-black/50 to-transparent">
             {outStock ? (
-              <span className="text-xs font-semibold text-white">Sin stock</span>
+              <span className="pv2-chip pv2-chip-muted">Sin stock</span>
             ) : lowStock ? (
-              <span className="text-xs font-semibold text-amber-300">¡Últimas unidades!</span>
+              <span className="pv2-chip">¡Últimas unidades!</span>
             ) : (
               <span className="text-xs text-white/90">{imgs.length > 0 ? `${imgs.length} foto${imgs.length > 1 ? "s" : ""}` : "Ver"}</span>
             )}
@@ -295,20 +296,20 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
         </button>
 
         <div className="p-2.5 flex flex-col gap-0.5 flex-1">
-          <p className="font-medium text-[13px] leading-snug line-clamp-1">{product.name}</p>
+          <p className="pv2-title text-[13px] line-clamp-1">{product.name}</p>
           {showCardCash ? (
-            <CashPrice price={cardCashBase} hasPromo={cardHasPromo} excluded={product.cash_discount_excluded} cashPct={vendor.cashDiscountPct} size="sm" prefix={cardCashRange ? "Desde " : ""} plainClassName="font-display font-bold text-sm" />
+            <CashPrice price={cardCashBase} hasPromo={cardHasPromo} excluded={product.cash_discount_excluded} cashPct={vendor.cashDiscountPct} size="sm" prefix={cardCashRange ? "Desde " : ""} plainClassName="pv2-price" />
           ) : (
             <div className="flex items-baseline gap-1.5 mt-0.5">
               {desdeRange ? (
-                <FromPrice min={desdeRange.min} max={desdeRange.max} valueClassName={`font-display font-bold text-sm ${bestDiscount != null ? "text-primary" : ""}`} />
+                <FromPrice min={desdeRange.min} max={desdeRange.max} valueClassName="pv2-price" />
               ) : (
-                <span className={`font-display font-bold text-sm ${bestDiscount != null ? "text-primary" : ""}`}>{priceLabel}</span>
+                <span className="pv2-price">{priceLabel}</span>
               )}
-              {regularLabel && <span className="text-[10px] text-muted-foreground line-through">{regularLabel}</span>}
+              {regularLabel && <span className="pv2-price-old">{regularLabel}</span>}
             </div>
           )}
-          {volBadge && <span className="mt-0.5 w-fit max-w-full truncate text-[10px] font-medium rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5">{volBadge}</span>}
+          {volBadge && <span className="pv2-chip mt-0.5 w-fit max-w-full truncate">{volBadge}</span>}
         </div>
       </div>
 
@@ -317,7 +318,7 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
           <div className="absolute inset-0 bg-black/60" onClick={() => { closeSheet(); }} />
           <div
             ref={sheetRef}
-            className="absolute inset-x-0 bottom-0 max-h-[90vh] overflow-y-auto rounded-t-2xl bg-card sm:inset-0 sm:m-auto sm:max-w-md sm:h-fit sm:rounded-2xl"
+            className="pv2-card absolute inset-x-0 bottom-0 max-h-[90vh] overflow-y-auto rounded-t-2xl sm:inset-0 sm:m-auto sm:max-w-md sm:h-fit sm:rounded-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="sticky top-0 z-10 flex items-center justify-between gap-2 px-4 py-3 bg-card border-b border-border">
@@ -325,9 +326,10 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
               <button
                 type="button"
                 onClick={() => { closeSheet(); }}
-                className="h-8 w-8 shrink-0 rounded-full bg-muted flex items-center justify-center text-foreground hover:bg-accent"
+                className="pv2-pill h-8 w-8 shrink-0 flex items-center justify-center"
+                aria-label="Cerrar"
               >
-                ✕
+                <X className="h-4 w-4" />
               </button>
             </div>
 
@@ -400,24 +402,24 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
               )}
 
               <div className="space-y-1">
-                <h2 className="font-display text-xl font-semibold">{product.name}</h2>
+                <h2 className="pv2-title text-xl">{product.name}</h2>
                 {showCardCash ? (
-                  <CashPrice price={cardCashBase} hasPromo={cardHasPromo} excluded={product.cash_discount_excluded} cashPct={vendor.cashDiscountPct} size="lg" prefix={cardCashRange ? "Desde " : ""} plainClassName="font-bold text-lg" />
+                  <CashPrice price={cardCashBase} hasPromo={cardHasPromo} excluded={product.cash_discount_excluded} cashPct={vendor.cashDiscountPct} size="lg" prefix={cardCashRange ? "Desde " : ""} plainClassName="pv2-price" />
                 ) : (
                   <div className="flex items-baseline gap-2 flex-wrap">
                     {desdeRange ? (
-                      <FromPrice min={desdeRange.min} max={desdeRange.max} valueClassName="font-bold text-lg" />
+                      <FromPrice min={desdeRange.min} max={desdeRange.max} valueClassName="pv2-price" />
                     ) : (
-                      <span className="font-bold text-lg">{priceLabel}</span>
+                      <span className="pv2-price">{priceLabel}</span>
                     )}
-                    {regularLabel && <span className="text-sm text-muted-foreground line-through">{regularLabel}</span>}
+                    {regularLabel && <span className="pv2-price-old">{regularLabel}</span>}
                     {bestDiscount != null && (
-                      <span className="rounded-full bg-red-500 text-white text-[11px] font-bold px-2 py-0.5">-{bestDiscount}%</span>
+                      <span className="pv2-chip">-{bestDiscount}%</span>
                     )}
                   </div>
                 )}
-                {volBadge && <span className="mt-1 w-fit max-w-full text-[11px] font-medium rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5">{volBadge}</span>}
-                {pack > 1 && <span className="mt-1 w-fit max-w-full text-[11px] font-medium rounded-md bg-violet-50 text-violet-700 border border-violet-200 px-2 py-0.5">📦 Pack x{pack}</span>}
+                {volBadge && <span className="pv2-chip mt-1 w-fit max-w-full">{volBadge}</span>}
+                {pack > 1 && <span className="pv2-chip mt-1 w-fit max-w-full"><Package className="inline h-3 w-3 align-[-1px] mr-0.5" /> Pack x{pack}</span>}
               </div>
 
               {product.description && (
@@ -426,7 +428,7 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
 
               <div className="border-t border-border pt-4">
                 {outStock ? (
-                  <p className="text-sm font-medium text-red-600 text-center py-3">Sin stock por el momento</p>
+                  <p className="text-sm font-medium text-muted-foreground text-center py-3">Sin stock por el momento</p>
                 ) : !acceptsCart ? (
                   <a
                     href={consultHref}

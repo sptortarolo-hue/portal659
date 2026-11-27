@@ -13,7 +13,7 @@ import { BackButtonGuard } from "@/components/home/back-button-guard";
 import { SectionHeading } from "@/components/home/section-heading";
 import { VerticalIcon, verticalIconComponent } from "@/components/home/vertical-icon";
 import { fetchRankStats, rankVendors } from "@/lib/ranking";
-import { Compass, Flame, MapPin, Sparkles, TrendingUp } from "lucide-react";
+import { ArrowRight, CalendarDays, Compass, Flame, MapPin, Newspaper, Sparkles, TrendingUp } from "lucide-react";
 import { itemListJsonLd, organizationJsonLd, websiteJsonLd } from "@/lib/json-ld";
 import type { Vendor, Plan, Product } from "@/types/database";
 
@@ -155,6 +155,35 @@ export default async function HomePage() {
   const onlineByVendor: Record<string, boolean> = {};
   for (const v of vendors || []) onlineByVendor[v.id] = vendorSellsOnline(v, plans || []);
 
+  const serviceProfessionals = ["servicio", "estetica", "salud", "taller"].flatMap(
+    (slug) => vendorsByVertical[slug] || []
+  );
+
+  // Novedades del barrio: mismos info_items de /barrio, filtrados por zona.
+  // Best-effort: si la tabla no está, la sección simplemente no se muestra.
+  type InfoItem = {
+    id: string;
+    category: string;
+    title: string;
+    body: string | null;
+    tags: string[] | null;
+    sort: number;
+    updated_at: string;
+  };
+  let barrioNews: InfoItem[] = [];
+  try {
+    barrioNews = await queryMany<InfoItem>(
+      `SELECT id, category, title, body, tags, sort, updated_at
+       FROM info_items
+       WHERE active = true AND zone = ANY($1)
+       ORDER BY sort ASC, created_at ASC
+       LIMIT 4`,
+      [[zone.slug, ...zone.neighborhoods.filter((n) => n !== zone.slug)]]
+    );
+  } catch {
+    barrioNews = [];
+  }
+
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.portal659.com.ar").replace(/\/$/, "");
   const jsonLd = [
     websiteJsonLd(siteUrl),
@@ -179,7 +208,7 @@ export default async function HomePage() {
             {zone.name} · 0% comisión
           </p>
           <h1 className="pv2-title text-3xl sm:text-4xl lg:text-5xl max-w-2xl">
-            ¿Qué te hace falta hoy?
+            ¿Qué estás buscando hoy?
           </h1>
           <p className="pv2-subtitle mt-3 max-w-xl">
             Pediles directo a los comercios de tu barrio, sin vueltas.
@@ -227,16 +256,42 @@ export default async function HomePage() {
             <Link
               key={vert.slug}
               href={`/buscar?vertical=${vert.slug}`}
-              className="pv2-pill flex min-w-[168px] snap-start items-center gap-2.5 px-4 py-3 text-sm font-semibold animate-fade-in-up"
+              className="pv2-card flex min-w-[180px] max-w-[210px] snap-start flex-col gap-3 p-4 animate-fade-in-up"
               style={{ animationDelay: `${i * 0.05}s` }}
             >
-              <span className="pv2-section-icon h-8 w-8">
-                <VerticalIcon slug={vert.slug} className="h-4 w-4" />
+              <span className="pv2-section-icon h-11 w-11">
+                <VerticalIcon slug={vert.slug} className="h-5 w-5" />
               </span>
-              {vert.name}
+              <span className="pv2-title text-sm leading-tight">{vert.name}</span>
+              <span className="pv2-subtitle text-[11px]">
+                {(vendorsByVertical[vert.slug] || []).length} comercios
+              </span>
             </Link>
           ))}
         </HorizontalCarousel>
+      </section>
+
+      {/* Banner de promociones (un solo banner, sin saturar) */}
+      <section className="container mx-auto px-4 pb-2">
+        <div className="pv2-card relative overflow-hidden bg-gradient-to-r from-[#eef0ff] to-[#f7fbe9] px-5 py-5 sm:px-7 sm:py-6">
+          <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-4">
+              <span className="pv2-section-icon h-12 w-12">
+                <Flame className="h-6 w-6" strokeWidth={1.8} aria-hidden="true" />
+              </span>
+              <div>
+                <h2 className="pv2-title text-lg sm:text-xl">Oferta de hoy</h2>
+                <p className="pv2-subtitle text-sm">
+                  Pediles directo a los comercios de tu barrio, sin vueltas.
+                </p>
+              </div>
+            </div>
+            <a href="#ofertas" className="pv2-btn pv2-btn-primary px-5 py-2.5 text-sm flex-shrink-0">
+              Ver ofertas
+              <ArrowRight className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+            </a>
+          </div>
+        </div>
       </section>
 
       {/* Abiertos ahora (cliente — zona horaria del usuario) */}
@@ -295,6 +350,35 @@ export default async function HomePage() {
       <div id="populares">
         <MostOrderedSection />
       </div>
+
+      {/* Servicios y profesionales */}
+      {serviceProfessionals.length > 0 && (
+        <section className="container mx-auto px-4 py-10 sm:py-12" id="profesionales">
+          <SectionHeading
+            icon={CalendarDays}
+            title="Servicios y profesionales"
+            description="Turnos, consultas y profesionales del barrio"
+            count={serviceProfessionals.length}
+          />
+          <HorizontalCarousel>
+            {serviceProfessionals.map((v) => (
+              <VendorCard
+                key={v.id}
+                id={v.id}
+                slug={v.slug}
+                store_name={v.store_name}
+                image_url={v.image_url}
+                logo_url={v.logo_url}
+                description={v.description}
+                vertical={v.vertical}
+                hours={v.hours}
+                open_override={v.open_override ?? null}
+                acceptsCart={onlineByVendor[v.id] ?? null}
+              />
+            ))}
+          </HorizontalCarousel>
+        </section>
+      )}
 
       {/* Destacados del barrio */}
       {destacados.length > 0 && (
@@ -360,6 +444,39 @@ export default async function HomePage() {
           </section>
         );
       })}
+
+      {/* Novedades del barrio */}
+      {barrioNews.length > 0 && (
+        <section className="container mx-auto px-4 py-10 sm:py-12" id="novedades">
+          <SectionHeading
+            icon={Newspaper}
+            title="Novedades del barrio"
+            description={`Lo que pasa en ${zone.name}`}
+          />
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {barrioNews.map((item) => (
+              <article key={item.id} className="pv2-card flex h-full flex-col p-5">
+                <h3 className="pv2-title text-sm">{item.title}</h3>
+                {item.body && (
+                  <p className="pv2-subtitle mt-2 line-clamp-3 text-xs">{item.body}</p>
+                )}
+                <div className="mt-auto flex flex-wrap gap-1.5 pt-4">
+                  {(item.tags || []).slice(0, 3).map((tag) => (
+                    <span key={tag} className="pv2-chip pv2-chip-muted">#{tag}</span>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
+          <Link
+            href="/barrio"
+            className="pv2-btn pv2-btn-outline mt-6 px-5 py-2.5 text-sm"
+          >
+            Ver toda la info del barrio
+            <ArrowRight className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+          </Link>
+        </section>
+      )}
 
       {/* CTA vendor al final */}
       <section className="container mx-auto px-4 py-12 sm:py-16">

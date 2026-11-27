@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { HorizontalCarousel } from "@/components/ui/horizontal-carousel";
 import { ProductImage } from "@/components/product-image";
+import { X } from "lucide-react";
 
 export type StoreGalleryItem = {
   id: string;
@@ -102,7 +103,7 @@ export function StoreGallery({ items, title }: { items: StoreGalleryItem[]; titl
               aria-label="Cerrar"
               className="h-11 w-11 rounded-full bg-white/10 flex items-center justify-center text-xl"
             >
-              ✕
+              <X className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
             </button>
           </div>
           <div

@@ -10,7 +10,7 @@ import { fetchRankStats, rankVendors } from "@/lib/ranking";
 import { CashPrice } from "@/components/store/cash-price";
 import { VendorCard } from "@/components/store/vendor-card";
 import { VerticalIcon } from "@/components/home/vertical-icon";
-import { SearchX, ShoppingBag, Store } from "lucide-react";
+import { ArrowDown, ArrowUp, SearchX, ShoppingBag, Store } from "lucide-react";
 import type { Plan } from "@/types/database";
 import type { Metadata } from "next";
 import { Card, CardContent } from "@/components/ui/card";
@@ -88,21 +88,25 @@ type ProductRow = {
   cash_discount_excluded?: boolean | null;
   vendor_id: string;
   vendors?: { vertical: string | null; store_name: string | null; slug: string | null } | null;
+  created_at?: string | null;
 };
 
 export default async function BuscarPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; vertical?: string; online?: string; talle?: string; color?: string; min?: string; max?: string }>;
+  searchParams: Promise<{ q?: string; vertical?: string; online?: string; talle?: string; color?: string; min?: string; max?: string; sort?: string }>;
 }) {
   const zone = await getZone();
-  const { q, vertical, online, talle, color, min, max } = await searchParams;
+  const { q, vertical, online, talle, color, min, max, sort } = await searchParams;
   const query = (q || "").trim();
   const onlineOnly = online === "1";
   const talleSel = talle || null;
   const colorSel = color || null;
   const minVal = min != null && min !== "" && !isNaN(Number(min)) ? Number(min) : null;
   const maxVal = max != null && max !== "" && !isNaN(Number(max)) ? Number(max) : null;
+  // Relevancia (sin sort) es el orden actual; cualquier otro valor se aplica
+  // solo en memoria sobre los resultados ya filtrados.
+  const sortSel = sort && ["name", "recent", "price_asc", "price_desc"].includes(sort) ? sort : null;
 
   const plans = await queryMany<Plan>(`SELECT * FROM plans ORDER BY sort ASC`);
   const isOnline = (v: VendorRow) => vendorSellsOnline(v, plans || []);
@@ -113,6 +117,7 @@ export default async function BuscarPage({
     if (query) sp.set("q", query);
     if (slug) sp.set("vertical", slug);
     if (onlineOnly) sp.set("online", "1");
+    if (sortSel) sp.set("sort", sortSel);
     const s = sp.toString();
     return `/buscar${s ? `?${s}` : ""}`;
   };
@@ -125,6 +130,7 @@ export default async function BuscarPage({
     if (colorSel) sp.set("color", colorSel);
     if (minVal != null) sp.set("min", String(minVal));
     if (maxVal != null) sp.set("max", String(maxVal));
+    if (sortSel) sp.set("sort", sortSel);
     const s = sp.toString();
     return `/buscar${s ? `?${s}` : ""}`;
   };
@@ -137,6 +143,7 @@ export default async function BuscarPage({
     if (colorSel) sp.set("color", colorSel);
     if (minVal != null) sp.set("min", String(minVal));
     if (maxVal != null) sp.set("max", String(maxVal));
+    if (sortSel) sp.set("sort", sortSel);
     for (const [k, v] of Object.entries(patch)) {
       if (v == null) sp.delete(k);
       else sp.set(k, v);
@@ -353,6 +360,26 @@ export default async function BuscarPage({
     products = products.filter((p) => onlineById.get(p.vendor_id));
   }
 
+  // Ordenamiento en memoria sobre los arrays ya filtrados. Sin `sort` se
+  // conserva el orden de relevancia que traía cada query (sin cambios).
+  if (sortSel === "name") {
+    vendors = [...vendors].sort((a, b) =>
+      (a.store_name || "").localeCompare(b.store_name || "", "es")
+    );
+    products = [...products].sort((a, b) => a.name.localeCompare(b.name, "es"));
+  } else if (sortSel === "recent") {
+    vendors = [...vendors].sort((a, b) =>
+      (b.created_at || "").localeCompare(a.created_at || "")
+    );
+    products = [...products].sort((a, b) =>
+      (b.created_at || "").localeCompare(a.created_at || "")
+    );
+  } else if (sortSel === "price_asc" || sortSel === "price_desc") {
+    const effectivePrice = (p: ProductRow) => Number(p.promo_price ?? p.price ?? 0);
+    const dir = sortSel === "price_asc" ? 1 : -1;
+    products = [...products].sort((a, b) => dir * (effectivePrice(a) - effectivePrice(b)));
+  }
+
   const totalResults = vendors.length + products.length;
 
   return (
@@ -453,6 +480,20 @@ export default async function BuscarPage({
         </div>
       )}
 
+      {/* Ordenamiento: solo reordena los resultados ya cargados, en memoria */}
+      <div className="flex flex-wrap items-center gap-2 mb-6">
+        <span className="text-xs font-medium text-muted-foreground">Ordenar:</span>
+        <Link href={hrefWith({ sort: null })} className={pillCls(!sortSel)}>Relevancia</Link>
+        <Link href={hrefWith({ sort: "name" })} className={pillCls(sortSel === "name")}>Nombre</Link>
+        <Link href={hrefWith({ sort: "recent" })} className={pillCls(sortSel === "recent")}>Más recientes</Link>
+        <Link href={hrefWith({ sort: "price_asc" })} className={pillCls(sortSel === "price_asc")} aria-label="Ordenar por precio, menor primero">
+          Precio <ArrowUp className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+        </Link>
+        <Link href={hrefWith({ sort: "price_desc" })} className={pillCls(sortSel === "price_desc")} aria-label="Ordenar por precio, mayor primero">
+          Precio <ArrowDown className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+        </Link>
+      </div>
+
       {totalResults === 0 ? (
         <div className="text-center py-16">
           <span className="pv2-section-icon mx-auto mb-4 h-14 w-14">
@@ -495,7 +536,13 @@ export default async function BuscarPage({
               <h2 className="pv2-title text-xl mb-5">Productos ({products.length})</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 {products.map((p) => (
-                  <Link key={p.id} href={`/tienda/${p.vendors?.slug || ""}`} className="block h-full">
+                  <Link
+                    key={p.id}
+                    href={p.vendors?.slug
+                      ? `/tienda/${p.vendors.slug}?menu=1&oferta=${encodeURIComponent(p.id)}`
+                      : `/tienda/${p.vendors?.slug || ""}`}
+                    className="block h-full"
+                  >
                     <Card className="pv2-card flex h-full items-center overflow-hidden">
                       <div className="flex w-full items-center gap-4 p-4">
                         {p.image_url ? (

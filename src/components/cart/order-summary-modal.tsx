@@ -1,6 +1,7 @@
 "use client";
 
 import { Modal } from "@/components/ui/modal";
+import { Banknote, CreditCard, Home, Package, Truck } from "lucide-react";
 
 type SummaryItem = {
   name: string;
@@ -150,16 +151,30 @@ export function OrderSummaryModal({
 
         <div className="rounded-xl bg-muted/50 p-3 text-xs text-muted-foreground space-y-1">
           <p>
-            {method === "delivery" ? "🛵 Delivery" : "🏠 Retiro en local"}
-            {address && method === "delivery" ? ` — ${address}` : ""}
+            <span className="inline-flex items-center gap-1.5">
+              {method === "delivery" ? (
+                <Truck className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden="true" />
+              ) : (
+                <Home className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden="true" />
+              )}
+              {method === "delivery" ? "Delivery" : "Retiro en local"}
+              {address && method === "delivery" ? ` — ${address}` : ""}
+            </span>
           </p>
           {deliveryWindowLabel && method === "delivery" && (
-            <p>📦 Te lo llevamos {deliveryWindowLabel}</p>
+            <p className="inline-flex items-center gap-1.5">
+              <Package className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden="true" />
+              Te lo llevamos {deliveryWindowLabel}
+            </p>
           )}
-          <p>💳 {paymentLabel}</p>
+          <p className="inline-flex items-center gap-1.5">
+            <CreditCard className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden="true" />
+            {paymentLabel}
+          </p>
           {paymentMethod === "efectivo" && cashAmount != null && cashAmount > 0 && (
             <p className="font-medium text-green-700">
-              💵 Abonás con ${cashAmount.toLocaleString("es-AR")}
+              <Banknote className="inline h-3.5 w-3.5 align-[-2px] mr-1" strokeWidth={1.8} aria-hidden="true" />
+              Abonás con ${cashAmount.toLocaleString("es-AR")}
               {cashChange != null && cashChange > 0 ? ` · tu cambio: $${cashChange.toLocaleString("es-AR")}` : " (exacto)"}
             </p>
           )}

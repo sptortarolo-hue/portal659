@@ -1,6 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import {
+  AlertTriangle,
+  Bell,
+  CalendarDays,
+  Check,
+  CreditCard,
+  FlaskConical,
+  Frown,
+  Lock,
+  PenLine,
+  Ticket,
+  Undo2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,7 +55,7 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
   const [credits, setCredits] = useState<{ pack_id: string; pack_name: string; remaining: number }[]>([]);
   const [creditsLoading, setCreditsLoading] = useState(false);
   const [usePackId, setUsePackId] = useState("");
-  const [packMsg, setPackMsg] = useState("");
+  const [packMsg, setPackMsg] = useState<ReactNode>("");
   const [depositPayUrl, setDepositPayUrl] = useState<string | null>(null);
   const [depositMsg, setDepositMsg] = useState("");
   // Grilla de huecos (estética con catálogo): evita probar horarios ocupados.
@@ -130,8 +143,8 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
   if (done) {
     return (
       <div className="text-center py-6">
-        <p className="text-2xl mb-2">📅</p>
-        <p className="font-medium">Turno reservado</p>
+        <CalendarDays className="mx-auto mb-2 h-8 w-8 text-amber-500" aria-hidden="true" />
+        <p className="pv2-title font-medium">Turno reservado</p>
         <p className="text-sm text-muted-foreground mt-1">
           {bookingDate} a las {bookingTime}. {vendorName} te va a confirmar.
         </p>
@@ -139,8 +152,9 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
           <p className="text-sm mt-2 rounded-lg bg-green-50 border border-green-200 text-green-800 px-3 py-2">{packMsg}</p>
         )}
         {depositPayUrl && (
-          <a href={depositPayUrl} className="block mt-3 rounded-xl bg-primary text-primary-foreground font-bold px-4 py-3 text-sm hover:bg-primary/90">
-            💳 Pagar la seña ahora para confirmar
+          <a href={depositPayUrl} className="pv2-btn pv2-btn-primary mt-3 w-full px-4 py-3 text-sm">
+            <CreditCard className="h-4 w-4" aria-hidden="true" />
+            Pagar la seña ahora para confirmar
           </a>
         )}
         {depositMsg && (
@@ -246,9 +260,9 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
     }
 
     if (data.packUsed) {
-      setPackMsg(`✅ Se usó 1 sesión de ${data.packUsed.pack_name} (quedan ${data.packUsed.remaining}).`);
+      setPackMsg(<><Check className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />Se usó 1 sesión de {data.packUsed.pack_name} (quedan {data.packUsed.remaining}).</>);
     } else if (data.packWarning) {
-      setPackMsg(`⚠️ ${data.packWarning}`);
+      setPackMsg(<><AlertTriangle className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />{data.packWarning}</>);
     }
     if (data.depositRequired) {
       if (data.depositInitPoint) {
@@ -271,7 +285,8 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
     <form onSubmit={handleSubmit} className="space-y-4">
       {isPreview && (
         <p className="rounded-lg bg-violet-50 border border-violet-200 text-violet-800 px-3 py-2 text-xs">
-          🧪 Estás en modo prueba: la reserva se marca como prueba y no cuenta para el tope ni envía avisos.
+          <FlaskConical className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />
+          Estás en modo prueba: la reserva se marca como prueba y no cuenta para el tope ni envía avisos.
         </p>
       )}
       <div>
@@ -286,7 +301,7 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
         <p className="text-xs text-muted-foreground">Buscando tus sesiones...</p>
       ) : credits.length > 0 ? (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 space-y-2">
-          <Label htmlFor="b-pack">🎟️ Tenés sesiones disponibles</Label>
+          <Label htmlFor="b-pack"><Ticket className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />Tenés sesiones disponibles</Label>
           <select
             id="b-pack"
             value={usePackId}
@@ -319,7 +334,8 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
           </select>
           {chosenService?.require_deposit && chosenService?.deposit_amount ? (
             <p className="text-xs text-muted-foreground mt-1">
-              🔒 Este servicio exige seña de ${Number(chosenService.deposit_amount).toLocaleString("es-AR")}, que se abona con Mercado Pago al reservar (te la descuentan el día del turno).
+              <Lock className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />
+              Este servicio exige seña de ${Number(chosenService.deposit_amount).toLocaleString("es-AR")}, que se abona con Mercado Pago al reservar (te la descuentan el día del turno).
             </p>
           ) : null}
         </div>
@@ -411,9 +427,9 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
                   type="button"
                   disabled={!s.available}
                   onClick={() => setBookingTime(s.time)}
-                  className={`px-3 py-1.5 rounded-full border text-sm transition-colors ${
+                  className={`pv2-pill px-3 py-1.5 text-sm ${
                     bookingTime === s.time
-                      ? "border-primary bg-primary/10 text-primary font-medium"
+                      ? "pv2-active"
                       : s.available
                         ? "border-border text-muted-foreground"
                         : "border-border text-muted-foreground/40 line-through"
@@ -449,29 +465,33 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
       {overlap && !waitDone && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 space-y-2">
           <p className="text-xs font-medium text-amber-900">
-            😕 Ese horario ya está ocupado. ¿Te avisamos si se libera?
+            <Frown className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />
+            Ese horario ya está ocupado. ¿Te avisamos si se libera?
           </p>
-          <Button type="button" size="sm" className="w-full" disabled={waitBusy} onClick={joinWaitlist}>
-            {waitBusy ? "Anotando..." : "🔔 Avisame si se libera"}
+          <Button type="button" size="sm" className="pv2-btn w-full" disabled={waitBusy} onClick={joinWaitlist}>
+            {waitBusy ? "Anotando..." : <><Bell className="h-4 w-4" aria-hidden="true" />Avisame si se libera</>}
           </Button>
         </div>
       )}
       {waitDone && (
         <p className="text-xs rounded-lg bg-green-50 border border-green-200 text-green-800 px-3 py-2">
-          ✅ Anotada en lista de espera. Si se libera, te escribimos.
+          <Check className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />
+          Anotada en lista de espera. Si se libera, te escribimos.
         </p>
       )}
-      <Button type="submit" className="w-full" disabled={loading}>
+      <Button type="submit" className="pv2-btn pv2-btn-primary w-full" disabled={loading}>
         {loading ? "Reservando..." : "Reservar turno"}
       </Button>
       {cancelPolicy && cancelRefundsDeposit !== false && (
         <p className="text-xs text-muted-foreground text-center">
-          📝 {cancelPolicy}
+          <PenLine className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />
+          {cancelPolicy}
         </p>
       )}
       {cancelRefundsDeposit !== false && (
         <p className="text-xs text-muted-foreground text-center">
-          ↩️ Si cancelás con más de {cancelHours ?? 24} h de anticipación te devolvemos la seña; dentro de ese plazo se pierde.
+          <Undo2 className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />
+          Si cancelás con más de {cancelHours ?? 24} h de anticipación te devolvemos la seña; dentro de ese plazo se pierde.
         </p>
       )}
       <p className="text-xs text-muted-foreground text-center">

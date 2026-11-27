@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ShoppingBag } from "lucide-react";
+import { MapPin, ShoppingBag } from "lucide-react";
 import { useCart } from "@/lib/cart";
 import { UserMenu } from "./user-menu";
 import { NotificationBell } from "./notification-bell";
@@ -47,6 +47,15 @@ export function Navigation() {
           <Logo />
         </Link>
         <ZoneSelector />
+        <Link
+          href="/mapa"
+          aria-label="Mapa"
+          className={`pv2-pill flex h-10 w-10 flex-shrink-0 items-center justify-center transition-colors ${
+            pathname === "/mapa" ? "pv2-active" : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <MapPin className="h-5 w-5" strokeWidth={1.8} aria-hidden="true" />
+        </Link>
         <div className="flex-1 min-w-0">
           <SearchBar />
         </div>
@@ -83,6 +92,15 @@ export function Navigation() {
         {/* Fila 2: zona + app (solo sitio público) */}
         <div className="container mx-auto px-3 pb-2 flex items-center gap-2">
           <ZoneSelector />
+          <Link
+            href="/mapa"
+            aria-label="Mapa"
+            className={`pv2-pill flex h-9 w-9 flex-shrink-0 items-center justify-center transition-colors ${
+              pathname === "/mapa" ? "pv2-active" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <MapPin className="h-5 w-5" strokeWidth={1.8} aria-hidden="true" />
+          </Link>
           <InstallAppButton />
         </div>
       </div>

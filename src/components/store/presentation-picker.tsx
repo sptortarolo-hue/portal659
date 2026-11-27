@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { Star } from "lucide-react";
 import { AddToCartButton } from "@/components/offers/add-to-cart-button";
 import { ProductImage } from "@/components/product-image";
 
@@ -66,14 +67,10 @@ export function PresentationPicker({ root, presentations, vendor, acceptsCart, c
               key={p.id}
               type="button"
               onClick={() => setActiveId(p.id)}
-              className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-                isActive
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "border-border bg-card text-muted-foreground hover:border-primary/50"
-              }`}
+              className={`pv2-pill px-2.5 py-1 text-xs ${isActive ? "pv2-active" : ""}`}
             >
               {p.presentation_label || p.name}
-              {isBestChip && <span className="ml-1 text-[9px] text-emerald-600">★</span>}
+              {isBestChip && <Star className="ml-1 inline h-3 w-3 pv2-icon-accent" fill="currentColor" />}
             </button>
           );
         })}
@@ -81,18 +78,18 @@ export function PresentationPicker({ root, presentations, vendor, acceptsCart, c
 
       {/* Precio + $/kg del activo */}
       <div className="flex items-baseline gap-2">
-        <span className="text-lg font-bold tabular-nums">{ars(activePrice)}</span>
+        <span className="pv2-price">{ars(activePrice)}</span>
         {activePerKg != null && (
           <span className="text-xs text-muted-foreground tabular-nums">
             {ars(activePerKg)}/kg
-            {isBest && <span className="ml-1 text-emerald-600 font-medium">· Mejor precio por kg</span>}
+            {isBest && <span className="ml-1 font-medium pv2-icon-accent">· Mejor precio por kg</span>}
           </span>
         )}
         {active.stock != null && active.stock <= 5 && active.stock > 0 && (
-          <span className="text-xs text-amber-600">Quedan {active.stock}</span>
+          <span className="pv2-chip">Quedan {active.stock}</span>
         )}
         {active.stock === 0 && (
-          <span className="text-xs text-red-500">Sin stock</span>
+          <span className="pv2-chip pv2-chip-muted">Sin stock</span>
         )}
       </div>
 

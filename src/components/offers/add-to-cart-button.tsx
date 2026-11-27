@@ -7,6 +7,7 @@ import type { ProductModifier } from "@/types/database";
 import { ModifierPicker } from "./modifier-picker";
 import { useToast } from "@/lib/toast";
 import { selectionHasPromo } from "@/lib/modifier-select";
+import { Check } from "lucide-react";
 
 type AddToCartButtonProps = {
   offerId: string;
@@ -142,13 +143,18 @@ export function AddToCartButton({
       <button
         onClick={handleClick}
         disabled={added}
-        className={`rounded-md px-3 py-1.5 text-sm font-medium transition-all ${
+        className={`pv2-add-btn rounded-md px-3 py-1.5 text-sm font-medium transition-all ${
           added
             ? "bg-green-500 text-white animate-pop-in"
             : "bg-primary text-primary-foreground hover:bg-primary/90 active:scale-95"
         }`}
       >
-        {added ? "✓ Agregado" : "Agregar"}
+        {added ? (
+          <span className="inline-flex items-center gap-1">
+            <Check className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden="true" />
+            Agregado
+          </span>
+        ) : "Agregar"}
       </button>
 
       {showPicker && (

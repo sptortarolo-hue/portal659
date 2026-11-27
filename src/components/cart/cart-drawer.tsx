@@ -17,6 +17,7 @@ import { mirrorVolume } from "@/lib/volume-mirror";
 import { ProductImage } from "@/components/product-image";
 import { VolumeProgress } from "@/components/store/volume-progress";
 import { CartSuggestions } from "@/components/cart/cart-suggestions";
+import { Package, ShoppingBag, Snowflake } from "lucide-react";
 
 export function CartDrawer() {
   const pathname = usePathname();
@@ -32,24 +33,24 @@ export function CartDrawer() {
 
   return (
     <div
-      className="fixed inset-0 z-[60] bg-black/40 transition-opacity animate-fade-in-up"
+      className="pv2 fixed inset-0 z-[60] bg-black/40 transition-opacity animate-fade-in-up"
       onClick={() => setOpen(false)}
     >
       <div
-        className="absolute right-0 top-0 h-full w-full max-w-md bg-card shadow-xl flex flex-col animate-slide-in"
+        className="absolute right-0 top-0 h-full w-full max-w-md flex flex-col bg-card border border-border rounded-2xl shadow-xl animate-slide-in"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <div>
-            <h2 className="font-display text-lg font-semibold">Tu pedido</h2>
+            <h2 className="pv2-title font-display text-lg font-semibold">Tu pedido</h2>
             {vendor && (
-              <p className="text-xs text-muted-foreground">{vendor.storeName}</p>
+              <p className="pv2-subtitle text-xs">{vendor.storeName}</p>
             )}
           </div>
           <button
             onClick={() => setOpen(false)}
-            className="h-8 w-8 rounded-full hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+            className="pv2-pill h-8 w-8 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             aria-label="Cerrar"
           >
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -62,9 +63,11 @@ export function CartDrawer() {
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
           {items.length === 0 ? (
             <div className="text-center py-16">
-              <div className="text-4xl mb-3">🛒</div>
-              <p className="text-muted-foreground">Tu carrito está vacío</p>
-              <p className="text-xs text-muted-foreground mt-1">
+              <div className="pv2-section-icon mx-auto mb-3">
+                <ShoppingBag className="h-6 w-6" />
+              </div>
+              <p className="pv2-title">Tu carrito está vacío</p>
+              <p className="pv2-subtitle text-xs mt-1">
                 Agregá productos de un local para empezar
               </p>
             </div>
@@ -81,8 +84,8 @@ export function CartDrawer() {
               const gid = gkey(idx);
               const applied = gid ? vol.applied.find((a) => a.groupId === gid) : undefined;
               const header = applied && gid !== lastGroup ? (
-                <p key={`gh-${gid}`} className="text-xs font-semibold text-emerald-700 pt-1">
-                  🧊 {applied.groupName} · {applied.label}
+                <p key={`gh-${gid}`} className="pv2-chip pt-1">
+                  <Snowflake className="h-3 w-3" /> {applied.groupName} · {applied.label}
                 </p>
               ) : null;
               lastGroup = gid;
@@ -93,12 +96,12 @@ export function CartDrawer() {
                 {header}
                 <div
                   key={key}
-                  className="border border-border rounded-xl p-3 space-y-2"
+                  className="pv2-card p-3 space-y-2"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex gap-2.5 flex-1">
                       {item.image ? (
-                        <div className="h-14 w-14 rounded-lg overflow-hidden flex-shrink-0 bg-accent">
+                        <div className="h-14 w-14 rounded-xl overflow-hidden flex-shrink-0 bg-muted">
                           <ProductImage src={item.image} name={item.name} vertical={vendor?.vertical} alt={item.name} className="w-full h-full object-cover" />
                         </div>
                       ) : null}
@@ -106,10 +109,10 @@ export function CartDrawer() {
                       <p className="font-medium text-sm leading-tight">
                         {item.name}
                         {item.packSize ? (
-                          <span className="ml-1.5 rounded-full bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 whitespace-nowrap">pack x{item.packSize}</span>
+                          <span className="pv2-chip ml-1.5 align-middle whitespace-nowrap">pack x{item.packSize}</span>
                         ) : null}
                         {(item as any).unit === "kg" ? (
-                          <span className="ml-1.5 rounded-full bg-sky-50 border border-sky-200 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700 whitespace-nowrap">$/kg</span>
+                          <span className="pv2-chip ml-1.5 align-middle whitespace-nowrap">$/kg</span>
                         ) : null}
                       </p>
                       {item.modifiers && item.modifiers.length > 0 && (
@@ -117,7 +120,7 @@ export function CartDrawer() {
                           {item.modifiers.map((m, mi) => (
                             <span
                               key={mi}
-                              className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground"
+                              className="pv2-chip pv2-chip-muted"
                             >
                               {m.group ? `${m.group}: ` : ""}{m.label}
                               {m.price_total != null
@@ -131,7 +134,7 @@ export function CartDrawer() {
                     </div>
                     <button
                       onClick={() => removeItem(item.offerId, item.modifiers)}
-                      className="text-muted-foreground hover:text-red-500 flex-shrink-0 p-1"
+                      className="pv2-pill flex-shrink-0 p-1 text-muted-foreground hover:text-red-500 hover:bg-muted"
                       aria-label="Eliminar"
                     >
                       <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -146,7 +149,7 @@ export function CartDrawer() {
                         <div className="flex items-center gap-1">
                           <button
                             onClick={() => setQty(item.offerId, nudgeWeight(item.qty, -1, weightRules), item.modifiers)}
-                            className="h-8 w-8 flex items-center justify-center rounded-lg border border-border bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
+                            className="pv2-pill h-8 w-8 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                             aria-label="Menos peso"
                           >
                             −
@@ -167,13 +170,13 @@ export function CartDrawer() {
                                 setQty(item.offerId, nudgeWeight(0, 1, weightRules), item.modifiers);
                               }
                             }}
-                            className="w-16 h-8 px-1 text-sm text-center tabular-nums rounded-lg border border-input bg-background"
+                            className="pv2-pill w-16 h-8 px-1 text-sm text-center tabular-nums"
                             aria-label={`Peso en kilos de ${item.name}`}
                           />
                           <span className="text-[11px] text-muted-foreground">kg</span>
                           <button
                             onClick={() => setQty(item.offerId, nudgeWeight(item.qty, 1, weightRules), item.modifiers)}
-                            className="h-8 w-8 flex items-center justify-center rounded-lg border border-border bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
+                            className="pv2-pill h-8 w-8 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                             aria-label="Más peso"
                           >
                             +
@@ -196,7 +199,7 @@ export function CartDrawer() {
                         )}
                       </div>
                     ) : (
-                      <div className="flex items-center border border-border rounded-lg flex-shrink-0">
+                      <div className="pv2-pill flex items-center flex-shrink-0">
                       <button
                         onClick={() =>
                           setQty(
@@ -205,7 +208,7 @@ export function CartDrawer() {
                             item.modifiers
                           )
                         }
-                        className="h-8 w-8 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-l-lg transition-colors"
+                        className="pv2-pill h-8 w-8 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                       >
                         −
                       </button>
@@ -220,13 +223,13 @@ export function CartDrawer() {
                             item.modifiers
                           )
                         }
-                        className="h-8 w-8 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-r-lg transition-colors"
+                        className="pv2-pill h-8 w-8 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                       >
                         +
                       </button>
                       </div>
                     )}
-                    <span className="text-sm font-bold tabular-nums">
+                    <span className="pv2-price">
                       ${lineTotal.toLocaleString("es-AR")}
                     </span>
                   </div>
@@ -248,8 +251,10 @@ export function CartDrawer() {
               <VolumeProgress groups={vendor.volumeGroups} showMembers />
             )}
             {vol.volumeDiscount > 0 && (
-              <div className="flex items-center justify-between text-sm font-medium text-emerald-700">
-                <span>📦 Desc. volumen{vol.applied.length > 0 ? ` (${vol.applied.map((a) => a.label).join(" · ")})` : ""}</span>
+              <div className="flex items-center justify-between text-sm font-medium">
+                <span className="pv2-chip">
+                  <Package className="h-3 w-3" /> Desc. volumen{vol.applied.length > 0 ? ` (${vol.applied.map((a) => a.label).join(" · ")})` : ""}
+                </span>
                 <span className="tabular-nums">−${vol.volumeDiscount.toLocaleString("es-AR")}</span>
               </div>
             )}
@@ -257,20 +262,20 @@ export function CartDrawer() {
               <span className="text-sm text-muted-foreground">
                 {count} producto{count !== 1 ? "s" : ""}
               </span>
-              <span className="text-lg font-bold">
+              <span className="pv2-price">
                 ${netTotal.toLocaleString("es-AR")}
               </span>
             </div>
             <Link
               href={`/checkout?tienda=${vendor.slug}`}
               onClick={() => setOpen(false)}
-              className="block w-full rounded-xl bg-primary text-primary-foreground text-center text-sm font-medium py-3 hover:bg-primary/90 transition-colors"
+              className="pv2-btn pv2-btn-primary w-full py-3 text-sm"
             >
               Confirmar pedido
             </Link>
             <button
               onClick={clear}
-              className="w-full text-center text-xs text-muted-foreground hover:text-red-500 transition-colors py-1"
+              className="pv2-btn w-full text-center text-xs text-muted-foreground hover:text-red-500 hover:bg-muted transition-colors py-1"
             >
               Vaciar carrito
             </button>

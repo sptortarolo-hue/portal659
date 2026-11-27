@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Flame } from "lucide-react";
 import { GastroProductRow } from "@/components/store/gastro-product-row";
 import { ProductCard } from "@/components/store/product-card";
 import { ProductImage } from "@/components/product-image";
@@ -48,7 +49,7 @@ export function PromoSection({
   if (!items || items.length === 0) return null;
   return (
     <section className="mt-6 mb-10 scroll-mt-[184px] sm:scroll-mt-24">
-      <h3 className="font-display text-xl font-semibold mb-1">🔥 Promo</h3>
+      <h3 className="pv2-title text-xl mb-1 flex items-center gap-2"><Flame className="h-5 w-5 pv2-icon-accent" /> Promo</h3>
       <p className="text-xs text-muted-foreground mb-3">Solo por tiempo limitado · Tocá para ver detalle</p>
       <div className="space-y-3">
         {items.map((o) => {
@@ -58,7 +59,7 @@ export function PromoSection({
               : 0;
           const card = (
             <>
-              <div className="h-20 w-20 rounded-xl overflow-hidden flex-shrink-0 bg-white">
+              <div className="w-20 aspect-square overflow-hidden rounded-xl flex-shrink-0">
                 <ProductImage
                   src={o.image_url || null}
                   name={o.name}
@@ -70,9 +71,9 @@ export function PromoSection({
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-start gap-2">
-                  <p className="font-bold leading-snug line-clamp-2 flex-1">{o.name}</p>
+                  <p className="pv2-title text-sm line-clamp-2 flex-1">{o.name}</p>
                   {pct > 0 && (
-                    <span className="text-[11px] font-bold text-white bg-red-500 rounded-full px-2 py-0.5 whitespace-nowrap flex-shrink-0">
+                    <span className="pv2-chip whitespace-nowrap flex-shrink-0">
                       −{pct}%
                     </span>
                   )}
@@ -83,19 +84,19 @@ export function PromoSection({
                 <div className="flex flex-wrap items-center gap-2 mt-1">
                   {pct > 0 ? (
                     <>
-                      <span className="text-xs text-muted-foreground line-through tabular-nums">
+                      <span className="pv2-price-old">
                         ${Number(o.price).toLocaleString("es-AR")}
                       </span>
-                      <span className="font-bold text-primary tabular-nums">
+                      <span className="pv2-price">
                         ${Number(o.promo_price!).toLocaleString("es-AR")}
                       </span>
                     </>
                   ) : (
                     <>
-                      <span className="font-bold text-primary tabular-nums">
+                      <span className="pv2-price">
                         ${Number(o.price).toLocaleString("es-AR")}
                       </span>
-                      <span className="text-[10px] font-bold text-white bg-red-500 rounded-full px-2 py-0.5 whitespace-nowrap">
+                      <span className="pv2-chip whitespace-nowrap">
                         PROMO
                       </span>
                     </>
@@ -110,7 +111,7 @@ export function PromoSection({
               key={o.id}
               type="button"
               onClick={() => setSelectedId(o.id)}
-              className="w-full text-left rounded-2xl border-2 border-red-200 bg-red-50 p-3 flex items-center gap-3 active:scale-[0.99] transition-transform cursor-pointer"
+              className="pv2-card w-full text-left p-3 flex items-center gap-3 cursor-pointer"
             >
               {card}
             </button>
@@ -120,7 +121,7 @@ export function PromoSection({
               href={consultHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded-2xl border-2 border-red-200 bg-red-50 p-3 flex items-center gap-3 active:scale-[0.99] transition-transform"
+              className="pv2-card p-3 flex items-center gap-3"
             >
               {card}
             </a>

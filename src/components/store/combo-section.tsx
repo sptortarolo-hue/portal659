@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Puzzle } from "lucide-react";
 import { GastroProductRow } from "@/components/store/gastro-product-row";
 import { ProductCard } from "@/components/store/product-card";
 import { ComboBuilderSheet } from "@/components/store/combo-builder";
@@ -60,7 +61,7 @@ export function ComboSection({
   const fmt = (n: number) => `$${Number(n).toLocaleString("es-AR")}`;
   return (
     <section className="mt-6 mb-10 scroll-mt-[184px] sm:scroll-mt-24">
-      <h3 className="font-display text-xl font-semibold mb-1">🧩 Combos</h3>
+      <h3 className="pv2-title text-xl mb-1 flex items-center gap-2"><Puzzle className="h-5 w-5 pv2-icon-accent" /> Combos</h3>
       <p className="text-xs text-muted-foreground mb-3">Armados por el local · Tocá para ver qué trae</p>
       <div className="space-y-3">
         {items.map((o) => {
@@ -84,9 +85,9 @@ export function ComboSection({
                 if (hasVariantMembers(o.id)) setBuildingId(o.id);
                 else setSelectedId(o.id);
               }}
-              className="w-full text-left rounded-2xl border-2 border-violet-200 bg-violet-50 dark:border-violet-900 dark:bg-violet-950/50 p-3 flex items-center gap-3 active:scale-[0.99] transition-transform cursor-pointer"
+              className="pv2-card w-full text-left p-3 flex items-center gap-3 cursor-pointer"
             >
-              <div className="h-20 w-20 rounded-xl overflow-hidden flex-shrink-0 bg-white">
+              <div className="w-20 aspect-square overflow-hidden rounded-xl flex-shrink-0">
                 <ProductImage
                   src={o.image_url || null}
                   name={o.name}
@@ -98,32 +99,32 @@ export function ComboSection({
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-start gap-2">
-                  <p className="font-bold leading-snug line-clamp-2 flex-1">{o.name}</p>
-                  <span className="text-[11px] font-bold text-white bg-violet-500 rounded-full px-2 py-0.5 whitespace-nowrap flex-shrink-0">
-                    🧩 COMBO
+                  <p className="pv2-title text-sm line-clamp-2 flex-1">{o.name}</p>
+                  <span className="pv2-chip whitespace-nowrap flex-shrink-0">
+                    <Puzzle className="h-3 w-3" /> COMBO
                   </span>
                 </div>
                 {incluye && (
-                  <p className="text-xs text-violet-900 dark:text-violet-300 mt-0.5 line-clamp-2 break-words">
+                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2 break-words">
                     <span className="font-semibold">Incluye:</span> {incluye}
                   </p>
                 )}
                 <div className="flex flex-wrap items-center gap-2 mt-1">
                   {pct > 0 ? (
                     <>
-                      <span className="text-xs text-muted-foreground line-through tabular-nums">{fmt(o.price)}</span>
-                      <span className="font-bold text-primary tabular-nums">{fmt(o.promo_price!)}</span>
+                      <span className="pv2-price-old">{fmt(o.price)}</span>
+                      <span className="pv2-price">{fmt(o.promo_price!)}</span>
                       {incluyeSum > 0 && Number(o.promo_price) < incluyeSum && (
-                        <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">Ahorrás {fmt(incluyeSum - Number(o.promo_price))}</span>
+                        <span className="pv2-chip">Ahorrás {fmt(incluyeSum - Number(o.promo_price))}</span>
                       )}
                     </>
                   ) : (
                     <>
-                      <span className="font-bold text-primary tabular-nums">{fmt(o.price)}</span>
+                      <span className="pv2-price">{fmt(o.price)}</span>
                       {incluyeSum > 0 && Number(o.price) < incluyeSum && (
                         <>
-                          <span className="text-xs text-muted-foreground line-through tabular-nums">{fmt(incluyeSum)}</span>
-                          <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">Ahorrás {fmt(incluyeSum - Number(o.price))}</span>
+                          <span className="pv2-price-old">{fmt(incluyeSum)}</span>
+                          <span className="pv2-chip">Ahorrás {fmt(incluyeSum - Number(o.price))}</span>
                         </>
                       )}
                     </>
@@ -138,9 +139,9 @@ export function ComboSection({
               href={consultHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded-2xl border-2 border-violet-200 bg-violet-50 dark:border-violet-900 dark:bg-violet-950/50 p-3 flex items-center gap-3 active:scale-[0.99] transition-transform"
+              className="pv2-card p-3 flex items-center gap-3"
             >
-              <div className="h-20 w-20 rounded-xl overflow-hidden flex-shrink-0 bg-white">
+              <div className="w-20 aspect-square overflow-hidden rounded-xl flex-shrink-0">
                 <ProductImage
                   src={o.image_url || null}
                   name={o.name}
@@ -151,11 +152,11 @@ export function ComboSection({
                 />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="font-bold leading-snug line-clamp-2">{o.name}</p>
-                <p className="text-xs text-violet-900 dark:text-violet-300 mt-0.5">
-                  <span className="text-[11px] font-bold text-white bg-violet-500 rounded-full px-2 py-0.5 mr-1">🧩 COMBO</span>
+                <p className="pv2-title text-sm line-clamp-2">{o.name}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  <span className="pv2-chip mr-1"><Puzzle className="h-3 w-3" /> COMBO</span>
                   {incluye ? <><span className="font-semibold">Incluye:</span> {incluye} · </> : null}
-                  <span className="font-bold tabular-nums">{fmt(o.price)}</span>
+                  <span className="pv2-price">{fmt(o.price)}</span>
                 </p>
               </div>
             </a>

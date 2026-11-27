@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { Search } from "lucide-react";
 
 /** Slug estable para deep links ?cat= (sin tildes, solo [a-z0-9-]). */
 export function categorySlug(name: string): string {
@@ -146,14 +147,17 @@ export function CategoryNav({ sections, catalog = false }: { sections: { name: s
     <>
       {sections.length > 1 && (
         <div className="-mt-2 mb-2 flex items-center gap-2">
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={catalog ? "🔍 Buscar en el catálogo…" : "🔍 Buscar en la carta…"}
-            className="h-9 flex-1 min-w-0 rounded-full border border-border bg-card px-4 text-sm outline-none focus:border-primary"
-            aria-label={catalog ? "Buscar en el catálogo" : "Buscar en la carta"}
-          />
+          <div className="relative flex-1 min-w-0">
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 pv2-icon-accent" />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={catalog ? "Buscar en el catálogo…" : "Buscar en la carta…"}
+              className="pv2-pill h-9 w-full min-w-0 pl-9 pr-4 text-sm outline-none"
+              aria-label={catalog ? "Buscar en el catálogo" : "Buscar en la carta"}
+            />
+          </div>
           {matches !== null && (
             <span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">
               {matches === 0 ? "Sin resultados" : `${matches} ${matches === 1 ? "resultado" : "resultados"}`}
@@ -161,7 +165,7 @@ export function CategoryNav({ sections, catalog = false }: { sections: { name: s
           )}
         </div>
       )}
-      <div className="relative sticky top-[152px] sm:top-16 z-30 -mx-4 px-4 py-2 bg-background/95 backdrop-blur-sm border-b border-border mb-6">
+      <div className="relative sticky top-[152px] sm:top-16 z-30 -mx-4 px-4 py-2 bg-background border-b border-border mb-6">
         {canScrollLeft && (
           <button
             type="button"
@@ -204,10 +208,8 @@ export function CategoryNav({ sections, catalog = false }: { sections: { name: s
               type="button"
               data-index={i}
               onClick={() => goTo(i)}
-              className={`snap-start shrink-0 whitespace-nowrap rounded-full border px-4 py-1.5 text-sm font-medium transition-colors ${
-                active === i
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border bg-card text-muted-foreground hover:border-primary hover:text-primary"
+              className={`pv2-pill snap-start shrink-0 whitespace-nowrap px-4 py-1.5 text-sm ${
+                active === i ? "pv2-active" : ""
               }`}
             >
               {s.name}

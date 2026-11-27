@@ -1,3 +1,4 @@
+import { Gift } from "lucide-react";
 import { ProductImage } from "@/components/product-image";
 import { fmtVence } from "@/lib/gift-card-share";
 
@@ -80,7 +81,7 @@ export function TarjetaRegalo({
                 className="h-12 w-12"
               />
             ) : (
-              <div className="h-12 w-12 flex items-center justify-center text-2xl">🎁</div>
+              <div className="h-12 w-12 flex items-center justify-center"><Gift className="h-7 w-7" /></div>
             )}
           </div>
           <div className="min-w-0">

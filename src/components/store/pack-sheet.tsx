@@ -7,6 +7,7 @@ import { mirrorVolume } from "@/lib/volume-mirror";
 import { volumeGroupColor } from "@/lib/volume-pricing";
 import { ProductImage } from "@/components/product-image";
 import { ModifierPicker } from "@/components/offers/modifier-picker";
+import { Snowflake, Sparkles, X } from "lucide-react";
 import type { ProductModifier } from "@/types/database";
 
 export type PackMember = {
@@ -92,19 +93,25 @@ export function PackSheet({
 
   return (
     <>
-    <div className="fixed inset-0 z-[70] bg-black/40 animate-fade-in-up" onClick={onClose}>
+    <div className="pv2 fixed inset-0 z-[70] bg-black/40 animate-fade-in-up" onClick={onClose}>
       <div
         className="absolute bottom-0 left-0 right-0 sm:left-1/2 sm:right-auto sm:bottom-auto sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-full sm:max-w-md bg-card rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <div className={`px-4 pt-3 pb-2 rounded-t-2xl sm:rounded-t-2xl ${c.soft} border-b ${c.border}`}>
           <div className="flex items-center justify-between gap-2">
-            <p className={`text-sm font-bold ${c.strong}`}>
-              {mode === "festejo"
-                ? `🧊 ¡Pack completo! 🎉: ${group.name}`
-                : isSolo
-                  ? `🧊 ${group.name}`
-                  : `🧊 Completá tu pack: ${group.name}`}
+            <p className={`text-sm font-bold ${c.strong} flex items-center gap-1.5`}>
+              {mode === "festejo" ? (
+                <>
+                  <Sparkles className="h-4 w-4 flex-shrink-0" strokeWidth={1.8} aria-hidden="true" />
+                  ¡Pack completo!: {group.name}
+                </>
+              ) : (
+                <>
+                  <Snowflake className="h-4 w-4 flex-shrink-0" strokeWidth={1.8} aria-hidden="true" />
+                  {isSolo ? group.name : `Completá tu pack: ${group.name}`}
+                </>
+              )}
             </p>
             <button
               type="button"
@@ -112,7 +119,7 @@ export function PackSheet({
               aria-label="Cerrar"
               className="h-8 w-8 rounded-full hover:bg-black/5 flex items-center justify-center text-muted-foreground flex-shrink-0"
             >
-              ✕
+              <X className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
             </button>
           </div>
           <p className={`text-xs mt-0.5 ${c.text}`}>{tierText}</p>

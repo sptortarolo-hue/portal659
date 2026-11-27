@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { Check, FlaskConical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -50,8 +51,8 @@ export function QuoteForm({ vendorId, vendorName, servicesList, prefEnabled = tr
   if (done) {
     return (
       <div className="text-center py-6">
-        <p className="text-2xl mb-2">✅</p>
-        <p className="font-medium">{estetica ? "Consulta enviada" : "Presupuesto enviado"}</p>
+        <Check className="mx-auto mb-2 h-8 w-8 text-emerald-600" aria-hidden="true" />
+        <p className="pv2-title font-medium">{estetica ? "Consulta enviada" : "Presupuesto enviado"}</p>
         <p className="text-sm text-muted-foreground mt-1">
           {vendorName} te va a responder pronto.
         </p>
@@ -119,7 +120,8 @@ export function QuoteForm({ vendorId, vendorName, servicesList, prefEnabled = tr
     <form onSubmit={handleSubmit} className="space-y-4">
       {isPreview && (
         <p className="rounded-lg bg-violet-50 border border-violet-200 text-violet-800 px-3 py-2 text-xs">
-          🧪 Estás en modo prueba: la consulta se marca como prueba y no cuenta para el tope ni envía avisos.
+          <FlaskConical className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />
+          Estás en modo prueba: la consulta se marca como prueba y no cuenta para el tope ni envía avisos.
         </p>
       )}
       <div>
@@ -164,7 +166,7 @@ export function QuoteForm({ vendorId, vendorName, servicesList, prefEnabled = tr
                   key={d}
                   type="button"
                   onClick={() => setPrefDayList((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]))}
-                  className={`px-3 py-1.5 rounded-full border text-sm transition-colors ${active ? "border-primary bg-primary/10 text-primary font-medium" : "border-border text-muted-foreground"}`}
+                  className={`pv2-pill px-3 py-1.5 text-sm ${active ? "pv2-active" : "border-border text-muted-foreground"}`}
                 >
                   {DAY_LABELS[d]}
                 </button>
@@ -182,7 +184,7 @@ export function QuoteForm({ vendorId, vendorName, servicesList, prefEnabled = tr
                 key={s}
                 type="button"
                 onClick={() => setPrefSlot((prev) => (prev === s ? "" : s))}
-                className={`px-3 py-1.5 rounded-full border text-sm capitalize transition-colors ${prefSlot === s ? "border-primary bg-primary/10 text-primary font-medium" : "border-border text-muted-foreground"}`}
+                className={`pv2-pill px-3 py-1.5 text-sm capitalize ${prefSlot === s ? "pv2-active" : "border-border text-muted-foreground"}`}
               >
                 {s}
               </button>
@@ -191,7 +193,7 @@ export function QuoteForm({ vendorId, vendorName, servicesList, prefEnabled = tr
         </div>
       )}
       {error && <p className="text-sm text-red-600">{error}</p>}
-      <Button type="submit" className="w-full" disabled={loading}>
+      <Button type="submit" className="pv2-btn pv2-btn-primary w-full" disabled={loading}>
         {loading ? "Enviando..." : estetica ? "Enviar consulta" : "Solicitar presupuesto"}
       </Button>
       <p className="text-xs text-muted-foreground text-center">

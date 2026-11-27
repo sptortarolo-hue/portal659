@@ -18,6 +18,7 @@ import {
   toggleWithCap,
 } from "@/lib/modifier-select";
 import { OptionPrice } from "@/components/offers/option-price";
+import { Sparkles, X } from "lucide-react";
 
 type ModifierPickerProps = {
   modifiers: ProductModifier[];
@@ -166,7 +167,12 @@ export function ModifierPicker({
                 <div key={mod.id} className={`mb-4 ${isVariant ? "rounded-xl bg-primary/5 border border-primary/20 p-3 -mx-1" : ""}`}>
                   <div className="flex items-center justify-between mb-2">
                     <span className={`text-sm font-medium ${isVariant ? "text-primary" : ""}`}>
-                      {isVariant ? "⭐ Variante" : mod.group_name}
+                      {isVariant ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <Sparkles className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden="true" />
+                          Variante
+                        </span>
+                      ) : mod.group_name}
                     </span>
                     <span className="text-xs text-muted-foreground">
                       {mod.required ? "Obligatorio" : "Opcional"}
@@ -317,7 +323,8 @@ export function ModifierPicker({
                   className="text-[11px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium hover:bg-primary/20 transition-colors"
                   title="Quitar"
                 >
-                  {c.label} ✕
+                  {c.label}
+                  <X className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
                 </button>
               ))}
             </div>

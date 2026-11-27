@@ -135,9 +135,9 @@ export function WeekSlotPicker({ vendorId, serviceId, staffId, durationMin, valu
               type="button"
               disabled={past || closedDay}
               onClick={() => setViewDate(date)}
-              className={`flex-shrink-0 w-16 rounded-xl border px-1 py-2 text-center transition-colors ${
+              className={`pv2-pill flex-shrink-0 w-16 px-1 py-2 text-center ${
                 selected
-                  ? "border-primary bg-primary/10 text-primary"
+                  ? "pv2-active"
                   : past
                     ? "border-border text-muted-foreground/40"
                     : closedDay
@@ -174,9 +174,9 @@ export function WeekSlotPicker({ vendorId, serviceId, staffId, durationMin, valu
                 type="button"
                 disabled={!s.available}
                 onClick={() => onPick(active.date, s.time)}
-                className={`rounded-lg border px-2 py-1.5 text-sm tabular-nums transition-colors ${
+                className={`pv2-pill px-2 py-1.5 text-sm tabular-nums ${
                   value.date === active.date && value.time === s.time
-                    ? "border-primary bg-primary/10 text-primary font-medium"
+                    ? "pv2-active"
                     : s.available
                       ? "border-border hover:bg-muted"
                       : "border-border text-muted-foreground/40 line-through"

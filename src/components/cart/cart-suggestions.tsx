@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { useCart } from "@/lib/cart";
 import { ProductImage } from "@/components/product-image";
 import { useToast } from "@/lib/toast";
+import { ShoppingBag } from "lucide-react";
 
 type Suggestion = {
   id: string;
@@ -67,27 +68,27 @@ export function CartSuggestions() {
 
   return (
     <div className="border-t border-border px-6 py-3 space-y-2 bg-card">
-      <p className="text-sm font-semibold">¿Querés agregar algo más?</p>
+      <p className="pv2-title text-sm">¿Querés agregar algo más?</p>
       <div className="flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-hide">
         {visible.map((s) => {
           const price = s.promo_price != null ? s.promo_price : s.price;
           return (
             <div
               key={s.id}
-              className="snap-start flex-shrink-0 w-28 border border-border rounded-xl p-2 space-y-1.5 bg-card"
+              className="pv2-card snap-start flex-shrink-0 w-28 p-2 space-y-1.5"
             >
-              <div className="h-16 w-full rounded-lg overflow-hidden bg-muted flex items-center justify-center">
+              <div className="h-16 w-full rounded-xl overflow-hidden bg-muted flex items-center justify-center">
                 {s.image ? (
                   <ProductImage src={s.image} name={s.name} vertical={vendor?.vertical} alt={s.name} className="w-full h-full object-cover" />
                 ) : (
-                  <span className="text-2xl">🛒</span>
+                  <ShoppingBag className="pv2-icon-accent h-7 w-7" />
                 )}
               </div>
               <p className="text-xs font-medium leading-tight line-clamp-2">{s.name}{s.presentationLabel ? ` ${s.presentationLabel}` : ""}</p>
-              <p className="text-xs font-bold tabular-nums">${price.toLocaleString("es-AR")}</p>
+              <p className="pv2-price">${price.toLocaleString("es-AR")}</p>
               <button
                 onClick={() => handleAdd(s)}
-                className="w-full rounded-md bg-primary text-primary-foreground text-xs font-medium py-1 hover:bg-primary/90 active:scale-95 transition-all"
+                className="pv2-btn pv2-btn-primary w-full py-1.5 text-xs"
               >
                 + Agregar
               </button>

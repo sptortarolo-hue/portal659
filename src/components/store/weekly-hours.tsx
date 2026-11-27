@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ChevronDown, ChevronUp, CircleCheck, CircleX, Clock } from "lucide-react";
 import { parseWeeklyHours, todayWeekDay } from "@/lib/open-hours";
 
 /**
@@ -29,20 +30,17 @@ export function WeeklyHours({
   // Fallback: formato legacy o libre → pill con el string crudo (como antes).
   if (!rows || !today) {
     return (
-      <div className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground mt-4 max-w-full">
-        🕐 {hours}
+      <div className="pv2-chip pv2-chip-muted mt-4 max-w-full">
+        <Clock className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
+        {hours}
       </div>
     );
   }
 
-  const dot = openNow === true
-    ? "🟢"
-    : openNow === false
-      ? "🔴"
-      : "🕐";
+  const StatusIcon = openNow === true ? CircleCheck : openNow === false ? CircleX : Clock;
 
   return (
-    <div className="w-full max-w-sm rounded-2xl border border-border bg-card/60 px-4 py-3 mt-3">
+    <div className="pv2-card w-full max-w-sm px-4 py-3 mt-3">
       {/* Día de hoy (siempre visible) + toggle semana */}
       <button
         type="button"
@@ -50,15 +48,20 @@ export function WeeklyHours({
         className="w-full flex items-center justify-between gap-2 text-left"
       >
         <div className="min-w-0">
-          <span className="text-sm font-semibold">
-            {dot} Hoy
+          <span className="pv2-title inline-flex items-center gap-1 text-sm">
+            <StatusIcon className="h-3.5 w-3.5 pv2-icon-accent" strokeWidth={2} aria-hidden="true" />
+            Hoy
           </span>
           <span className="text-sm text-muted-foreground ml-1.5">
             {today.label} · <span className="text-foreground font-medium">{today.text}</span>
           </span>
         </div>
-        <span className="text-xs text-primary font-medium flex-shrink-0 hover:underline">
-          {expanded ? "Ver menos ▲" : "Ver semana ▼"}
+        <span className="pv2-icon-accent text-xs font-medium flex-shrink-0 inline-flex items-center gap-1 hover:underline">
+          {expanded ? (
+            <>Ver menos <ChevronUp className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" /></>
+          ) : (
+            <>Ver semana <ChevronDown className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" /></>
+          )}
         </span>
       </button>
 
@@ -77,8 +80,9 @@ export function WeeklyHours({
                 <span className="shrink-0">{r.label}</span>
                 <span className={`tabular-nums text-right ${r.closed ? "text-muted-foreground/70" : ""}`}>
                   {isToday && (
-                    <span className="mr-1.5 rounded-full bg-primary/15 text-primary text-[10px] font-bold px-1.5 py-0.5">
-                      {dot} Hoy
+                    <span className="pv2-chip pv2-chip-muted mr-1.5">
+                      <StatusIcon className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
+                      Hoy
                     </span>
                   )}
                   {r.text}

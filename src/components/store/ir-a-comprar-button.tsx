@@ -1,10 +1,12 @@
 "use client";
 
+import { ShoppingBag } from "lucide-react";
+
 /**
  * Botón del micrositio que scrollea hasta el menú/catálogo, dejándolo justo debajo del
  * nav sticky de categorías (mismo destino que el link compartido por WhatsApp
- * con ?menu=1). El label varía: con carrito "🛒 Ir a comprar", en modo lectura
- * (venta online apagada) "📋 Ver el catálogo" (retail) / "📋 Ver la carta" (gastro).
+ * con ?menu=1). El label varía: con carrito "Ir a comprar", en modo lectura
+ * (venta online apagada) "Ver el catálogo" (retail) / "Ver la carta" (gastro).
  */
 export function IrAComprarButton({ label }: { label?: string }) {
   function goToMenu() {
@@ -23,7 +25,8 @@ export function IrAComprarButton({ label }: { label?: string }) {
       onClick={goToMenu}
       className="inline-flex items-center gap-1.5 rounded-full bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium hover:bg-primary/90 transition-colors"
     >
-      {label ?? "🛒 Ir a comprar"}
+      <ShoppingBag className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+      {label ?? "Ir a comprar"}
     </button>
   );
 }

@@ -2,15 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Map, Package, Search, ShoppingCart, type LucideIcon } from "lucide-react";
+import { Home, Package, Search, ShoppingCart, UserRound, type LucideIcon } from "lucide-react";
 import { useCart } from "@/lib/cart";
 import { isImmersivePath } from "@/lib/immersive";
 
 const NAV_ITEMS: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/", label: "Inicio", icon: Home },
-  { href: "/buscar", label: "Buscar", icon: Search },
-  { href: "/mapa", label: "Mapa", icon: Map },
+  { href: "/buscar", label: "Explorar", icon: Search },
   { href: "/mis-pedidos", label: "Pedidos", icon: Package },
+  { href: "/perfil", label: "Mi cuenta", icon: UserRound },
 ];
 
 export function BottomNav() {

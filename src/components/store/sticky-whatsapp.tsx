@@ -1,12 +1,14 @@
 "use client";
 
+import { AlertTriangle } from "lucide-react";
+
 type StickyWhatsAppProps = {
   url: string;
   isService: boolean;
   isRetail?: boolean;
   isUrgent?: boolean;
   urgentUrl?: string;
-  /** Texto del botón de urgencia (ej: "🚨 Urgente +20%"). Default "🚨 Urgente". */
+  /** Texto del botón de urgencia (ej: "Urgente +20%"). Default "Urgente". */
   urgentLabel?: string;
 };
 
@@ -32,7 +34,8 @@ export function StickyWhatsApp({ url, isService, isRetail, isUrgent, urgentUrl, 
             rel="noopener noreferrer"
             className="flex items-center justify-center gap-1 rounded-xl bg-red-500 text-white px-4 py-3 text-sm font-medium hover:bg-red-600 transition-all active:scale-95"
           >
-            {urgentLabel || "🚨 Urgente"}
+            <AlertTriangle className="h-4 w-4 flex-shrink-0" strokeWidth={2} aria-hidden="true" />
+            {urgentLabel || "Urgente"}
           </a>
         )}
       </div>

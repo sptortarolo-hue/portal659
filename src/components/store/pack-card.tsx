@@ -1,8 +1,8 @@
 "use client";
 
+import { Package } from "lucide-react";
 import { openPack } from "@/components/store/pack-sheet";
 import { ProductImage } from "@/components/product-image";
-import { volumeGroupColor } from "@/lib/volume-pricing";
 
 export type PackCardMember = {
   id: string;
@@ -28,7 +28,6 @@ export function PackCard({ group }: { group: PackCardGroup }) {
   const tiers = [...(group.tiers || [])].sort((a, b) => a.minQty - b.minQty);
   const tier = tiers[0];
   if (!tier) return null;
-  const c = volumeGroupColor(group.id);
   const members = (group.members || []).slice(0, 4);
   const tierText =
     tier.kind === "fixed_total"
@@ -41,7 +40,7 @@ export function PackCard({ group }: { group: PackCardGroup }) {
     <button
       type="button"
       onClick={() => openPack(group.id)}
-      className={`w-full text-left rounded-2xl border p-3 ${c.border} ${c.soft} hover:shadow-md active:scale-[0.99] transition-all`}
+      className="pv2-card w-full text-left p-3"
     >
       <div className="flex items-center gap-3">
         <div className="flex -space-x-2 flex-shrink-0">
@@ -57,17 +56,17 @@ export function PackCard({ group }: { group: PackCardGroup }) {
           ))}
         </div>
         <div className="min-w-0 flex-1">
-          <p className={`text-sm font-bold leading-snug line-clamp-2 ${c.strong}`}>
-            🧊 {group.name}
+          <p className="pv2-title text-sm line-clamp-2">
+            <Package className="inline h-4 w-4 align-[-3px] mr-1 pv2-icon-accent" /> {group.name}
           </p>
           {members.length > 0 && (
-            <p className={`text-[11px] mt-0.5 truncate ${c.text}`}>
+            <p className="pv2-subtitle text-[11px] mt-0.5 truncate">
               Incluye: {members.map((m) => m.name).join(" · ")}
             </p>
           )}
-          <p className={`text-xs mt-0.5 font-semibold ${c.text}`}>{tierText} · combinables entre sí</p>
+          <p className="pv2-chip mt-1 w-fit">{tierText} · combinables entre sí</p>
         </div>
-        <span className={`text-xs font-bold px-3 py-2 rounded-xl ${c.solid} text-white flex-shrink-0`}>
+        <span className="pv2-chip flex-shrink-0">
           Armalo →
         </span>
       </div>

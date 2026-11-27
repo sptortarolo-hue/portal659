@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { Package, Sparkles } from "lucide-react";
 import { useCart, type CartVolumeGroup } from "@/lib/cart";
 import { volumeGroupColor } from "@/lib/volume-pricing";
 
@@ -51,18 +52,16 @@ export function VolumeProgress({ groups, showMembers = false }: { groups: CartVo
         return (
         <div
           key={r.id}
-          className={`rounded-xl border px-3 py-2 text-xs font-medium ${
-            r.done
-              ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-              : "bg-muted/50 border-border text-muted-foreground"
+          className={`pv2-card px-3 py-2 text-xs font-medium ${
+            r.done ? "pv2-active" : "text-muted-foreground"
           }`}
         >
           <div className="flex items-center justify-between gap-2">
             <span>
               <span className={`inline-block h-2 w-2 rounded-full mr-1.5 ${c.solid}`} />
-              📦 {r.name}:{" "}
+              <Package className="inline h-3.5 w-3.5 align-[-2px] mr-1 pv2-icon-accent" /> {r.name}:{" "}
               {r.done ? (
-                <>¡tenés {r.qty} y corre {r.nextLabel}! 🎉</>
+                <>¡tenés {r.qty} y corre {r.nextLabel}! <Sparkles className="inline h-3.5 w-3.5 align-[-2px]" /></>
               ) : (
                 <>sumás {r.qty}/{r.nextMin} para {r.nextLabel}</>
               )}

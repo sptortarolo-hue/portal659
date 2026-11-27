@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Gift, Lock, Ticket } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,18 +27,18 @@ export function ServicePickCards({
   return (
     <div className="grid sm:grid-cols-2 gap-3">
       {services.map((s) => (
-        <Card key={s.id} className="p-3 flex gap-3 items-center">
+        <Card key={s.id} className="pv2-card p-3 flex gap-3 items-center">
           <div className="h-16 w-16 rounded-xl overflow-hidden flex-shrink-0 bg-muted">
             <ProductImage src={s.image_url || null} name={s.name} vertical="estetica" alt={s.name} className="w-full h-full object-cover" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-semibold text-sm truncate">{s.name}</p>
-            <p className="text-xs text-muted-foreground">
+            <p className="pv2-title font-semibold text-sm truncate">{s.name}</p>
+            <p className="pv2-subtitle text-xs">
               {s.duration_min ? `${s.duration_min} min` : ""}
               {servicePriceLabel(s) ? ` · ${servicePriceLabel(s)}` : ""}
-              {s.require_deposit ? " · 🔒 con seña" : ""}
+              {s.require_deposit ? <> · <Lock className="inline h-3 w-3" aria-hidden="true" /> con seña</> : ""}
             </p>
-            <Button size="sm" className="mt-1.5 h-8 text-xs" onClick={() => pick(s.id)}>
+            <Button size="sm" className="pv2-btn pv2-btn-primary mt-1.5 h-8 text-xs" onClick={() => pick(s.id)}>
               Elegir
             </Button>
           </div>
@@ -98,15 +99,15 @@ export function PackBuyCard({
   }
 
   return (
-    <Card className="p-4 space-y-2">
-      <p className="font-semibold text-sm">🎟️ {pack.name}</p>
-      <p className="text-xs text-muted-foreground">
-        {pack.sessions_total} sesiones · <strong className="text-foreground">{money(price)}</strong>
+    <Card className="pv2-card p-4 space-y-2">
+      <p className="pv2-title font-semibold text-sm"><Ticket className="mr-1 inline h-4 w-4" aria-hidden="true" />{pack.name}</p>
+      <p className="pv2-subtitle text-xs">
+        {pack.sessions_total} sesiones · <strong className="pv2-price text-foreground">{money(price)}</strong>
       </p>
       {!open ? (
         <div className="flex gap-2">
           {mpConnected && price > 0 ? (
-            <Button size="sm" className="flex-1" onClick={() => setOpen(true)}>Comprar online</Button>
+            <Button size="sm" className="pv2-btn pv2-btn-primary flex-1" onClick={() => setOpen(true)}>Comprar online</Button>
           ) : null}
           <a href={waUrl} target="_blank" rel="noopener noreferrer" className="flex-1">
             <Button size="sm" variant={mpConnected && price > 0 ? "outline" : "default"} className="w-full">
@@ -127,7 +128,7 @@ export function PackBuyCard({
           {error && <p className="text-xs text-red-600">{error}</p>}
           <div className="flex gap-2">
             <Button size="sm" variant="outline" className="flex-1" onClick={() => setOpen(false)}>Atrás</Button>
-            <Button size="sm" className="flex-1" onClick={buy} disabled={loading}>
+            <Button size="sm" className="pv2-btn pv2-btn-primary flex-1" onClick={buy} disabled={loading}>
               {loading ? "Creando pago..." : `Pagar ${money(price)}`}
             </Button>
           </div>
@@ -192,15 +193,15 @@ export function GiftcardBuyCard({
   }
 
   return (
-    <Card className="p-4 space-y-2">
-      <p className="font-semibold text-sm">🎁 Giftcard para regalar</p>
-      <p className="text-xs text-muted-foreground">
+    <Card className="pv2-card p-4 space-y-2">
+      <p className="pv2-title font-semibold text-sm"><Gift className="mr-1 inline h-4 w-4" aria-hidden="true" />Giftcard para regalar</p>
+      <p className="pv2-subtitle text-xs">
         Elegís el monto, pagás online y el local le pasa el código a quien vos digas por WhatsApp.
       </p>
       {!open ? (
         <div className="flex gap-2">
           {canBuyOnline ? (
-            <Button size="sm" className="flex-1" onClick={() => setOpen(true)}>Comprar giftcard</Button>
+            <Button size="sm" className="pv2-btn pv2-btn-primary flex-1" onClick={() => setOpen(true)}>Comprar giftcard</Button>
           ) : null}
           <a href={waUrl} target="_blank" rel="noopener noreferrer" className="flex-1">
             <Button size="sm" variant={canBuyOnline ? "outline" : "default"} className="w-full">
@@ -219,9 +220,9 @@ export function GiftcardBuyCard({
                     key={d}
                     type="button"
                     onClick={() => setAmount(String(d))}
-                    className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+                    className={`pv2-pill px-3 py-1.5 text-sm font-medium ${
                       Number(amount) === d
-                        ? "border-primary bg-primary/10 text-primary"
+                        ? "pv2-active"
                         : "border-border hover:border-primary/50"
                     }`}
                   >
@@ -249,7 +250,7 @@ export function GiftcardBuyCard({
           {error && <p className="text-xs text-red-600">{error}</p>}
           <div className="flex gap-2">
             <Button size="sm" variant="outline" className="flex-1" onClick={() => setOpen(false)}>Atrás</Button>
-            <Button size="sm" className="flex-1" onClick={buy} disabled={loading}>
+            <Button size="sm" className="pv2-btn pv2-btn-primary flex-1" onClick={buy} disabled={loading}>
               {loading ? "Creando pago..." : "Pagar"}
             </Button>
           </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
+import { Check, Ruler, X } from "lucide-react";
 import { useCart } from "@/lib/cart";
 import type { CartModifier } from "@/lib/cart";
 import { useToast } from "@/lib/toast";
@@ -149,12 +150,12 @@ export function VariantSelector({ productId, name, variants, vendor, stockContro
                   type="button"
                   disabled={cOut}
                   onClick={() => { setColor(c); setTalle(null); onColorChange?.(c); }}
-                  className={`rounded-full px-3 py-1.5 text-xs font-semibold border transition ${
+                  className={`pv2-pill px-3 py-1.5 text-xs font-semibold ${
                     color === c
-                      ? "border-primary bg-primary text-primary-foreground"
+                      ? "pv2-active"
                       : cOut
-                        ? "border-border bg-muted text-muted-foreground opacity-50 cursor-not-allowed"
-                        : "border-border bg-card text-foreground hover:border-primary"
+                        ? "pv2-chip-muted opacity-50 cursor-not-allowed"
+                        : ""
                   }`}
                 >
                   {c}
@@ -173,9 +174,9 @@ export function VariantSelector({ productId, name, variants, vendor, stockContro
               <button
                 type="button"
                 onClick={() => setGuideOpen(true)}
-                className="text-xs font-medium text-primary hover:underline whitespace-nowrap"
+                className="text-xs font-medium pv2-icon-accent hover:underline whitespace-nowrap inline-flex items-center gap-1"
               >
-                📏 Guía de talles
+                <Ruler className="h-3.5 w-3.5" /> Guía de talles
               </button>
             )}
           </div>
@@ -190,12 +191,12 @@ export function VariantSelector({ productId, name, variants, vendor, stockContro
                   type="button"
                   disabled={tOut}
                   onClick={() => setTalle(t)}
-                  className={`rounded-md px-3 py-1.5 text-sm font-semibold border transition ${
+                  className={`pv2-pill px-3 py-1.5 text-sm font-semibold ${
                     talle === t
-                      ? "border-primary bg-primary text-primary-foreground"
+                      ? "pv2-active"
                       : tOut
-                        ? "border-border bg-muted text-muted-foreground opacity-50 cursor-not-allowed"
-                        : "border-border bg-card text-foreground hover:border-primary"
+                        ? "pv2-chip-muted opacity-50 cursor-not-allowed"
+                        : ""
                   }`}
                 >
                   {t}
@@ -211,15 +212,13 @@ export function VariantSelector({ productId, name, variants, vendor, stockContro
           <div>
             {promo != null && (
               <>
-                <span className="inline-flex items-center gap-1 rounded-full bg-red-500 text-white text-[10px] font-bold px-2 py-0.5">
-                  -{promo}%
-                </span>
-                <span className="ml-2 text-sm text-muted-foreground line-through">${current.price.toLocaleString("es-AR")}</span>
+                <span className="pv2-chip">-{promo}%</span>
+                <span className="ml-2 pv2-price-old">${current.price.toLocaleString("es-AR")}</span>
               </>
             )}
-            <div className="font-display text-lg font-bold">
+            <div className="pv2-price">
               {showCash ? (
-                <CashPrice price={price!} hasPromo={current.promo != null} excluded={cashExcluded} cashPct={vendor.cashDiscountPct} size="md" plainClassName="font-display text-lg font-bold" />
+                <CashPrice price={price!} hasPromo={current.promo != null} excluded={cashExcluded} cashPct={vendor.cashDiscountPct} size="md" plainClassName="pv2-price" />
               ) : (
                 <>${price!.toLocaleString("es-AR")}</>
               )}
@@ -227,7 +226,7 @@ export function VariantSelector({ productId, name, variants, vendor, stockContro
           </div>
           <div className="text-right text-xs text-muted-foreground">
             {outOfStock ? (
-              <span className="text-red-600 font-semibold">Sin stock</span>
+              <span className="pv2-chip pv2-chip-muted">Sin stock</span>
             ) : (
               <span>{current.stock} disponibles</span>
             )}
@@ -270,15 +269,15 @@ export function VariantSelector({ productId, name, variants, vendor, stockContro
         type="button"
         disabled={!current || outOfStock}
         onClick={handleAdd}
-        className={`w-full rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+        className={`pv2-btn w-full px-4 py-2 text-sm ${
           added
-            ? "bg-green-500 text-white animate-pop-in"
-            : "bg-primary text-primary-foreground hover:bg-primary/90 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+            ? "pv2-chip animate-pop-in"
+            : "pv2-btn-primary disabled:opacity-40 disabled:cursor-not-allowed"
         }`}
       >
-        {added ? "✓ Agregado" : outOfStock || totalStock <= 0 ? "Sin stock" : allowQty && qty > 1 ? `Agregar ${qty} al carrito` : "Agregar al carrito"}
+        {added ? <><Check className="h-4 w-4" /> Agregado</> : outOfStock || totalStock <= 0 ? "Sin stock" : allowQty && qty > 1 ? `Agregar ${qty} al carrito` : "Agregar al carrito"}
       </button>
-      {slowStock && <p className="text-xs text-amber-700 font-medium">¡Quedan pocas unidades!</p>}
+      {slowStock && <p className="pv2-chip mt-1 w-fit">¡Quedan pocas unidades!</p>}
 
       {showPicker && current && modifiers && modifiers.length > 0 && (
         <ModifierPicker
@@ -300,7 +299,7 @@ export function VariantSelector({ productId, name, variants, vendor, stockContro
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/60" onClick={() => setGuideOpen(false)} />
           <div
-            className="absolute inset-x-0 bottom-0 max-h-[80vh] overflow-y-auto rounded-t-2xl bg-card sm:inset-0 sm:m-auto sm:max-w-sm sm:h-fit sm:rounded-2xl"
+            className="pv2-card absolute inset-x-0 bottom-0 max-h-[80vh] overflow-y-auto rounded-t-2xl sm:inset-0 sm:m-auto sm:max-w-sm sm:h-fit sm:rounded-2xl"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
@@ -310,10 +309,10 @@ export function VariantSelector({ productId, name, variants, vendor, stockContro
               <button
                 type="button"
                 onClick={() => setGuideOpen(false)}
-                className="h-8 w-8 shrink-0 rounded-full bg-muted flex items-center justify-center text-foreground hover:bg-accent"
+                className="pv2-pill h-8 w-8 shrink-0 flex items-center justify-center"
                 aria-label="Cerrar"
               >
-                ✕
+                <X className="h-4 w-4" />
               </button>
             </div>
             <div className="p-4">

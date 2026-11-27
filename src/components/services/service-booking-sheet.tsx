@@ -1,6 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  ClipboardList,
+  Clock,
+  Lock,
+  Search,
+  Undo2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ProductImage } from "@/components/product-image";
 import { BookingForm } from "@/components/services/booking-form";
@@ -41,7 +48,7 @@ export function ServiceCards({
           key={s.id}
           type="button"
           onClick={() => onPick(s)}
-          className="flex flex-col rounded-xl overflow-hidden border border-border bg-card text-left shadow-sm hover:shadow-md transition-shadow"
+          className="pv2-card flex flex-col overflow-hidden text-left"
         >
           <span className="relative w-full aspect-square overflow-hidden bg-accent/60">
             <ProductImage
@@ -53,18 +60,19 @@ export function ServiceCards({
             />
             {s.require_deposit === true && s.deposit_amount != null && Number(s.deposit_amount) > 0 && (
               <span className="absolute top-2 left-2 rounded-full bg-black/60 text-white px-2 py-0.5 text-[10px] font-semibold">
-                🔒 Con seña
+                <Lock className="mr-0.5 inline h-3 w-3" aria-hidden="true" />
+                Con seña
               </span>
             )}
             {s.featured_today === true && (
-              <span className="absolute top-2 right-2 rounded-full bg-sun text-ink px-2 py-0.5 text-[10px] font-bold">
+              <span className="pv2-chip absolute top-2 right-2 px-2 py-0.5 text-[10px] font-bold">
                 Hoy
               </span>
             )}
           </span>
           <span className="p-2.5 flex flex-col gap-0.5">
-            <span className="text-[13px] font-medium line-clamp-1">{s.name}</span>
-            <span className="text-xs text-muted-foreground">
+            <span className="pv2-title text-[13px] line-clamp-1">{s.name}</span>
+            <span className="pv2-subtitle text-xs">
               {[s.duration_min != null && Number(s.duration_min) > 0 ? `${s.duration_min} min` : null,
                 servicePriceLabel(s)]
                 .filter(Boolean)
@@ -283,9 +291,7 @@ export function ServiceBookingSheet({
                     className="w-full h-full object-cover"
                   />
                   <span className="absolute bottom-2 right-2 h-8 w-8 rounded-full bg-black/60 text-white flex items-center justify-center" aria-hidden="true">
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M10 18a8 8 0 100-16 8 8 0 000 16zm1-11v6m-3-3h6" />
-                    </svg>
+                    <Search className="h-4 w-4" />
                   </span>
                 </button>
               ) : (
@@ -299,38 +305,44 @@ export function ServiceBookingSheet({
                 )}
                 <div className="flex items-center gap-2 flex-wrap text-sm">
                   {service.duration_min != null && Number(service.duration_min) > 0 && (
-                    <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium">
-                      ⏱ {service.duration_min} min
+                    <span className="pv2-chip pv2-chip-muted px-2.5 py-1 text-xs font-medium">
+                      <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+                      {service.duration_min} min
                     </span>
                   )}
                   {service.featured_today === true && (
-                    <span className="rounded-full bg-sun text-ink px-2.5 py-1 text-xs font-bold">
+                    <span className="pv2-chip px-2.5 py-1 text-xs font-bold">
                       Hoy
                     </span>
                   )}
                   {servicePriceLabel(service) && (
-                    <span className="font-display font-bold text-lg">
+                    <span className="pv2-price font-display">
                       {servicePriceLabel(service)}
                     </span>
                   )}
                 </div>
                 {service.description && (
-                  <p className="text-sm text-muted-foreground whitespace-pre-line">{service.description}</p>
+                  <p className="pv2-subtitle whitespace-pre-line">{service.description}</p>
                 )}
                 {service.require_deposit === true && service.deposit_amount != null && Number(service.deposit_amount) > 0 && (
                   <p className="text-xs rounded-lg bg-amber-50 border border-amber-200 text-amber-800 px-3 py-2">
-                    🔒 Este servicio exige seña de ${Number(service.deposit_amount).toLocaleString("es-AR")}, que se abona con Mercado Pago al reservar.
+                    <Lock className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />
+                    Este servicio exige seña de ${Number(service.deposit_amount).toLocaleString("es-AR")}, que se abona con Mercado Pago al reservar.
                   </p>
                 )}
                 {cancelPolicy && cancelRefundsDeposit !== false && (
-                  <p className="text-xs text-muted-foreground">📋 {cancelPolicy}</p>
-                )}
-                {service.require_deposit === true && cancelRefundsDeposit !== false && (
-                  <p className="text-xs text-muted-foreground">
-                    ↩️ Si cancelás con más de {cancelHours ?? 24} h de anticipación te devolvemos la seña; dentro de ese plazo se pierde.
+                  <p className="pv2-subtitle text-xs">
+                    <ClipboardList className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />
+                    {cancelPolicy}
                   </p>
                 )}
-                <Button className="w-full" size="lg" onClick={() => setStep("book")}>
+                {service.require_deposit === true && cancelRefundsDeposit !== false && (
+                  <p className="pv2-subtitle text-xs">
+                    <Undo2 className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />
+                    Si cancelás con más de {cancelHours ?? 24} h de anticipación te devolvemos la seña; dentro de ese plazo se pierde.
+                  </p>
+                )}
+                <Button className="pv2-btn pv2-btn-primary w-full" size="lg" onClick={() => setStep("book")}>
                   Solicitar turno →
                 </Button>
               </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Star } from "lucide-react";
 
 type ReviewFormProps = {
   vendorId: string;
@@ -59,7 +60,7 @@ export function ReviewForm({ vendorId, vendorName, onSubmitted }: ReviewFormProp
 
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
-      <p className="text-sm font-medium">
+      <p className="pv2-title text-sm font-medium">
         ¿Cómo fue tu experiencia en {vendorName}?
       </p>
 
@@ -71,13 +72,17 @@ export function ReviewForm({ vendorId, vendorName, onSubmitted }: ReviewFormProp
             onClick={() => setRating(star)}
             onMouseEnter={() => setHover(star)}
             onMouseLeave={() => setHover(0)}
-            className={`text-2xl transition-all ${
+            className={`transition-all ${
               star <= (hover || rating)
                 ? "scale-110 text-amber-400"
                 : "text-muted-foreground hover:text-amber-300"
             }`}
+            aria-label={`${star} ${star === 1 ? "estrella" : "estrellas"}`}
           >
-            {star <= (hover || rating) ? "★" : "☆"}
+            <Star
+              className={`h-7 w-7 ${star <= (hover || rating) ? "fill-amber-400" : "fill-none"}`}
+              aria-hidden="true"
+            />
           </button>
         ))}
       </div>
@@ -104,7 +109,7 @@ export function ReviewForm({ vendorId, vendorName, onSubmitted }: ReviewFormProp
       <button
         type="submit"
         disabled={!rating || loading}
-        className="rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
+        className="pv2-btn pv2-btn-primary px-4 py-2 text-sm disabled:opacity-50"
       >
         {loading ? "Enviando..." : "Enviar reseña"}
       </button>

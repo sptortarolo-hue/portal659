@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Star } from "lucide-react";
 import type { Review } from "@/types/database";
 
 type ReviewListProps = {
@@ -35,16 +36,18 @@ export function ReviewList({ vendorId }: ReviewListProps) {
   }));
 
   return (
-    <div className="border border-border rounded-2xl p-6 bg-card mt-6">
+    <div className="pv2-card p-6 mt-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
         <div className="text-center sm:text-left">
-          <div className="text-4xl font-bold">{avgRating.toFixed(1)}</div>
+          <div className="pv2-title text-4xl font-bold">{avgRating.toFixed(1)}</div>
           <div className="flex gap-0.5 justify-center sm:justify-start mt-1">
             {[1, 2, 3, 4, 5].map((star) => (
-              <span key={star} className={`text-lg ${star <= Math.round(avgRating) ? "text-amber-400" : "text-muted"}`}>
-                ★
-              </span>
+              <Star
+                key={star}
+                className={`h-4 w-4 ${star <= Math.round(avgRating) ? "fill-amber-400 text-amber-400" : "fill-none text-muted-foreground/40"}`}
+                aria-hidden="true"
+              />
             ))}
           </div>
           <p className="text-sm text-muted-foreground mt-1">
@@ -74,9 +77,13 @@ export function ReviewList({ vendorId }: ReviewListProps) {
         {reviews.map((r) => (
           <div key={r.id} className="border-b border-border last:border-0 pb-3 last:pb-0">
             <div className="flex items-center gap-2 mb-1">
-              <span className="flex gap-0.5 text-sm text-amber-400">
+              <span className="flex gap-0.5">
                 {[1, 2, 3, 4, 5].map((star) => (
-                  <span key={star}>{star <= r.rating ? "★" : "☆"}</span>
+                  <Star
+                    key={star}
+                    className={`h-3.5 w-3.5 ${star <= r.rating ? "fill-amber-400 text-amber-400" : "fill-none text-amber-400/60"}`}
+                    aria-hidden="true"
+                  />
                 ))}
               </span>
               <span className="text-sm font-medium">{r.customer_name}</span>

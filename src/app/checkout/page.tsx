@@ -2,6 +2,11 @@
 
 import { useState, useEffect, useMemo, useRef, Fragment } from "react";
 import { useRouter } from "next/navigation";
+import {
+  AlertTriangle, ArrowDown, Banknote, Check, ClipboardList, Clock, CreditCard,
+  FlaskConical, Gift, Hand, Handshake, Home, Landmark, MapPin, MessageCircle,
+  Moon, Package, Pause, Phone, Scale, ShoppingBag, Smartphone, Sparkles, Truck, X,
+} from "lucide-react";
 import { useCart } from "@/lib/cart";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -177,8 +182,8 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
   const closedNotice =
     storeClosed && acceptsWhenClosed
       ? method === "delivery"
-        ? "🕐 El local está cerrado ahora. Tu pedido se procesará el día y turno que elegiste."
-        : "🕐 El local está cerrado ahora. Tu pedido se procesará cuando abra (próximo turno)."
+        ? "El local está cerrado ahora. Tu pedido se procesará el día y turno que elegiste."
+        : "El local está cerrado ahora. Tu pedido se procesará cuando abra (próximo turno)."
       : null;
   const showSlots = isRetailVendor && method === "delivery" && deliverySlots.length > 0 && !deliveryCoordinar && !shipActive;
   const activeSlotId = slotId || deliverySlots[0]?.id || "";
@@ -397,21 +402,21 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
     const tiendaLink = mpOrderInfo?.slug ? `/tienda/${mpOrderInfo.slug}` : s.stash?.slug ? `/tienda/${s.stash.slug}` : "/";
 
     return (
-      <main className="container mx-auto px-4 py-20 max-w-md text-center">
+      <main className="pv2 container mx-auto px-4 py-20 max-w-md text-center">
         {s.status === "success" && (
           <>
-            <div className="text-6xl mb-4 animate-bounce-in">✅</div>
-            <h1 className="font-display text-3xl font-semibold mb-3">¡Pago aprobado!</h1>
-            <p className="text-muted-foreground mb-6">
+            <div className="text-6xl mb-4 animate-bounce-in"><Check className="h-16 w-16" /></div>
+            <h1 className="pv2-title font-display text-3xl font-semibold mb-3">¡Pago aprobado!</h1>
+            <p className="pv2-subtitle text-muted-foreground mb-6">
               Tu pedido pagado ya llegó a <span className="font-medium">{storeName}</span>. No hace falta que avises por WhatsApp: les llega solo.
             </p>
           </>
         )}
         {s.status === "pending" && (
           <>
-            <div className="text-6xl mb-4">⏳</div>
-            <h1 className="font-display text-3xl font-semibold mb-3">Pago en revisión</h1>
-            <p className="text-muted-foreground mb-6">
+            <div className="text-6xl mb-4"><Clock className="h-16 w-16" /></div>
+            <h1 className="pv2-title font-display text-3xl font-semibold mb-3">Pago en revisión</h1>
+            <p className="pv2-subtitle text-muted-foreground mb-6">
               Mercado Pago está procesando tu pago. Cuando se acredite, el pedido entra directo en{" "}
               <span className="font-medium">{storeName}</span>.
             </p>
@@ -419,9 +424,9 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
         )}
         {s.status === "failure" && (
           <>
-            <div className="text-6xl mb-4">❌</div>
-            <h1 className="font-display text-3xl font-semibold mb-3">No se pudo cobrar</h1>
-            <p className="text-muted-foreground mb-6">
+            <div className="text-6xl mb-4"><X className="h-16 w-16" /></div>
+            <h1 className="pv2-title font-display text-3xl font-semibold mb-3">No se pudo cobrar</h1>
+            <p className="pv2-subtitle text-muted-foreground mb-6">
               El pago online no se completó. Podés volver a intentar o coordinar el pago directo con{" "}
               <span className="font-medium">{storeName}</span>.
             </p>
@@ -431,8 +436,8 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
         {s.status !== "failure" && (
           <div className="space-y-2 mb-4">
             {mpTrackToken ? (
-              <Button className="w-full" onClick={() => router.push(`/seguimiento/${mpTrackToken}`)}>
-                📦 Seguir mi pedido en vivo
+              <Button className="pv2-btn pv2-btn-primary w-full" onClick={() => router.push(`/seguimiento/${mpTrackToken}`)}>
+                <Package className="h-4 w-4" /> Seguir mi pedido en vivo
               </Button>
             ) : !mpTokenDone ? (
               <div className="h-10 rounded-xl bg-muted animate-pulse" aria-label="Buscando tu pedido" />
@@ -447,7 +452,7 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
               rel="noopener noreferrer"
               className="block w-full rounded-xl bg-green-500 text-white text-sm font-medium py-2.5 hover:bg-green-600 transition-colors"
             >
-              💬 {s.status === "failure" ? "Coordinar por WhatsApp" : "Consultar por WhatsApp"}
+              <MessageCircle className="mr-1 inline h-4 w-4 align-[-0.15em]" /> {s.status === "failure" ? "Coordinar por WhatsApp" : "Consultar por WhatsApp"}
             </a>
           )}
           <Button variant="outline" className="w-full" onClick={() => router.push(tiendaLink)}>
@@ -461,12 +466,14 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
   // Éxito post-confirmación (usa snapshots: el carrito ya se limpió).
   if (done) {
     return (
-      <main className="container mx-auto px-4 py-20 max-w-md text-center">
-        <div className="text-6xl mb-4 animate-bounce-in">{doneWeightPending ? "⚖️" : "✅"}</div>
-        <h1 className="font-display text-3xl font-semibold mb-4">
+      <main className="pv2 container mx-auto px-4 py-20 max-w-md text-center">
+        <div className="text-6xl mb-4 animate-bounce-in">
+          {doneWeightPending ? <Scale className="h-16 w-16" /> : <Check className="h-16 w-16" />}
+        </div>
+        <h1 className="pv2-title font-display text-3xl font-semibold mb-4">
           {doneWeightPending ? "¡Pedido recibido!" : "Pedido enviado"}
         </h1>
-        <p className="text-muted-foreground mb-4">
+        <p className="pv2-subtitle text-muted-foreground mb-4">
           {doneWeightPending ? (
             <>
               <span className="font-medium">{doneVendorName || "El comercio"}</span> va a pesar tu pedido y
@@ -480,17 +487,17 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
           )}
           {doneIsGift && (
             <span className="block mt-1 text-sm font-medium text-violet-700">
-              🎁 Son solo tarjetas: te llegan por WhatsApp al confirmar el pago, sin retiro ni envío.
+              <Gift className="mr-1 inline h-4 w-4 align-[-0.15em]" /> Son solo tarjetas: te llegan por WhatsApp al confirmar el pago, sin retiro ni envío.
             </span>
           )}
           {doneIsPreview && (
             <span className="block mt-1 text-xs font-semibold text-amber-700">
-              🧪 Fue un pedido de prueba.
+              <FlaskConical className="mr-1 inline h-3.5 w-3.5 align-[-0.15em]" /> Fue un pedido de prueba.
             </span>
           )}
         </p>
-        <p className="text-sm text-muted-foreground/70 mb-6">
-          📍 Si tu dirección es difícil de encontrar, mandale tu ubicación por WhatsApp al comercio.
+        <p className="pv2-subtitle text-sm text-muted-foreground/70 mb-6">
+          <MapPin className="mr-1 inline h-4 w-4 align-[-0.15em]" /> Si tu dirección es difícil de encontrar, mandale tu ubicación por WhatsApp al comercio.
           <span className="block mt-1">
             Seguí el estado de tu pedido con tu número de WhatsApp en{" "}
             <button onClick={() => router.push("/mis-pedidos")} className="underline text-primary hover:text-primary/80">
@@ -507,8 +514,8 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
           )}
         </p>
         {!userId && !doneWeightPending && (
-          <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 mb-6 text-left">
-            <p className="font-semibold text-sm mb-1">📋 ¿Guardamos tus datos para la próxima?</p>
+          <div className="pv2-card rounded-2xl border border-primary/20 bg-primary/5 p-4 mb-6 text-left">
+            <p className="font-semibold text-sm mb-1"><ClipboardList className="mr-1 inline h-4 w-4 align-[-0.15em]" /> ¿Guardamos tus datos para la próxima?</p>
             <p className="text-xs text-muted-foreground leading-relaxed mb-3">
               Creá tu cuenta gratis y tené tus favoritos, tus datos de contacto ya cargados,
               tu historial de pedidos y acceso a dejar reseñas.
@@ -523,22 +530,22 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
             </Button>
           </div>
         )}
-        <Button onClick={() => router.push("/")}>Seguir viendo ofertas</Button>
+        <Button className="pv2-btn pv2-btn-primary" onClick={() => router.push("/")}>Seguir viendo ofertas</Button>
       </main>
     );
   }
 
   if (!vendor || items.length === 0) {
     return (
-      <main className="container mx-auto px-4 py-20 max-w-md text-center">
-        <div className="text-5xl mb-4">🛒</div>
-        <h1 className="font-display text-3xl font-semibold mb-4">
+      <main className="pv2 container mx-auto px-4 py-20 max-w-md text-center">
+        <div className="text-5xl mb-4"><ShoppingBag className="h-14 w-14" /></div>
+        <h1 className="pv2-title font-display text-3xl font-semibold mb-4">
           Tu pedido está vacío
         </h1>
-        <p className="text-muted-foreground mb-6">
+        <p className="pv2-subtitle text-muted-foreground mb-6">
           {vendor?.vertical === "gastronomia" ? "Agregá platos de un local para poder hacer el pedido." : "Agregá productos de un local para poder hacer el pedido."}
         </p>
-        <Button onClick={() => router.push("/")}>Ver ofertas</Button>
+        <Button className="pv2-btn pv2-btn-primary" onClick={() => router.push("/")}>Ver ofertas</Button>
       </main>
     );
   }
@@ -886,17 +893,17 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
   }
 
   return (
-    <main className="container mx-auto px-4 py-8 max-w-md">
-      <h1 className="font-display text-3xl font-semibold mb-2">
+    <main className="pv2 container mx-auto px-4 py-8 max-w-md">
+      <h1 className="pv2-title font-display text-3xl font-semibold mb-2">
         Confirmar pedido
       </h1>
-      <p className="text-muted-foreground text-sm mb-6">
+      <p className="pv2-subtitle text-muted-foreground text-sm mb-6">
         Con <span className="font-medium">{v.storeName}</span> · {items.length} items ·{" "}
-        <span className="font-bold text-foreground">${displayTotal.toLocaleString("es-AR")}</span>
+        <span className="pv2-price font-bold text-foreground">${displayTotal.toLocaleString("es-AR")}</span>
       </p>
 
       {/* Order summary */}
-      <div className="border border-border rounded-2xl p-4 mb-6 bg-card space-y-3">
+      <div className="pv2-card border border-border rounded-2xl p-4 mb-6 bg-card space-y-3">
         {(() => {
           // Una línea por pack (solo visual; totales intactos).
           const order = items.map((_, idx) => idx);
@@ -909,7 +916,7 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
           const applied = gid ? vol.applied.find((a) => a.groupId === gid) : undefined;
           const header = applied && gid !== lastGroup ? (
             <p key={`gh-${gid}`} className="text-xs font-semibold text-emerald-700">
-              🧊 {applied.groupName} · {applied.label}
+              <Sparkles className="mr-1 inline h-3.5 w-3.5 align-[-0.15em]" /> {applied.groupName} · {applied.label}
             </p>
           ) : null;
           lastGroup = gid;
@@ -953,14 +960,14 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
               {deliveryOutOfArea ? (
                 <span className="font-semibold text-amber-700">A convenir*</span>
               ) : deliveryFreeShip ? (
-                <span className="font-semibold text-green-700">🎉 ¡Gratis!</span>
+                <span className="font-semibold text-green-700"><Sparkles className="mr-1 inline h-3.5 w-3.5 align-[-0.15em]" /> ¡Gratis!</span>
               ) : (
                 <span>${deliveryFee.toLocaleString("es-AR")}</span>
               )}
             </div>
           )}
           {deliveryOutOfArea && (
-            <p className="text-xs text-amber-700">⚠️ El comercio te confirma el costo de envío por WhatsApp.</p>
+            <p className="text-xs text-amber-700"><AlertTriangle className="mr-1 inline h-3.5 w-3.5 align-[-0.15em]" /> El comercio te confirma el costo de envío por WhatsApp.</p>
           )}
           {cashActive && cashDiscount > 0 && (
             <div className="flex justify-between text-sm font-medium text-green-700">
@@ -982,7 +989,7 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
           )}
           <div className="flex justify-between font-bold text-lg">
             <span>Total</span>
-            <span>${displayTotal.toLocaleString("es-AR")}</span>
+            <span className="pv2-price">${displayTotal.toLocaleString("es-AR")}</span>
           </div>
         </div>
       </div>
@@ -990,7 +997,7 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
       <form onSubmit={handleSubmit} className="space-y-4">
         {isPreview && (
           <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
-            🧪 Pedido de prueba — no se cobra online ni cuenta en tus métricas.
+            <FlaskConical className="mr-1 inline h-3.5 w-3.5 align-[-0.15em]" /> Pedido de prueba — no se cobra online ni cuenta en tus métricas.
           </div>
         )}
         {/* Name & Phone */}
@@ -1031,14 +1038,14 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
               <p className={`text-xs mt-1 ${phoneOk ? "text-green-600" : "text-red-500"}`}>{phoneMsg}</p>
             )}
             {isGiftOnly && (
-              <p className="text-[11px] text-violet-700 mt-1">🎁 Acá te llegan las tarjetas por WhatsApp.</p>
+              <p className="text-[11px] text-violet-700 mt-1"><Gift className="mr-1 inline h-3.5 w-3.5 align-[-0.15em]" /> Acá te llegan las tarjetas por WhatsApp.</p>
             )}
           </div>
         </div>
 
         {prefillInfo?.found && (
           <div className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 -mt-2 animate-fade-in-up">
-            👋 {prefillInfo.name ? `¡Hola de nuevo, ${prefillInfo.name}! ` : "¡Te reconocimos! "}
+            <Hand className="mr-1 inline h-3.5 w-3.5 align-[-0.15em]" /> {prefillInfo.name ? `¡Hola de nuevo, ${prefillInfo.name}! ` : "¡Te reconocimos! "}
             Completamos tus datos de anteriores pedidos.
           </div>
         )}
@@ -1046,7 +1053,7 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
         {/* Delivery method */}
         {isGiftOnly ? (
           <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2.5 text-xs text-violet-900">
-            <p className="font-semibold">📲 Entrega digital por WhatsApp — sin costo</p>
+            <p className="font-semibold"><Smartphone className="mr-1 inline h-4 w-4 align-[-0.15em]" /> Entrega digital por WhatsApp — sin costo</p>
             <p className="mt-0.5 text-violet-800">
               No hay retiro ni envío: al confirmar el pago te mandamos los códigos a tu WhatsApp.
             </p>
@@ -1065,26 +1072,26 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
               <button
                 type="button"
                 onClick={() => setMethod("delivery")}
-                className={`flex-1 min-w-0 rounded-xl border-2 py-3 px-1 text-xs sm:text-sm font-medium transition-all break-words ${
+                className={`pv2-pill flex-1 min-w-0 rounded-xl border-2 py-3 px-1 text-xs sm:text-sm font-medium transition-all break-words ${
                   method === "delivery"
-                    ? "border-primary bg-primary/5 text-primary"
+                    ? "pv2-active border-primary bg-primary/5 text-primary"
                     : "border-border text-muted-foreground hover:border-primary/30"
                 }`}
               >
-                🛵 A domicilio
+                <Truck className="mr-1 inline h-4 w-4 align-[-0.15em]" /> A domicilio
               </button>
             )}
             {allowPickup && (
               <button
                 type="button"
                 onClick={() => setMethod("pickup")}
-                className={`flex-1 min-w-0 rounded-xl border-2 py-3 px-1 text-xs sm:text-sm font-medium transition-all break-words ${
+                className={`pv2-pill flex-1 min-w-0 rounded-xl border-2 py-3 px-1 text-xs sm:text-sm font-medium transition-all break-words ${
                   method === "pickup"
-                    ? "border-primary bg-primary/5 text-primary"
+                    ? "pv2-active border-primary bg-primary/5 text-primary"
                     : "border-border text-muted-foreground hover:border-primary/30"
                 }`}
               >
-                🏠 Retiro en el local
+                <Home className="mr-1 inline h-4 w-4 align-[-0.15em]" /> Retiro en el local
               </button>
             )}
           </div>
@@ -1092,7 +1099,7 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
         )}
         {closedNotice && (
           <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
-            {closedNotice}
+            <Clock className="mr-1 inline h-4 w-4 align-[-0.15em]" /> {closedNotice}
           </div>
         )}
         {method === "delivery" && (
@@ -1122,8 +1129,8 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
                   <button
                     type="button"
                     onClick={() => setInArea(true)}
-                    className={`rounded-xl border-2 py-2 px-1 text-xs sm:text-sm font-medium transition-all ${
-                      inArea ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
+                    className={`pv2-pill rounded-xl border-2 py-2 px-1 text-xs sm:text-sm font-medium transition-all ${
+                      inArea ? "pv2-active border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
                     }`}
                   >
                     Sí, estoy dentro{vendor?.deliveryFee != null ? ` → $${Number(vendor.deliveryFee).toLocaleString("es-AR")}` : ""}
@@ -1131,8 +1138,8 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
                   <button
                     type="button"
                     onClick={() => setInArea(false)}
-                    className={`rounded-xl border-2 py-2 px-1 text-xs sm:text-sm font-medium transition-all ${
-                      !inArea ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
+                    className={`pv2-pill rounded-xl border-2 py-2 px-1 text-xs sm:text-sm font-medium transition-all ${
+                      !inArea ? "pv2-active border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
                     }`}
                   >
                     No, estoy más lejos
@@ -1142,7 +1149,7 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
             ) : null}
             {vendorShipZones.length > 0 && (
               <div>
-                <Label htmlFor="shipzone">🚚 ¿Vivís fuera del barrio?</Label>
+                <Label htmlFor="shipzone"><Truck className="mr-1 inline h-4 w-4 align-[-0.15em]" /> ¿Vivís fuera del barrio?</Label>
                 <select
                   id="shipzone"
                   value={shipZoneId}
@@ -1160,7 +1167,7 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
                 </select>
                 {shipZoneInfo && (
                   <p className="text-[11px] text-muted-foreground mt-1">
-                    📦 Enviado {shipZoneInfo.carrierName ? `por ${shipZoneInfo.carrierName} ` : "por la logística del portal "}
+                    <Package className="mr-1 inline h-3.5 w-3.5 align-[-0.15em]" /> Enviado {shipZoneInfo.carrierName ? `por ${shipZoneInfo.carrierName} ` : "por la logística del portal "}
                     con seguimiento: seguís tu paquete desde el link del pedido.
                   </p>
                 )}
@@ -1192,29 +1199,29 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
               <div className="rounded-xl border border-border bg-muted/30 p-3 space-y-2">
                 {deliveryPaused ? (
                   <p className="text-xs leading-relaxed rounded-lg bg-amber-50 border border-amber-200 text-amber-800 px-2.5 py-2">
-                    ⏸️ Reparto en pausa{pauseClientMsg ? `: ${pauseClientMsg}` : ""}. Tu pedido sale en el próximo turno que elijas 👇
-                    {allowPickup ? " Si no podés esperar, podés retirarlo en el local 🏠" : ""}
+                    <Pause className="mr-1 inline h-3.5 w-3.5 align-[-0.15em]" /> Reparto en pausa{pauseClientMsg ? `: ${pauseClientMsg}` : ""}. Tu pedido sale en el próximo turno que elijas <ArrowDown className="inline h-3.5 w-3.5 align-[-0.15em]" />
+                    {allowPickup ? <> Si no podés esperar, podés retirarlo en el local <Home className="inline h-3.5 w-3.5 align-[-0.15em]" /></> : ""}
                   </p>
                 ) : deliveryOpen === false && (
                   <p className="text-xs leading-relaxed rounded-lg bg-amber-50 border border-amber-200 text-amber-800 px-2.5 py-2">
-                    😴 Ya cerramos el reparto por hoy: tu pedido sale en el próximo turno.
-                    {allowPickup ? " Si no podés esperar, podés retirarlo en el local 🏠" : ""}
+                    <Moon className="mr-1 inline h-3.5 w-3.5 align-[-0.15em]" /> Ya cerramos el reparto por hoy: tu pedido sale en el próximo turno.
+                    {allowPickup ? <> Si no podés esperar, podés retirarlo en el local <Home className="inline h-3.5 w-3.5 align-[-0.15em]" /></> : ""}
                   </p>
                 )}
-                <Label>¿Cuándo te lo llevamos? 🛵</Label>
+                <Label>¿Cuándo te lo llevamos? <Truck className="mr-1 inline h-4 w-4 align-[-0.15em]" /></Label>
                 <div className="grid gap-1.5">
                   {deliverySlots.map((s) => (
                     <button
                       key={s.id}
                       type="button"
                       onClick={() => setSlotId(s.id)}
-                      className={`rounded-xl border-2 py-2 px-3 text-xs sm:text-sm font-medium text-left transition-all ${
+                      className={`pv2-pill rounded-xl border-2 py-2 px-3 text-xs sm:text-sm font-medium text-left transition-all ${
                         activeSlotId === s.id
-                          ? "border-primary bg-primary/5 text-primary"
+                          ? "pv2-active border-primary bg-primary/5 text-primary"
                           : "border-border text-muted-foreground hover:border-primary/30"
                       }`}
                     >
-                      📦 {s.label}
+                      <Package className="mr-1 inline h-4 w-4 align-[-0.15em]" /> {s.label}
                       {s.isToday && s.id === deliverySlots[0]?.id && deliveryOpen !== false ? " · lo antes posible" : ""}
                     </button>
                   ))}
@@ -1223,7 +1230,7 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
             )}
             {isRetailVendor && method === "delivery" && deliveryCoordinar && (
               <p className="text-xs leading-relaxed rounded-lg bg-muted/40 border border-border px-2.5 py-2">
-                🤝 Coordinamos por WhatsApp el horario de entrega.
+                <Handshake className="mr-1 inline h-3.5 w-3.5 align-[-0.15em]" /> Coordinamos por WhatsApp el horario de entrega.
               </p>
             )}
           </div>
@@ -1250,7 +1257,7 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
               onClick={() => setShowGiftcard((v) => !v)}
               className="flex w-full items-center justify-between gap-2 text-sm font-medium text-primary"
             >
-              🎁 ¿Tenés giftcard?
+              <Gift className="mr-1 inline h-4 w-4 align-[-0.15em]" /> ¿Tenés giftcard?
               <span className="text-muted-foreground text-xs">{showGiftcard ? "▲" : "▼"}</span>
             </button>
             {showGiftcard && (
@@ -1308,8 +1315,8 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
         <div>
           <Label>¿Cómo pagás?</Label>
           {shipActive ? (
-            <p className="rounded-xl border-2 border-primary bg-primary/5 px-3 py-2 text-sm font-medium text-primary mt-1">
-              🏦 Transferencia (el envío extendido se paga por adelantado)
+            <p className="pv2-pill pv2-active rounded-xl border-2 border-primary bg-primary/5 px-3 py-2 text-sm font-medium text-primary mt-1">
+              <Landmark className="mr-1 inline h-4 w-4 align-[-0.15em]" /> Transferencia (el envío extendido se paga por adelantado)
             </p>
           ) : (
           <div className={`grid ${payGridCols} gap-2 mt-1`}>
@@ -1317,26 +1324,26 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
             <button
               type="button"
               onClick={() => setPaymentMethod("whatsapp")}
-              className={`rounded-xl border-2 py-3 px-1 text-xs sm:text-sm font-medium transition-all min-w-0 break-words ${
+              className={`pv2-pill rounded-xl border-2 py-3 px-1 text-xs sm:text-sm font-medium transition-all min-w-0 break-words ${
                 paymentMethod === "whatsapp"
-                  ? "border-primary bg-primary/5 text-primary"
+                  ? "pv2-active border-primary bg-primary/5 text-primary"
                   : "border-border text-muted-foreground hover:border-primary/30"
               }`}
             >
-              📱 Coordinar
+              <Phone className="mr-1 inline h-4 w-4 align-[-0.15em]" /> Coordinar
             </button>
             )}
 {showPayEfectivo && (
             <button
               type="button"
               onClick={() => setPaymentMethod("efectivo")}
-              className={`rounded-xl border-2 py-3 px-1 text-xs sm:text-sm font-medium transition-all min-w-0 break-words ${
+              className={`pv2-pill rounded-xl border-2 py-3 px-1 text-xs sm:text-sm font-medium transition-all min-w-0 break-words ${
                 paymentMethod === "efectivo"
-                  ? "border-primary bg-primary/5 text-primary"
+                  ? "pv2-active border-primary bg-primary/5 text-primary"
                   : "border-border text-muted-foreground hover:border-primary/30"
               }`}
             >
-              💵 Efectivo
+              <Banknote className="mr-1 inline h-4 w-4 align-[-0.15em]" /> Efectivo
               {normalizeCashPct(vendor?.cashDiscountPct) > 0 && (
                 <span className="ml-1 rounded-full bg-green-100 text-green-700 text-[10px] font-bold px-1.5 py-0.5">
                   −{Number(normalizeCashPct(vendor?.cashDiscountPct)).toLocaleString("es-AR")}%
@@ -1349,26 +1356,26 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
             <button
               type="button"
               onClick={() => setPaymentMethod("transferencia")}
-              className={`rounded-xl border-2 py-3 px-1 text-xs sm:text-sm font-medium transition-all min-w-0 break-words ${
+              className={`pv2-pill rounded-xl border-2 py-3 px-1 text-xs sm:text-sm font-medium transition-all min-w-0 break-words ${
                 paymentMethod === "transferencia"
-                  ? "border-primary bg-primary/5 text-primary"
+                  ? "pv2-active border-primary bg-primary/5 text-primary"
                   : "border-border text-muted-foreground hover:border-primary/30"
               }`}
             >
-              🏦 Transferencia
+              <Landmark className="mr-1 inline h-4 w-4 align-[-0.15em]" /> Transferencia
             </button>
             )}
             {mpDeferred && mpConfigured && showPayMp && (
               <button
                 type="button"
                 onClick={() => setPaymentMethod("mercadopago")}
-                className={`rounded-xl border-2 py-3 px-1 text-xs sm:text-sm font-medium transition-all min-w-0 break-words ${
+                className={`pv2-pill rounded-xl border-2 py-3 px-1 text-xs sm:text-sm font-medium transition-all min-w-0 break-words ${
                   paymentMethod === "mercadopago"
-                    ? "border-primary bg-primary/5 text-primary"
+                    ? "pv2-active border-primary bg-primary/5 text-primary"
                     : "border-border text-muted-foreground hover:border-primary/30"
                 }`}
               >
-                💳 Mercado Pago
+                <CreditCard className="mr-1 inline h-4 w-4 align-[-0.15em]" /> Mercado Pago
                 <span className="block text-[10px] font-normal">pagás cuando pese tu pedido</span>
               </button>
             )}
@@ -1379,7 +1386,7 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
         {/* ¿Con cuánto abonás? (efectivo + delivery): el repartidor lleva el cambio justo. */}
         {cashAskVisible && (
           <div className="rounded-2xl border border-green-200 bg-green-50/60 p-4 animate-fade-in-up space-y-2">
-            <Label htmlFor="cash-amount">¿Con cuánto abonás? 💵</Label>
+            <Label htmlFor="cash-amount">¿Con cuánto abonás? <Banknote className="ml-1 inline h-4 w-4 align-[-0.15em]" /></Label>
             <p className="text-xs text-muted-foreground -mt-1">
               Así el repartidor te lleva el cambio justo.
             </p>
@@ -1431,7 +1438,7 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
         {/* Transfer info */}
         {paymentMethod === "transferencia" && (
           <div className="rounded-2xl border border-fresh bg-fresh/30 p-5 animate-fade-in-up">
-            <p className="font-medium text-fresh-foreground text-sm">🏦 Transferencia</p>
+            <p className="font-medium text-fresh-foreground text-sm"><Landmark className="mr-1 inline h-4 w-4 align-[-0.15em]" /> Transferencia</p>
             <p className="text-xs text-muted-foreground leading-relaxed mt-1">
               Al confirmar el pedido, el comercio te contacta por WhatsApp con los datos de la cuenta y el monto exacto a transferir. Ahí coordinás todo directo con ellos, incluido el envío del comprobante.
             </p>
@@ -1443,7 +1450,7 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
         {/* Pesables (modo confirmar): el total se cierra cuando el comercio pesa. */}
         {mpDeferred && (
           <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 font-medium">
-            ⚖️ Este pedido incluye productos por kilo: el comercio pesa y confirma el peso real, y
+            <Scale className="mr-1 inline h-3.5 w-3.5 align-[-0.15em]" /> Este pedido incluye productos por kilo: el comercio pesa y confirma el peso real, y
             recién ahí pagás o abonás el total exacto (te avisamos por el seguimiento y por WhatsApp).
           </div>
         )}
@@ -1464,7 +1471,7 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
             disabled={loading}
             className="w-full rounded-xl border-2 border-blue-200 bg-blue-50 text-blue-700 py-3 text-sm font-medium hover:bg-blue-100 disabled:opacity-50 transition-all"
           >
-            💳 Pagar con Mercado Pago
+            <CreditCard className="mr-1 inline h-4 w-4 align-[-0.15em]" /> Pagar con Mercado Pago
           </button>
         )}
 

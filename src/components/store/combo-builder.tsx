@@ -8,6 +8,7 @@ import { useToast } from "@/lib/toast";
 import type { ProductModifier } from "@/types/database";
 import type { ComboMemberRow } from "@/lib/combo";
 import { variantMatches, dimEq, dimSuffix } from "@/lib/variant-utils";
+import { X } from "lucide-react";
 
 /**
  * Armado de combo por unidad (moda/retail): cada pieza del combo que se vende
@@ -197,7 +198,9 @@ export function ComboBuilderSheet({
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between gap-2">
                 <p className="font-bold leading-snug flex-1">{combo.name}</p>
-                <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground" aria-label="Cerrar">✕</button>
+                <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground" aria-label="Cerrar">
+                  <X className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+                </button>
               </div>
               {paidPrice > 0 && (
                 <p className="text-sm font-bold text-primary tabular-nums">${paidPrice.toLocaleString("es-AR")}</p>

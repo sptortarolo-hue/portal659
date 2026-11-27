@@ -12,6 +12,26 @@ import { isStoreOpen } from "@/lib/open-hours";
 import { neighborhoodLabel } from "@/lib/json-ld";
 import { rubroLabel, verticalDisplayName } from "@/lib/config";
 import { shareVersionFor } from "@/lib/share-version";
+import {
+  AlertTriangle,
+  CalendarDays,
+  Camera,
+  Clock,
+  ConciergeBell,
+  CreditCard,
+  Facebook,
+  Handshake,
+  Instagram,
+  MapPin,
+  MessageCircle,
+  Phone,
+  ShieldCheck,
+  ShoppingBag,
+  Smartphone,
+  Sparkles,
+  Star,
+  Truck,
+} from "lucide-react";
 
 type VendorData = {
   id: string;
@@ -148,8 +168,8 @@ export function StoreHeader({
     : [];
 
   const socials = [
-    { label: "Instagram", url: v.instagram?.startsWith("http") ? v.instagram : `https://instagram.com/${v.instagram?.replace("@", "")}`, icon: "📷" },
-    { label: "Facebook", url: v.facebook?.startsWith("http") ? v.facebook : `https://facebook.com/${v.facebook}`, icon: "📘" },
+    { label: "Instagram", url: v.instagram?.startsWith("http") ? v.instagram : `https://instagram.com/${v.instagram?.replace("@", "")}`, icon: Instagram },
+    { label: "Facebook", url: v.facebook?.startsWith("http") ? v.facebook : `https://facebook.com/${v.facebook}`, icon: Facebook },
   ].filter((s) => s.url);
 
   // Servicios: días y franjas de atención (mismo vocabulario que QuoteForm).
@@ -212,7 +232,7 @@ export function StoreHeader({
                   <span className="text-white/80 text-sm">{rubro}{hood ? ` · ${hood}` : ""}</span>
                   {avgRating != null && (
                     <span className="flex items-center gap-1 text-sm">
-                      <span className="text-yellow-400">★</span>
+                      <Star className="h-3.5 w-3.5 fill-current text-yellow-400" />
                       <span className="text-white font-semibold">{avgRating.toFixed(1)}</span>
                       <span className="text-white/60">({reviewCount})</span>
                     </span>
@@ -224,8 +244,8 @@ export function StoreHeader({
             {/* Badges */}
             <div className="flex items-center gap-2 flex-wrap mt-3">
               {openNow !== null && (
-                <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                  openNow ? "bg-green-500 text-white" : "bg-red-500 text-white"
+                <span className={`pv2-badge ${
+                  openNow ? "pv2-badge-open" : "pv2-badge-closed"
                 }`}>
                   {openNow ? "Abierto ahora" : "Cerrado"}
                 </span>
@@ -236,17 +256,17 @@ export function StoreHeader({
                 </span>
               )}
               {v.verified && (
-                <span className="rounded-full bg-blue-600/90 text-white px-3 py-1 text-xs font-semibold">
-                  ✓ Verificado
+                <span className="pv2-chip">
+                  <ShieldCheck className="h-3 w-3" /> Verificado
                 </span>
               )}
-              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                acceptsCart ? "bg-white/20 text-white" : "bg-white/10 text-white/70"
-              }`}>
+              <span className={`pv2-chip ${acceptsCart ? "" : "pv2-chip-muted"}`}>
+                {acceptsCart ? <ShoppingBag className="h-3 w-3" /> : <MessageCircle className="h-3 w-3" />}
                 {acceptsCart ? "Pedí online" : "Solo contacto"}
               </span>
               {planBadge && planBadge !== "Gratuito" && (
-                <span className="rounded-full bg-white/20 text-white px-3 py-1 text-xs font-semibold">
+                <span className="pv2-pill inline-flex items-center gap-1 px-3 py-1 text-xs">
+                  <Sparkles className="h-3 w-3 pv2-icon-accent" />
                   {planBadge}
                 </span>
               )}
@@ -266,19 +286,19 @@ export function StoreHeader({
 
       {/* Zona 3 (arriba): Tags secundarios + descripción */}
       <div className="container mx-auto px-4 max-w-4xl -mt-6 relative z-10">
-        <div className="rounded-2xl border border-border bg-card p-4 shadow-lg">
+        <div className="pv2-card p-4">
           {v.description && (
-            <p className="text-muted-foreground text-sm mb-3">{v.description}</p>
+            <p className="pv2-subtitle mb-3">{v.description}</p>
           )}
           <div className="flex flex-wrap gap-2">
             {isGastro && acceptsCart && v.prep_time_min != null && Number(v.prep_time_min) > 0 && (
-              <span className="rounded-full bg-primary/10 text-primary px-3 py-1 text-xs font-medium">
-                ⏱️ {v.prep_time_min} min
+              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-3 py-1 text-xs font-medium">
+                <Clock className="h-3 w-3" /> {v.prep_time_min} min
               </span>
             )}
             {v.neighborhood && (
-              <span className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground capitalize">
-                📍 {v.neighborhood}
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground capitalize">
+                <MapPin className="h-3 w-3" /> {v.neighborhood}
               </span>
             )}
             {(v as any).carta_visibility === "public" && !isService && (
@@ -302,10 +322,10 @@ export function StoreHeader({
             ~200px y la semana desbordaba (franjas "09:00-13:00 · 17:00-22:00"). */}
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
           {/* Ubicación (servicios: zona de cobertura si no hay dirección física) */}
-          <div className="col-span-2 sm:col-span-1 rounded-2xl border border-border bg-card p-4 shadow-lg">
+          <div className="col-span-2 sm:col-span-1 pv2-card p-4">
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-lg">📍</span>
-              <span className="font-semibold text-sm">
+              <MapPin className="h-5 w-5 pv2-icon-accent" />
+              <span className="pv2-title text-sm">
                 {isService && !v.address ? "Zona de atención" : "Ubicación"}
               </span>
             </div>
@@ -354,10 +374,10 @@ export function StoreHeader({
 
           {/* Horarios — ancho completo en mobile: la grilla 2 columnas dejaba la
               card en ~158px y la semana se desbordaba/partía en 4 renglones */}
-          <div className="col-span-2 sm:col-span-1 rounded-2xl border border-border bg-card p-4 shadow-lg">
+          <div className="col-span-2 sm:col-span-1 pv2-card p-4">
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-lg">🕐</span>
-              <span className="font-semibold text-sm">Horarios</span>
+              <Clock className="h-5 w-5 pv2-icon-accent" />
+              <span className="pv2-title text-sm">Horarios</span>
             </div>
             {v.hours ? (
               <WeeklyHours hours={v.hours} openNow={openNow} />
@@ -368,10 +388,10 @@ export function StoreHeader({
 
           {/* Servicios: atención en lugar de delivery (no tienen repartidor) */}
           {isService ? (
-            <div className="rounded-2xl border border-border bg-card p-4 shadow-lg">
+            <div className="pv2-card p-4">
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-lg">🛎️</span>
-                <span className="font-semibold text-sm">Atención</span>
+                <ConciergeBell className="h-5 w-5 pv2-icon-accent" />
+                <span className="pv2-title text-sm">Atención</span>
               </div>
               {v.service_area && (
                 <p className="text-sm font-medium line-clamp-2">{v.service_area}</p>
@@ -381,7 +401,7 @@ export function StoreHeader({
               )}
               {showUrgency && (
                 <p className="text-xs text-red-600 font-medium mt-1">
-                  🚨 Urgencias 24 h{urgentSurcharge != null ? ` (+${urgentSurcharge} %)` : ""}
+                  <AlertTriangle className="mr-1 inline h-3 w-3 align-middle" />Urgencias 24 h{urgentSurcharge != null ? ` (+${urgentSurcharge} %)` : ""}
                 </p>
               )}
               {(attentionDays.length > 0 || attentionSlots.length > 0) && (
@@ -392,14 +412,14 @@ export function StoreHeader({
                 </p>
               )}
               {v.bookings_enabled !== false && (
-                <p className="text-xs text-muted-foreground mt-1">📅 Con turno online</p>
+                <p className="text-xs text-muted-foreground mt-1"><CalendarDays className="mr-1 inline h-3 w-3 align-middle" />Con turno online</p>
               )}
             </div>
           ) : (
-            <div className="rounded-2xl border border-border bg-card p-4 shadow-lg">
+            <div className="pv2-card p-4">
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-lg">🛵</span>
-                <span className="font-semibold text-sm">Delivery</span>
+                <Truck className="h-5 w-5 pv2-icon-accent" />
+                <span className="pv2-title text-sm">Delivery</span>
               </div>
               <p className="text-sm font-medium">{deliveryLabel}</p>
               {v.delivery_options !== "retiro" && (
@@ -418,8 +438,8 @@ export function StoreHeader({
               )}
               {isCatalog && v.delivery_options !== "retiro" && (deliveryCoordinar ? (
                 <div className="mt-2">
-                  <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
-                    🤝 Coordinamos por WhatsApp
+                  <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
+                    <Handshake className="h-3 w-3" /> Coordinamos por WhatsApp
                   </span>
                 </div>
               ) : retailSlots.length > 0 && (
@@ -443,15 +463,15 @@ export function StoreHeader({
           )}
 
           {/* Reseñas */}
-          <div className="rounded-2xl border border-border bg-card p-4 shadow-lg">
+          <div className="pv2-card p-4">
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-lg">⭐</span>
-              <span className="font-semibold text-sm">Reseñas</span>
+              <Star className="h-5 w-5 pv2-icon-accent" />
+              <span className="pv2-title text-sm">Reseñas</span>
             </div>
             {avgRating != null ? (
               <>
                 <div className="flex items-center gap-1">
-                  <span className="text-2xl font-bold text-yellow-500">★</span>
+                  <Star className="h-7 w-7 fill-current text-yellow-500" />
                   <span className="text-xl font-bold">{avgRating.toFixed(1)}</span>
                   <span className="text-sm text-muted-foreground">({reviewCount})</span>
                 </div>
@@ -465,10 +485,10 @@ export function StoreHeader({
           </div>
 
           {/* Pagos */}
-          <div className="rounded-2xl border border-border bg-card p-4 shadow-lg">
+          <div className="pv2-card p-4">
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-lg">💳</span>
-              <span className="font-semibold text-sm">Pagos</span>
+              <CreditCard className="h-5 w-5 pv2-icon-accent" />
+              <span className="pv2-title text-sm">Pagos</span>
             </div>
             {paymentMethods.length > 0 ? (
               <div className="flex flex-wrap gap-1">
@@ -487,10 +507,10 @@ export function StoreHeader({
           </div>
 
           {/* Redes y contacto */}
-          <div className="rounded-2xl border border-border bg-card p-4 shadow-lg">
+          <div className="pv2-card p-4">
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-lg">📱</span>
-              <span className="font-semibold text-sm">Contacto</span>
+              <Smartphone className="h-5 w-5 pv2-icon-accent" />
+              <span className="pv2-title text-sm">Contacto</span>
             </div>
             <div className="flex flex-wrap gap-2">
               {waNumber && (
@@ -500,7 +520,7 @@ export function StoreHeader({
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent transition-colors"
                 >
-                  💬 WhatsApp
+                  <MessageCircle className="h-3 w-3" /> WhatsApp
                 </a>
               )}
               {socials.map((s) => (
@@ -511,7 +531,7 @@ export function StoreHeader({
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent transition-colors"
                 >
-                  {s.icon} {s.label}
+                  <s.icon className="h-3 w-3" /> {s.label}
                 </a>
               ))}
               {v.phone && (
@@ -519,7 +539,7 @@ export function StoreHeader({
                   href={`tel:${v.phone}`}
                   className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent transition-colors"
                 >
-                  ☎ Tel
+                  <Phone className="h-3 w-3" /> Tel
                 </a>
               )}
             </div>

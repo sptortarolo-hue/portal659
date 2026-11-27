@@ -54,7 +54,7 @@ export function GiftCardPicker({
         photoUrl={selected?.image_url ?? null}
         vertical={vendor.vertical}
       />
-      <div className="rounded-2xl border border-border bg-card p-4 space-y-3 shadow-sm">
+      <div className="pv2-card p-4 space-y-3">
         <div>
           <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5">Elegí el monto</p>
           <div className="flex flex-wrap gap-1.5">
@@ -66,10 +66,8 @@ export function GiftCardPicker({
                   type="button"
                   onClick={() => setSelectedId(c.id)}
                   aria-pressed={active}
-                  className={`rounded-full border px-3 py-1.5 text-sm font-semibold transition-colors ${
-                    active
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : "border-border bg-background hover:border-primary/50"
+                  className={`pv2-pill px-3 py-1.5 text-sm font-semibold ${
+                    active ? "pv2-active" : ""
                   }`}
                 >
                   ${c.price.toLocaleString("es-AR")}
@@ -83,7 +81,7 @@ export function GiftCardPicker({
             href={waUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="block w-full rounded-lg bg-primary text-primary-foreground text-center text-sm font-medium py-2.5 hover:bg-primary/90"
+            className="pv2-btn pv2-btn-primary block w-full text-center text-sm py-2.5"
           >
             Pedir por WhatsApp
           </a>

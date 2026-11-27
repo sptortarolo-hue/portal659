@@ -6,8 +6,24 @@ import { resolveVendorPlan, vendorSellsOnline } from "@/lib/plans";
 import { isStoreOpen } from "@/lib/open-hours";
 import { DELIVERY_TZ, deliveryPauseClientMessage, isDeliveryOpen, isDeliveryPaused, nextDeliverySlots } from "@/lib/delivery-schedule";
 import { notFound } from "next/navigation";
-import { Badge } from "@/components/ui/badge";
 import { ProductImage } from "@/components/product-image";
+import {
+  AlertTriangle,
+  CalendarDays,
+  Camera,
+  ChevronDown,
+  ClipboardList,
+  Gift,
+  MapPin,
+  MessageCircle,
+  Package,
+  ShoppingBag,
+  Snowflake,
+  Sparkles,
+  Star,
+  Ticket,
+  Users,
+} from "lucide-react";
 import { AddToCartButton } from "@/components/offers/add-to-cart-button";
 import { ReviewForm } from "@/components/reviews/review-form";
 import { ReviewList } from "@/components/reviews/review-list";
@@ -734,7 +750,7 @@ export default async function TiendaPage({
   ];
 
   return (
-    <main className="pb-28 overflow-x-clip" data-vendor-id={vendor.id}>
+    <main className="pv2 pb-28 overflow-x-clip" data-vendor-id={vendor.id}>
       {preview && <PreviewBanner menuQrOnly={cartaQrOnly} catalog={isCatalog} />}
       {!preview && <VisitBeacon vendorId={vendor.id} />}
       {preview && <PreviewSessionSync vendorId={vendor.id} token={previewToken} />}
@@ -782,50 +798,53 @@ export default async function TiendaPage({
         {/* Service sections */}
         {isService ? (
           <>
-            <div className="border border-border rounded-2xl p-8 text-center bg-card mb-6">
-              <h2 className="font-display text-2xl font-semibold mb-2">
+            <div className="pv2-card p-8 text-center mb-6">
+              <h2 className="pv2-title text-2xl mb-2">
                 {rubroHeading || (isTaller ? "Taller del barrio" : isSalud ? "Bienestar del barrio" : isEstetica ? "Estética del barrio" : "Servicio del barrio")}
               </h2>
               {v.services_list && (
-                <p className="text-muted-foreground max-w-md mx-auto mb-2">
+                <p className="pv2-subtitle max-w-md mx-auto mb-2">
                   {v.services_list}
                 </p>
               )}
               {v.service_area && (
-                <p className="text-sm text-muted-foreground max-w-md mx-auto mb-1">
+                <p className="pv2-subtitle text-sm max-w-md mx-auto mb-1">
                   Zona: {v.service_area}
                 </p>
               )}
               {isHybrid && esteticaLocations.length > 0 && (
                 <div className="flex flex-wrap justify-center gap-1.5 max-w-md mx-auto mb-2">
                   {esteticaLocations.map((l) => (
-                    <span key={l.id} className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
-                      📍 {l.name}{l.address ? ` · ${l.address}` : ""}
+                    <span key={l.id} className="pv2-chip pv2-chip-muted">
+                      <MapPin className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
+                      {l.name}{l.address ? ` · ${l.address}` : ""}
                     </span>
                   ))}
                 </div>
               )}
               {!isHybrid && v.free_estimate && (
-                <p className="text-sm text-primary font-medium max-w-md mx-auto mb-4">
+                <p className="pv2-chip mx-auto mb-4 w-fit">
                   Presupuesto sin compromiso
                 </p>
               )}
               {!isHybrid && v.urgent_enabled && (
-                <p className="text-sm max-w-md mx-auto mb-4 rounded-full bg-red-50 border border-red-200 text-red-700 font-medium px-3 py-1.5 inline-block">
-                  🚨 Urgencias 24 h{urgentSurcharge != null ? ` (+${urgentSurcharge} %)` : ""}
+                <p className="pv2-chip mx-auto mb-4 w-fit">
+                  <AlertTriangle className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
+                  Urgencias 24 h{urgentSurcharge != null ? ` (+${urgentSurcharge} %)` : ""}
                 </p>
               )}
               {!isHybrid && !v.services_list && (
-                <p className="text-muted-foreground max-w-md mx-auto">
+                <p className="pv2-subtitle max-w-md mx-auto">
                   Este comercio ofrece un servicio en el barrio. Completá el formulario o escribile por WhatsApp.
                 </p>
               )}
             </div>
 
             {v.accepting_quotes && !serviceQuotaFull && !isHybrid && (
-              <div className="border border-border rounded-2xl p-6 bg-card mb-6">
-                <h3 className="font-display text-lg font-semibold mb-4">
-                  📋 Solicitar presupuesto
+              <div className="pv2-card p-6 mb-6">
+                <h3 className="pv2-title text-lg mb-4 flex items-center gap-2">
+                  <ClipboardList className="h-5 w-5 pv2-icon-accent" strokeWidth={1.8} aria-hidden="true" />
+                  Solicitar presupuesto
                 </h3>
                 <QuoteForm
                   vendorId={v.id}
@@ -840,9 +859,10 @@ export default async function TiendaPage({
             )}
 
             {!serviceQuotaFull && v.bookings_enabled !== false && (
-            <div id="reservar-turno" className="border border-border rounded-2xl p-6 bg-card mb-6 scroll-mt-24">
-              <h3 className="font-display text-lg font-semibold mb-4">
-                📅 Reservar turno
+            <div id="reservar-turno" className="pv2-card p-6 mb-6 scroll-mt-24">
+              <h3 className="pv2-title text-lg mb-4 flex items-center gap-2">
+                <CalendarDays className="h-5 w-5 pv2-icon-accent" strokeWidth={1.8} aria-hidden="true" />
+                Reservar turno
               </h3>
               {isHybrid && esteticaServices.length > 0 && (
                 <EsteticaServicesSection
@@ -859,10 +879,13 @@ export default async function TiendaPage({
               )}
               {isHybrid && esteticaStaff.some((t) => t.photo_url || t.bio) && (
                 <div className="mb-5">
-                  <h4 className="font-display text-base font-semibold mb-2">{isTaller ? "🛠️ Nuestro equipo" : isSalud ? "🧘 Nuestro equipo" : "💇 Nuestro equipo"}</h4>
+                  <h4 className="pv2-title text-base mb-2 flex items-center justify-center gap-2">
+                    <Users className="h-4 w-4 pv2-icon-accent" strokeWidth={1.8} aria-hidden="true" />
+                    Nuestro equipo
+                  </h4>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     {esteticaStaff.map((t) => (
-                      <div key={t.id} className="rounded-2xl border border-border bg-card p-3 text-center">
+                      <div key={t.id} className="pv2-card p-3 text-center">
                         <div className="h-16 w-16 rounded-full overflow-hidden mx-auto bg-muted">
                           <ProductImage src={t.photo_url} name={t.name} vertical={isTaller ? "taller" : "estetica"} alt={t.name} className="w-full h-full object-cover" />
                         </div>
@@ -891,16 +914,19 @@ export default async function TiendaPage({
             )}
 
             {serviceQuotaFull && (
-              <div className="border border-border rounded-2xl p-6 bg-card mb-6 text-center">
-                <p className="text-sm font-medium">Este profesional completó sus solicitudes online del mes.</p>
-                <p className="text-sm text-muted-foreground mt-1">Escribile directo por WhatsApp 👇</p>
+              <div className="pv2-card p-6 mb-6 text-center">
+                <p className="pv2-title text-sm">Este profesional completó sus solicitudes online del mes.</p>
+                <p className="pv2-subtitle text-sm mt-1">Escribile directo por WhatsApp</p>
               </div>
             )}
 
             {/* Productos del centro (estética): cosmética y accesorios con carrito */}
             {isEstetica && acceptsCart && sections.length > 0 && (
               <>
-                <h2 className="font-display text-2xl font-semibold mt-6 mb-4">🛍️ Productos</h2>
+                <h2 className="pv2-title text-2xl mt-6 mb-4 flex items-center gap-2">
+                  <ShoppingBag className="h-6 w-6 pv2-icon-accent" strokeWidth={1.8} aria-hidden="true" />
+                  Productos
+                </h2>
                 {promos.length > 0 && (
                   <PromoSection
                     items={promos}
@@ -926,7 +952,7 @@ export default async function TiendaPage({
                 )}
                 {sections.map((s, i) => (
                   <section key={s.name} id={`seccion-${i}`} className="mb-10">
-                    <h3 className="font-display text-xl font-semibold mb-4 border-b border-border pb-2">
+                    <h3 className="pv2-title text-xl mb-4 border-b border-border pb-2">
                       {s.name}
                     </h3>
                     <div className="space-y-3">
@@ -953,8 +979,11 @@ export default async function TiendaPage({
               <div className="mt-6 mb-6 space-y-4">
                 {esteticaPacks.length > 0 && (
                   <>
-                    <h2 className="font-display text-2xl font-semibold">🎟️ Packs de sesiones</h2>
-                    <p className="text-sm text-muted-foreground -mt-2">
+                    <h2 className="pv2-title text-2xl flex items-center gap-2">
+                      <Ticket className="h-6 w-6 pv2-icon-accent" strokeWidth={1.8} aria-hidden="true" />
+                      Packs de sesiones
+                    </h2>
+                    <p className="pv2-subtitle text-sm -mt-2">
                       Los pagás online y las sesiones quedan a tu nombre para usar en tus turnos.
                     </p>
                     <div className="grid sm:grid-cols-2 gap-3">
@@ -970,7 +999,10 @@ export default async function TiendaPage({
                     </div>
                   </>
                 )}
-                <h2 className="font-display text-2xl font-semibold">🎁 Giftcards</h2>
+                <h2 className="pv2-title text-2xl flex items-center gap-2">
+                  <Gift className="h-6 w-6 pv2-icon-accent" strokeWidth={1.8} aria-hidden="true" />
+                  Giftcards
+                </h2>
                 <div className="grid sm:grid-cols-2 gap-3">
                   <GiftcardBuyCard vendorId={v.id} mpConnected={esteticaMpConnected} waUrl={waUrl} />
                 </div>
@@ -980,15 +1012,18 @@ export default async function TiendaPage({
             {/* Consultanos (estética): al final, colapsado salvo sin servicios */}
             {isHybrid && v.accepting_quotes && !serviceQuotaFull && (
               <details
-                className="border border-border rounded-2xl bg-card mt-6 mb-6 group"
+                className="pv2-card mt-6 mb-6 group"
                 open={esteticaServices.length === 0}
               >
-                <summary className="cursor-pointer list-none p-6 font-display text-lg font-semibold flex items-center justify-between gap-2">
-                  <span>💬 Consultanos</span>
-                  <span className="text-muted-foreground text-sm group-open:rotate-180 transition-transform">▾</span>
+                <summary className="cursor-pointer list-none p-6 pv2-title text-lg flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-2">
+                    <MessageCircle className="h-5 w-5 pv2-icon-accent" strokeWidth={1.8} aria-hidden="true" />
+                    Consultanos
+                  </span>
+                  <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" strokeWidth={2} aria-hidden="true" />
                 </summary>
                 <div className="px-6 pb-6">
-                  <p className="text-sm text-muted-foreground mb-4">
+                  <p className="pv2-subtitle text-sm mb-4">
                     ¿No encontrás lo que buscás? Escribinos y te asesoramos.
                   </p>
                   <QuoteForm
@@ -1009,22 +1044,27 @@ export default async function TiendaPage({
             {/* Destacado hoy: se muestra aunque el menú esté oculto */}
             {((offers || []).filter((o: any) => o.featured_today) as any[]).length > 0 && (
               <section className="mt-6 mb-6">
-                <h2 className="font-display text-2xl font-semibold mb-3">⭐ La oferta de hoy</h2>
+                <h2 className="pv2-title text-2xl mb-3 flex items-center gap-2">
+                  <Star className="h-6 w-6 pv2-icon-accent" strokeWidth={1.8} aria-hidden="true" />
+                  La oferta de hoy
+                </h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {((offers || []).filter((o: any) => o.featured_today) as any[]).map((o: any) => (
-                    <div key={o.id} className="border border-border rounded-2xl p-4 bg-card flex items-center gap-3">
+                    <div key={o.id} className="pv2-card p-4 flex items-center gap-3">
                       <div className="h-16 w-16 rounded-xl overflow-hidden flex-shrink-0 bg-muted">
                         {o.image_url ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={o.image_url} alt={o.name} className="w-full h-full object-cover" />
                         ) : (
-                          <div className="w-full h-full flex items-center justify-center text-2xl">⭐</div>
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Star className="h-8 w-8 text-muted-foreground" strokeWidth={1.5} aria-hidden="true" />
+                          </div>
                         )}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="font-semibold leading-tight truncate">{o.name}</p>
+                        <p className="pv2-title text-sm leading-tight truncate">{o.name}</p>
                         {o.price != null && (
-                          <p className="text-sm font-bold text-primary mt-1">
+                          <p className="pv2-price text-base mt-1">
                             ${Number(o.price).toLocaleString("es-AR")}
                           </p>
                         )}
@@ -1045,11 +1085,11 @@ export default async function TiendaPage({
               </section>
             )}
             {/* Solo contacto sin carta cargada: tarjeta de contacto directa */}
-            <div className="border border-border rounded-2xl p-8 text-center bg-card mt-6 mb-6">
-              <h2 className="font-display text-2xl font-semibold mb-2">
+            <div className="pv2-card p-8 text-center mt-6 mb-6">
+              <h2 className="pv2-title text-2xl mb-2">
                 Contactanos directo
               </h2>
-              <p className="text-muted-foreground max-w-md mx-auto mb-2">
+              <p className="pv2-subtitle max-w-md mx-auto mb-2">
                 {v.description || "Este local atiende por WhatsApp. Escribinos y te respondemos a la brevedad."}
               </p>
               {v.hours && (
@@ -1058,8 +1098,9 @@ export default async function TiendaPage({
                 </div>
               )}
               {v.address && (
-                <p className="text-sm text-muted-foreground max-w-md mx-auto mb-4">
-                  📍 {v.address}
+                <p className="pv2-subtitle text-sm max-w-md mx-auto mb-4 flex items-center justify-center gap-1.5">
+                  <MapPin className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+                  {v.address}
                 </p>
               )}
               {waNumber ? (
@@ -1069,7 +1110,8 @@ export default async function TiendaPage({
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 rounded-full bg-green-500 text-white px-6 py-3 text-sm font-bold hover:bg-green-600 transition-colors"
                 >
-                  💬 Escribir por WhatsApp
+                  <MessageCircle className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+                  Escribir por WhatsApp
                 </a>
               ) : (
                 <p className="text-sm text-muted-foreground">Tel: {v.phone || v.whatsapp || "—"}</p>
@@ -1079,17 +1121,24 @@ export default async function TiendaPage({
         ) : (
           <>
             {/* Menu sections */}
-            <h2 id="menu" className="font-display text-2xl font-semibold mt-6 mb-4 scroll-mt-[152px] sm:scroll-mt-16">{isCatalog ? "Catálogo" : "Menú"}</h2>
+            <h2 id="menu" className="pv2-title text-2xl mt-6 mb-4 scroll-mt-[152px] sm:scroll-mt-16">{isCatalog ? "Catálogo" : "Menú"}</h2>
             {showVolume && acceptsCart && packGroups.length > 0 && (
               <a
                 href="#packs"
-                className="flex items-center justify-between gap-3 rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-3 mb-4 hover:shadow-md active:scale-[0.99] transition-all"
+                className="pv2-card flex items-center justify-between gap-3 px-4 py-3 mb-4 active:scale-[0.99]"
               >
                 <span className="min-w-0">
-                  <span className="block font-semibold text-sm text-emerald-900">{isModa ? "📦 Llevá más, pagá menos" : "🧊 Armá tu pack a precio conveniente"}</span>
-                  <span className="block text-xs text-emerald-700 mt-0.5">{isModa ? "Combinando prendas y accesorios del pack" : "Elegí tus gustos entre los combinables"}</span>
+                  <span className="pv2-title block text-sm flex items-center gap-1.5">
+                    {isModa ? (
+                      <Package className="h-4 w-4 pv2-icon-accent" strokeWidth={1.8} aria-hidden="true" />
+                    ) : (
+                      <Snowflake className="h-4 w-4 pv2-icon-accent" strokeWidth={1.8} aria-hidden="true" />
+                    )}
+                    {isModa ? "Llevá más, pagá menos" : "Armá tu pack a precio conveniente"}
+                  </span>
+                  <span className="pv2-subtitle block text-xs mt-0.5">{isModa ? "Combinando prendas y accesorios del pack" : "Elegí tus gustos entre los combinables"}</span>
                 </span>
-                <span aria-hidden="true" className="text-emerald-700 font-bold flex-shrink-0">↓</span>
+                <span aria-hidden="true" className="pv2-icon-accent font-bold flex-shrink-0">↓</span>
               </a>
             )}
             {promos.length > 0 && (
@@ -1116,7 +1165,7 @@ export default async function TiendaPage({
               />
             )}
             {sections.length === 0 ? (
-              <p className="text-muted-foreground text-center py-12">
+              <p className="pv2-subtitle text-center py-12">
                 Este local todavía no cargó {isCatalog ? "su catálogo" : "su menú"}.
               </p>
             ) : (
@@ -1124,7 +1173,7 @@ export default async function TiendaPage({
                 {sections.length > 0 && <CategoryNav sections={sections} catalog={isCatalog} />}
                 {sections.map((s, i) => (
                   <section key={s.name} id={`seccion-${i}`} className="mb-10 scroll-mt-[184px] sm:scroll-mt-24">
-                    <h3 className="font-display text-xl font-semibold mb-4 border-b border-border pb-2">
+                    <h3 className="pv2-title text-xl mb-4 border-b border-border pb-2">
                       {s.name}
                     </h3>
                     <div className={useCards ? "grid grid-cols-2 sm:grid-cols-3 gap-3" : "space-y-3"}>
@@ -1134,14 +1183,14 @@ export default async function TiendaPage({
                           if (Array.isArray((o as any).presentations) && (o as any).presentations.length > 0) {
                             return (
                               <div key={o.id} id={`product-${o.id}`} data-pname={String(o.name).toLowerCase()} className="scroll-mt-16 sm:scroll-mt-24 col-span-2 sm:col-span-3">
-                                <div className="rounded-xl border border-border bg-card p-3 space-y-2">
+                                <div className="pv2-card p-3 space-y-2">
                                   <div className="flex items-start gap-3">
                                     {o.image_url ? (
                                       <ProductImage src={o.image_url} name={o.name} alt={o.name} className="h-16 w-16 rounded-lg object-cover flex-shrink-0" />
                                     ) : null}
                                     <div className="min-w-0 flex-1">
-                                      <p className="font-semibold leading-tight">{o.name}</p>
-                                      {o.description && <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{o.description}</p>}
+                                      <p className="pv2-title text-sm leading-tight">{o.name}</p>
+                                      {o.description && <p className="pv2-subtitle text-xs line-clamp-2 mt-0.5">{o.description}</p>}
                                     </div>
                                   </div>
                                   <PresentationPicker
@@ -1191,7 +1240,7 @@ export default async function TiendaPage({
                               key={o.id}
                               id={`product-${o.id}`}
                               data-pname={String(o.name).toLowerCase()}
-                              className="border border-border rounded-xl p-4 bg-card space-y-3 scroll-mt-16 sm:scroll-mt-24"
+                              className="pv2-card p-4 space-y-3 scroll-mt-16 sm:scroll-mt-24"
                             >
                               <div className="flex items-start gap-3">
                                 {oAllImages.length > 0 ? (
@@ -1205,21 +1254,22 @@ export default async function TiendaPage({
                                 )}
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-center gap-2 flex-wrap">
-                                    <p className="font-semibold leading-tight">{o.name}</p>
-                                    {o.featured_today && (
-                                      <Badge className="bg-sun text-ink hover:bg-sun">Hoy</Badge>
-                                    )}
+                                    <p className="pv2-title text-sm leading-tight">{o.name}</p>
+                                    {o.featured_today && <span className="pv2-chip">Hoy</span>}
                                     {oAllImages.length > 1 && (
-                                      <Badge variant="secondary" className="text-[10px]">📷 {oAllImages.length}</Badge>
+                                      <span className="pv2-chip pv2-chip-muted">
+                                        <Camera className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
+                                        {oAllImages.length}
+                                      </span>
                                     )}
                                   </div>
                                   <div className="flex items-center gap-2 mt-1">
                                     {range.best != null && (
-                                      <span className="rounded-full bg-red-500 text-white text-[10px] font-bold px-2 py-0.5">
+                                      <span className="pv2-chip">
                                         -{range.best}%
                                       </span>
                                     )}
-                                    <p className="font-bold text-primary">
+                                    <p className="pv2-price text-base">
                                       {range.min === range.max
                                         ? `$${range.min.toLocaleString("es-AR")}`
                                         : `$${range.min.toLocaleString("es-AR")} – $${range.max.toLocaleString("es-AR")}`}
@@ -1232,13 +1282,13 @@ export default async function TiendaPage({
                               </div>
                               <div className="border-t pt-3">
                                 {stockControl && totalStock <= 0 ? (
-                                  <p className="text-sm font-medium text-red-600 text-center py-2">Sin stock por el momento</p>
+                                  <p className="pv2-chip pv2-chip-muted mx-auto w-fit">Sin stock por el momento</p>
                                 ) : !acceptsCart ? (
                                   <a
                                     href={waUrl}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="block rounded-md px-3 py-2 text-sm font-medium text-center bg-primary text-primary-foreground hover:bg-primary/90"
+                                    className="pv2-btn w-full px-3 py-2 text-sm"
                                   >
                                     Consultar por WhatsApp
                                   </a>
@@ -1261,7 +1311,7 @@ export default async function TiendaPage({
                             ...(imagesByProduct[o.id] || []),
                           ];
                           return (
-                            <div key={o.id} data-pname={String(o.name).toLowerCase()} className="border border-border rounded-xl p-3 bg-card space-y-2">
+                            <div key={o.id} data-pname={String(o.name).toLowerCase()} className="pv2-card p-3 space-y-2">
                               <div className="flex items-start gap-3">
                                 {oAllImages.length > 0 && (
                                   <div className="h-16 w-16 rounded-lg overflow-hidden flex-shrink-0">
@@ -1269,8 +1319,8 @@ export default async function TiendaPage({
                                   </div>
                                 )}
                                 <div className="min-w-0 flex-1">
-                                  <p className="font-semibold leading-tight">{o.name}</p>
-                                  {o.description && <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{o.description}</p>}
+                                  <p className="pv2-title text-sm leading-tight">{o.name}</p>
+                                  {o.description && <p className="pv2-subtitle text-xs line-clamp-2 mt-0.5">{o.description}</p>}
                                 </div>
                               </div>
                               <PresentationPicker
@@ -1309,8 +1359,11 @@ export default async function TiendaPage({
             con venta (el gate filtra por vertical y menú visible). */}
         {showGiftSection && (
           <div className="mt-6 mb-6">
-            <h2 className="font-display text-2xl font-semibold mb-1">🎁 Tarjeta de regalo</h2>
-            <p className="text-sm text-muted-foreground mb-3">
+            <h2 className="pv2-title text-2xl mb-1 flex items-center gap-2">
+              <Gift className="h-6 w-6 pv2-icon-accent" strokeWidth={1.8} aria-hidden="true" />
+              Tarjeta de regalo
+            </h2>
+            <p className="pv2-subtitle text-sm mb-3">
               Regalá saldo para usar en el local. Elegís el monto y se agrega al pedido como cualquier producto.
             </p>
             <GiftCardPicker
@@ -1325,7 +1378,14 @@ export default async function TiendaPage({
         {/* Packs para armar: un punto de entrada por pack (multi-producto) */}
         {showVolume && acceptsCart && !menuHidden && packGroups.length > 0 && (
           <section id="packs" className="mt-6 mb-10 scroll-mt-[184px] sm:scroll-mt-24">
-            <h3 className="font-display text-xl font-semibold mb-3">{isModa ? "📦 Packs combinables" : "🧊 Armá tu pack"}</h3>
+            <h3 className="pv2-title text-xl mb-3 flex items-center gap-2">
+              {isModa ? (
+                <Package className="h-5 w-5 pv2-icon-accent" strokeWidth={1.8} aria-hidden="true" />
+              ) : (
+                <Snowflake className="h-5 w-5 pv2-icon-accent" strokeWidth={1.8} aria-hidden="true" />
+              )}
+              {isModa ? "Packs combinables" : "Armá tu pack"}
+            </h3>
             <div className="space-y-2">
               {packGroups.map((g: any) => (
                 <PackCard key={g.id} group={g} />
@@ -1337,7 +1397,7 @@ export default async function TiendaPage({
 
         {/* Reviews */}
         <ReviewList vendorId={v.id} />
-        <div className="border border-border rounded-2xl p-6 bg-card mt-6">
+        <div className="pv2-card p-6 mt-6">
           <ReviewForm vendorId={v.id} vendorName={v.store_name} />
         </div>
       </div>
@@ -1349,8 +1409,8 @@ export default async function TiendaPage({
           isService={isService}
           isRetail={isCatalog}
           isUrgent={!isEstetica && isService && v.urgent_enabled}
-          urgentUrl={`https://wa.me/${waNumber}?text=${encodeURIComponent(`🚨 URGENTE - Necesito ${v.store_name} lo antes posible.`)}`}
-          urgentLabel={urgentSurcharge != null ? `🚨 Urgente +${urgentSurcharge}%` : undefined}
+          urgentUrl={`https://wa.me/${waNumber}?text=${encodeURIComponent(`URGENTE - Necesito ${v.store_name} lo antes posible.`)}`}
+          urgentLabel={urgentSurcharge != null ? `Urgente +${urgentSurcharge}%` : undefined}
         />
       )}
     </main>

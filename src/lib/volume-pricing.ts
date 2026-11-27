@@ -366,7 +366,7 @@ export function volumeBadgeText(
           ? `Pack x${t.minQty}${u}+ · Combinables · ${Number(t.value).toLocaleString("es-AR")}% off`
           : `${t.minQty}${u}+ con ${Number(t.value).toLocaleString("es-AR")}% off`
   );
-  return `📦 ${parts.join(" · ")}`;
+  return parts.join(" · ");
 }
 
 export type VolumeColor = {

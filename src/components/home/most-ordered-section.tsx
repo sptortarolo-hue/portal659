@@ -40,8 +40,9 @@ function useCountUp(target: number) {
   return value;
 }
 
-function RankedCard({ item, index }: { item: MostOrderedItem; index: number }) {
+function RankedCard({ item, index, maxQty }: { item: MostOrderedItem; index: number; maxQty: number }) {
   const sold = useCountUp(item.total_qty);
+  const share = maxQty > 0 ? Math.max(10, Math.round((item.total_qty / maxQty) * 100)) : 0;
 
   return (
     <Link
@@ -63,7 +64,9 @@ function RankedCard({ item, index }: { item: MostOrderedItem; index: number }) {
         </div>
         <div className="p-5">
         <div className="mb-3 flex items-center gap-2">
-          <span className="pv2-chip">#{index + 1}</span>
+          <span className={`pv2-chip ${index === 0 ? "" : "pv2-chip-muted"}`}>
+            #{index + 1}{index === 0 ? " · Top" : ""}
+          </span>
           <span className="pv2-section-icon h-8 w-8">
             <Flame className="h-4 w-4 pv2-icon-accent" strokeWidth={1.8} aria-hidden="true" />
           </span>
@@ -77,8 +80,14 @@ function RankedCard({ item, index }: { item: MostOrderedItem; index: number }) {
         <p className="pv2-subtitle mt-1 truncate text-xs">
           {item.store_name}
         </p>
-        <p className="mt-3 text-xs font-medium text-muted-foreground">
-          Ver tienda →
+        <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-[var(--pv2-line)]">
+          <div
+            className="h-full rounded-full bg-[var(--pv2-accent)] transition-[width] duration-700 ease-out"
+            style={{ width: `${share}%` }}
+          />
+        </div>
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          {share}% del más pedido
         </p>
         </div>
       </div>
@@ -106,8 +115,16 @@ export function MostOrderedSection() {
       eyebrow="Popular"
       title="Lo más pedido del barrio"
       description="Lo que más pidieron en los últimos 7 días"
+      rightSlot={
+        <span className="pv2-chip pv2-chip-muted whitespace-nowrap">
+          <span className="pv2-live-dot h-2 w-2 rounded-full bg-[var(--pv2-accent)]" />
+          En vivo
+        </span>
+      }
     />
   );
+
+  const maxQty = Math.max(1, ...items.map((i) => Number(i.total_qty) || 0));
 
   if (loading) {
     return (
@@ -142,7 +159,7 @@ export function MostOrderedSection() {
       {heading}
       <HorizontalCarousel>
         {items.map((item, index) => (
-          <RankedCard key={item.product_id} item={item} index={index} />
+          <RankedCard key={item.product_id} item={item} index={index} maxQty={maxQty} />
         ))}
       </HorizontalCarousel>
     </section>

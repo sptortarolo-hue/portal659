@@ -10,7 +10,7 @@ import { OpenNowSection } from "@/components/home/open-now-section";
 import { BackButtonGuard } from "@/components/home/back-button-guard";
 import { SectionHeading } from "@/components/home/section-heading";
 import { VerticalIcon, verticalIconComponent } from "@/components/home/vertical-icon";
-import { OffersSection, type FeaturedOfferItem } from "@/components/home/offers-section";
+import { SplitOffersSection, type FeaturedOfferItem } from "@/components/home/split-offers";
 import { fetchRankStats, rankVendors } from "@/lib/ranking";
 import { ArrowRight, CalendarDays, Compass, Flame, MapPin, Newspaper, Sparkles, TrendingUp } from "lucide-react";
 import { itemListJsonLd, organizationJsonLd, websiteJsonLd } from "@/lib/json-ld";
@@ -298,7 +298,7 @@ export default async function HomePage() {
       </section>
 
       {/* Ofertas del día: una tarjeta por producto/servicio destacado */}
-      <OffersSection items={offerSectionItems} zoneName={zone.name} />
+      <SplitOffersSection items={offerSectionItems} zoneName={zone.name} />
 
       {/* Lo más pedido (ranking animado) */}
       <div id="populares">

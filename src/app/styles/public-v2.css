@@ -313,6 +313,11 @@ html:has(main.pv2) {
   100% { box-shadow: 0 0 0 9px color-mix(in srgb, var(--pv2-accent) 0%, transparent); }
 }
 
+@keyframes pv2-progress {
+  from { width: 0; }
+  to { width: 100%; }
+}
+
 .pv2-cart-badge {
   background: var(--pv2-accent);
   color: var(--pv2-ink-strong);

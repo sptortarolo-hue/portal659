@@ -61,6 +61,8 @@ type ProductRow = {
   package_price?: number | null;
   /** Costo de referencia (migrate-inventory.sql). Para el snapshot de margen real. */
   cost_last?: number | null;
+  /** Empaque por producto (migrate-product-packaging.sql), se SUMA al costo. */
+  packaging_cost?: number | null;
 };
 
 type VariantRow = {
@@ -75,10 +77,21 @@ type VariantRow = {
   cost_last?: number | null;
 };
 
-/** Costo unitario saneado de una fila (null si no hay dato: margen parcial). */
-function unitCostOf(row: { cost_last?: number | null } | undefined | null): number | undefined {
+/**
+ * Costo unitario saneado (null si no hay costo de producto: margen parcial).
+ * Incluye el empaque del producto (migrate-product-packaging.sql). El modo
+ * 'in_recipe' ya trae el empaque dentro de cost_last y su packaging_cost es 0,
+ * así que no hay doble conteo.
+ */
+function unitCostOf(
+  row: { cost_last?: number | null } | undefined | null,
+  packagingCost = 0
+): number | undefined {
   const c = row?.cost_last != null ? Number(row.cost_last) : NaN;
-  return Number.isFinite(c) && c >= 0 ? c : undefined;
+  if (!Number.isFinite(c) || c < 0) return undefined;
+  const pk = Number(packagingCost);
+  const extra = Number.isFinite(pk) && pk > 0 ? pk : 0;
+  return Math.round((c + extra) * 10000) / 10000;
 }
 
 export type ResolvedPricing = {
@@ -193,10 +206,12 @@ export async function resolveOrderPricing(opts: {
     // Snapshot de margen real (Fase D): el costo viaja con la venta. Tolerante
     // a migrate-inventory.sql sin aplicar (sin costo, margen parcial).
     const hasCostLast = await hasColumn(tx, "products", "cost_last");
+    const hasPackagingCost = await hasColumn(tx, "products", "packaging_cost");
     const prodCols = [
       "id", "name", "price", "promo_price", "available", "cash_discount_excluded", "pack_size", "unit",
       ...(hasPackagePrice ? ["package_price"] : []),
       ...(hasCostLast ? ["cost_last"] : []),
+      ...(hasPackagingCost ? ["packaging_cost"] : []),
     ].join(", ");
     products = await tx.query<ProductRow>(
       `SELECT ${prodCols} FROM products
@@ -605,12 +620,15 @@ export async function resolveOrderPricing(opts: {
     // Snapshot de costo para el margen real (Fase D): costo unitario del
     // producto/variante al momento de la venta. Con paquete (envasado) el
     // costo es por paquete (cost_last del terminado = costo del lote/paquete).
+    // Empaque por producto (migrate-product-packaging.sql): se suma al costo
+    // del snapshot. En 'in_recipe' packaging_cost es 0 (ya está en el lote).
+    const packCost = Number(product.packaging_cost) || 0;
     const itemCost =
       isPackage
-        ? unitCostOf(product)
+        ? unitCostOf(product, packCost)
         : variant
-          ? unitCostOf(variant) ?? unitCostOf(product)
-          : unitCostOf(product);
+          ? unitCostOf(variant, packCost) ?? unitCostOf(product, packCost)
+          : unitCostOf(product, packCost);
 
     outItems.push({
       product_id: it.offerId ? String(it.offerId) : product.id,

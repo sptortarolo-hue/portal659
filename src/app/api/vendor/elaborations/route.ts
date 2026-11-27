@@ -1,5 +1,5 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
-import { queryMany, queryOne, withTransaction } from "@/lib/db";
+import { queryMany, queryOne, withTransaction, hasColumn } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { computeBatch, type RecipeLineForBatch } from "@/lib/packing-math";
 
@@ -322,11 +322,16 @@ export async function POST(request: Request) {
         prevAvg != null && prevStock > 0
           ? Math.round(((prevAvg * prevStock + batch.costTotal) / newStock) * 100) / 100
           : Math.round(batch.costPerUnit * 10000) / 10000;
+      // El lote ya incluye el packaging (es insumo de la receta), así que el
+      // producto pasa a modo 'in_recipe' para que NO se le sume el empaque
+      // simple dos veces (migrate-product-packaging.sql). Tolerante sin migrar.
+      const hasPackagingMode = await hasColumn(tx, "products", "packaging_mode");
       await tx.queryVoid(
         `UPDATE products
          SET stock = COALESCE(stock, 0) + $2, stock_control = true,
              cost_last = $3::numeric,
              cost_avg = $4::numeric
+             ${hasPackagingMode ? ", packaging_mode = 'in_recipe'" : ""}
          WHERE id = $1`,
         [productId, batch.units, batch.costPerUnit, newAvg]
       );

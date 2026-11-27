@@ -26,6 +26,13 @@ import { VolumeEditor } from "@/components/dashboard/volume-editor";
 import { PresentationGenerator } from "@/components/dashboard/presentation-generator";
 import { MarginListsManager, type MarginList } from "@/components/dashboard/margin-lists-manager";
 import {
+  ProductPackagingSection,
+  type PackagingCatalogItem,
+  type PackagingDraftLine,
+} from "@/components/dashboard/product-packaging-section";
+import { CategoryPackagingManager } from "@/components/dashboard/category-packaging-manager";
+import { categoryKey } from "@/lib/product-packaging";
+import {
   applyRounding,
   describeRounding,
   isDefaultRounding,
@@ -349,6 +356,15 @@ export function MenuStudio({
   const [offScalePlu, setOffScalePlu] = useState("");
   const [offCountPack, setOffCountPack] = useState(false);
   const [offPackagePrice, setOffPackagePrice] = useState("");
+  // Empaque por producto (migrate-product-packaging.sql): se guarda aparte
+  // del producto, después del POST/PATCH, cuando ya tenemos el id.
+  const [offPackagingEnabled, setOffPackagingEnabled] = useState(false);
+  const [offPackagingLines, setOffPackagingLines] = useState<PackagingDraftLine[]>([]);
+  const [offPackagingMode, setOffPackagingMode] = useState("none");
+  const [offPackagingCatalog, setOffPackagingCatalog] = useState<PackagingCatalogItem[]>([]);
+  const [pkgDefaults, setPkgDefaults] = useState<
+    { id: string; category_key: string; category: string | null; lines: PackagingDraftLine[] }[]
+  >([]);
   // Proveedor habitual y vencimiento (inventario).
   const [offSupplierId, setOffSupplierId] = useState("");
   const [offExpiresAt, setOffExpiresAt] = useState("");
@@ -363,6 +379,48 @@ export function MenuStudio({
   const [offAllProducts, setOffAllProducts] = useState<
     { id: string; name: string; price: number; image_url?: string | null; available?: boolean }[]
   >([]);
+
+  // Empaque: biblioteca de insumos + líneas del producto en edición.
+  const loadPackaging = useCallback(async (productId?: string | null) => {
+    try {
+      const d = await getJson<{
+        ingredients?: PackagingCatalogItem[];
+        products?: {
+          id: string;
+          mode: string;
+          lines: { ingredient_id: string; name: string; qty: number; unit_cost: number; base_unit?: string | null }[];
+        }[];
+        defaults?: { id: string; category_key: string; category: string | null; lines: PackagingDraftLine[] }[];
+      }>(productId ? `/api/vendor/product-packaging?productId=${productId}` : "/api/vendor/product-packaging");
+      if (!d) return;
+      setOffPackagingCatalog(d.ingredients || []);
+      setPkgDefaults(d.defaults || []);
+      const p = productId ? d.products?.[0] : null;
+      if (p) {
+        setOffPackagingMode(p.mode);
+        setOffPackagingEnabled(p.mode === "simple" || p.mode === "category");
+        setOffPackagingLines(
+          (p.lines || []).map((l) => ({
+            ingredient_id: l.ingredient_id, name: l.name, qty: l.qty,
+            unit_cost: l.unit_cost, base_unit: l.base_unit,
+          }))
+        );
+      }
+    } catch { /* sin migración: sección queda vacía con el aviso */ }
+  }, []);
+  useEffect(() => {
+    if (isComercio && canEditCost) loadPackaging();
+  }, [isComercio, canEditCost, loadPackaging]);
+
+  // Producto NUEVO: hereda el empaque por defecto de la categoría elegida
+  // (si tiene uno). Cambiar de categoría re-evalúa el default.
+  useEffect(() => {
+    if (editingId || !showForm) return;
+    const has = pkgDefaults.some((d) => d.category_key === categoryKey(offCategory));
+    setOffPackagingMode(has ? "category" : "none");
+    setOffPackagingEnabled(has);
+    if (!has) setOffPackagingLines([]);
+  }, [editingId, showForm, offCategory, pkgDefaults]);
 
   // Drawer (desktop).
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -385,6 +443,13 @@ export function MenuStudio({
   const [bulkValue, setBulkValue] = useState("");
   const [bulkSaving, setBulkSaving] = useState(false);
   const [bulkIncludePromos, setBulkIncludePromos] = useState(false);
+
+  // Empaque masivo (selección múltiple del catálogo).
+  const [packBulkOpen, setPackBulkOpen] = useState(false);
+  const [packBulkMode, setPackBulkMode] = useState<"simple" | "category" | "none">("category");
+  const [packBulkIng, setPackBulkIng] = useState("");
+  const [packBulkQty, setPackBulkQty] = useState("1");
+  const [packBulkSaving, setPackBulkSaving] = useState(false);
 
   // Listas de margen: estado del select del editor + solapa Listas.
   const [marginLists, setMarginLists] = useState<MarginList[] | null>(null);
@@ -514,6 +579,9 @@ export function MenuStudio({
     setOffScalePlu("");
     setOffCountPack(false);
     setOffPackagePrice("");
+    setOffPackagingEnabled(false);
+    setOffPackagingLines([]);
+    setOffPackagingMode("none");
     setOffSupplierId("");
     setOffMarginListId("");
     setOffExpiresAt("");
@@ -610,6 +678,12 @@ export function MenuStudio({
     setOffScalePlu((offer as any).scale_plu ? String((offer as any).scale_plu) : "");
     setOffCountPack((offer as any).count_pack === true);
     setOffPackagePrice((offer as any).package_price != null ? String((offer as any).package_price) : "");
+    const pkLines = ((offer as any).packaging_lines || []) as PackagingDraftLine[];
+    const pkMode = (offer as any).packaging_mode || "none";
+    setOffPackagingMode(pkMode);
+    setOffPackagingEnabled(pkMode === "simple" && pkLines.length > 0);
+    setOffPackagingLines(pkLines);
+    if (isComercio && canEditCost) loadPackaging(offer.id);
     setOffCost((offer as any).cost_last != null ? String((offer as any).cost_last) : "");
     setOffMarginListId((offer as any).margin_list_id ? String((offer as any).margin_list_id) : "");
     setOffSupplierId((offer as any).supplier_id ? String((offer as any).supplier_id) : "");
@@ -642,6 +716,7 @@ export function MenuStudio({
     offRequiresPrep: boolean; offCashExcluded: boolean; offPackSize: string;
     offUnit: string; offSku: string; offScalePlu: string; offCost: string;
     offCountPack: boolean; offPackagePrice: string;
+    offPackagingEnabled: boolean; offPackagingMode: string; offPackagingLines: PackagingDraftLine[];
     offSupplierId: string; offExpiresAt: string;
     offRemotePhoto: string | null; hadFile: boolean;
     galleryUrls: { url: string }[];
@@ -650,7 +725,7 @@ export function MenuStudio({
   const menuDraft = useFormDraft<MenuDraft>({
     vendorId,
     key: "menu-studio",
-    watch: [showForm, editingId, offName, offDesc, offPrice, offCategory, offPreview, offStock, offStockControl, offPromoPrice, offStockLowThreshold, offRequiresPrep, offCashExcluded, offPackSize, offUnit, offSku, offScalePlu, offCost, offSupplierId, offExpiresAt, offRemotePhoto, galleryUrls, offCountPack, offPackagePrice],
+    watch: [showForm, editingId, offName, offDesc, offPrice, offCategory, offPreview, offStock, offStockControl, offPromoPrice, offStockLowThreshold, offRequiresPrep, offCashExcluded, offPackSize, offUnit, offSku, offScalePlu, offCost, offSupplierId, offExpiresAt, offRemotePhoto, galleryUrls, offCountPack, offPackagePrice, offPackagingEnabled, offPackagingMode, offPackagingLines],
     snapshot: () => {
       if (!showForm) return null;
       if (!editingId && !offName.trim() && !offPrice && !offDesc.trim() && galleryUrls.length === 0) return null;
@@ -662,6 +737,9 @@ export function MenuStudio({
         hadFile: offFile != null,
         offCountPack,
         offPackagePrice,
+        offPackagingEnabled,
+        offPackagingMode,
+        offPackagingLines,
       };
     },
     restore: (d) => {
@@ -685,6 +763,9 @@ export function MenuStudio({
       setOffScalePlu(d.offScalePlu || "");
       setOffCountPack(d.offCountPack === true);
       setOffPackagePrice(d.offPackagePrice || "");
+      setOffPackagingEnabled(d.offPackagingEnabled === true);
+      setOffPackagingMode(d.offPackagingMode || "none");
+      setOffPackagingLines(Array.isArray(d.offPackagingLines) ? d.offPackagingLines : []);
       setOffCost(d.offCost || "");
       setOffSupplierId(d.offSupplierId || "");
       setOffExpiresAt(d.offExpiresAt || "");
@@ -805,6 +886,28 @@ export function MenuStudio({
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ product_id: savedId, images: galleryUrls.slice(0, MAX_EXTRA_IMAGES).map((g) => ({ image_url: g.url, color: null })) }),
+        }).catch(() => {});
+      }
+      // Empaque por producto: se guarda aparte, después del alta/edición.
+      if (savedId && isComercio && canEditCost && (offPackagingEnabled || offPackagingMode !== "none")) {
+        const nextMode =
+          (offPackagingMode === "in_recipe" || offPackagingMode === "category") && !offPackagingEnabled
+            ? offPackagingMode
+            : offPackagingEnabled
+              ? offPackagingMode === "category"
+                ? "category"
+                : "simple"
+              : "none";
+        await fetch("/api/vendor/product-packaging", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            productId: savedId,
+            mode: nextMode,
+            lines: nextMode === "simple"
+              ? offPackagingLines.map((l) => ({ ingredient_id: l.ingredient_id, qty: l.qty }))
+              : [],
+          }),
         }).catch(() => {});
       }
       if (!editingId && drawerOpen && data.offer?.id) {
@@ -1001,6 +1104,37 @@ export function MenuStudio({
   const isCostBulkOp = bulkOp === "markup_pct" || bulkOp === "margin_pct";
   const visibleBulkOps = canEditCost ? BULK_OPS : BULK_OPS.filter((o) => !COST_BULK_OPS.includes(o.id));
 
+  async function applyBulkPackaging() {
+    if (bulkTargets.length === 0) return;
+    const qty = Number(packBulkQty);
+    if (packBulkMode === "simple" && (!packBulkIng || !Number.isFinite(qty) || qty <= 0)) {
+      setMsg("Elegí el insumo de empaque y una cantidad válida");
+      return;
+    }
+    setPackBulkSaving(true);
+    try {
+      const res = await fetch("/api/vendor/product-packaging", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productIds: bulkTargets.map((o) => o.id),
+          mode: packBulkMode,
+          lines: packBulkMode === "simple" ? [{ ingredient_id: packBulkIng, qty }] : [],
+        }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || d.ok === false) throw new Error(d.error || "No se pudo aplicar el empaque");
+      setMsg(`Empaque aplicado a ${d.written ?? bulkTargets.length} ${itemLabelPlural}.`);
+      setPackBulkOpen(false);
+      await loadPackaging();
+      reload();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "No se pudo aplicar el empaque");
+    } finally {
+      setPackBulkSaving(false);
+    }
+  }
+
   async function applyBulkPrice() {
     const value = Number(bulkValue);
     if (!bulkValue || !isFinite(value) || value < 0) {
@@ -1103,6 +1237,25 @@ export function MenuStudio({
       offCost={offCost}
       setOffCost={setOffCost}
       costLabel={showCosts ? "Costo compra ($)" : "Costo ($)"}
+      packagingSection={
+        isComercio && canEditCost ? (
+          <ProductPackagingSection
+            mode={offPackagingMode}
+            enabled={offPackagingEnabled}
+            lines={offPackagingLines}
+            catalog={offPackagingCatalog}
+            onEnabled={setOffPackagingEnabled}
+            onLines={setOffPackagingLines}
+            onMode={setOffPackagingMode}
+            productCost={offCost.trim() !== "" && Number.isFinite(Number(offCost)) ? Number(offCost) : null}
+            categoryName={offCategory}
+            hasCategoryDefault={pkgDefaults.some((d) => d.category_key === categoryKey(offCategory))}
+            categoryLines={
+              pkgDefaults.find((d) => d.category_key === categoryKey(offCategory))?.lines || []
+            }
+          />
+        ) : null
+      }
       showSupplier={canEditCost}
       offSupplierId={offSupplierId}
       setOffSupplierId={setOffSupplierId}
@@ -1365,6 +1518,18 @@ export function MenuStudio({
               >
                 💲 Modificar precios{selected.size > 0 ? ` (${selected.size})` : ""}
               </Button>
+              {isComercio && canEditCost && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="hidden lg:inline-flex"
+                  disabled={filteredOffers.length === 0}
+                  onClick={() => { setPackBulkIng(offPackagingCatalog[0]?.id || ""); setPackBulkOpen(true); }}
+                >
+                  📦 Empaque{selected.size > 0 ? ` (${selected.size})` : ""}
+                </Button>
+              )}
               <MoreActionsMenu
                 groups={[
                   {
@@ -1475,6 +1640,9 @@ export function MenuStudio({
           <p className="text-xs text-muted-foreground">
             Las categorías ordenan {isComercio ? "el catálogo" : "la carta"} del micrositio. Usá ↑↓ para cambiar el orden.
           </p>
+          {isComercio && canEditCost && (
+            <CategoryPackagingManager categories={categories} onChange={() => { loadPackaging(); reload(); }} />
+          )}
         </>
       )}
 
@@ -1908,6 +2076,77 @@ export function MenuStudio({
                 <strong>${previewNewPrice.toLocaleString("es-AR")}</strong>
               </p>
             )
+          )}
+        </div>
+      </Modal>
+
+      {/* Empaque masivo (selección múltiple del catálogo) */}
+      <Modal
+        open={packBulkOpen}
+        onClose={() => setPackBulkOpen(false)}
+        title="Aplicar empaque"
+        footer={
+          <>
+            <Button
+              type="button"
+              className="flex-1"
+              disabled={packBulkSaving || bulkTargets.length === 0 ||
+                (packBulkMode === "simple" && (!packBulkIng || !Number(packBulkQty)))}
+              onClick={applyBulkPackaging}
+            >
+              {packBulkSaving ? "Aplicando…" : `Aplicar a ${bulkTargets.length}`}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setPackBulkOpen(false)}>
+              Cancelar
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            {selected.size > 0
+              ? `Se aplica a los ${bulkTargets.length} ${itemLabelPlural} seleccionados.`
+              : `Sin selección: se aplica a los ${bulkTargets.length} ${itemLabelPlural} filtrados.`}{" "}
+            Los precios no se recalculan: el empaque solo entra en el costo y en el precio sugerido.
+          </p>
+          <div className="space-y-1">
+            <Label className="text-xs">Opción</Label>
+            <select
+              value={packBulkMode}
+              onChange={(e) => setPackBulkMode(e.target.value as "simple" | "category" | "none")}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="category">Usar empaque por defecto de la categoría</option>
+              <option value="simple">Cargar empaque (override) en estos productos</option>
+              <option value="none">Quitar empaque</option>
+            </select>
+          </div>
+          {packBulkMode === "simple" && (
+            <div className="flex gap-2">
+              <select
+                value={packBulkIng}
+                onChange={(e) => setPackBulkIng(e.target.value)}
+                className="h-10 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm"
+              >
+                {offPackagingCatalog.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name} — ${c.unit_cost}</option>
+                ))}
+              </select>
+              <Input
+                type="number"
+                min={0.001}
+                step="any"
+                value={packBulkQty}
+                onChange={(e) => setPackBulkQty(e.target.value)}
+                className="w-20"
+                aria-label="Cantidad de empaque"
+              />
+            </div>
+          )}
+          {offPackagingCatalog.length === 0 && packBulkMode === "simple" && (
+            <p className="text-xs text-muted-foreground">
+              Cargá bolsas/etiquetas como insumos antes de aplicar el empaque.
+            </p>
           )}
         </div>
       </Modal>

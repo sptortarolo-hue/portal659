@@ -410,6 +410,18 @@ export type Product = {
   cost_last?: number | null;
   /** Costo promedio ponderado (mercadería). NULL = sin costo. */
   cost_avg?: number | null;
+  /** Empaque por producto (migrate-product-packaging.sql). */
+  packaging_mode?: "none" | "simple" | "in_recipe" | null;
+  /** Costo de empaque derivado de los insumos elegidos (0 si no aplica). */
+  packaging_cost?: number | null;
+  /** Desglose de empaque (lo agrega GET /api/vendor/offers). */
+  packaging_lines?: {
+    ingredient_id: string;
+    name: string;
+    qty: number;
+    unit_cost: number;
+    base_unit?: string | null;
+  }[];
   promo_price: number | null;
   available: boolean;
   /** Venta online on/off (independiente de "disponible"). Default true. */

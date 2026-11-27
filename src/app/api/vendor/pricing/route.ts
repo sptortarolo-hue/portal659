@@ -3,6 +3,7 @@ import { gateRequest, gateError } from "@/lib/subscription-gate";
 import { queryMany, queryOne, withTransaction } from "@/lib/db";
 import { priceFromCost, clampPrice, type MarginRule } from "@/lib/cost-reprice";
 import { resolveRounding, type Rounding } from "@/lib/price-rounding";
+import { effectiveCostOf } from "@/lib/product-packaging";
 
 export const dynamic = "force-dynamic";
 const GATE_MSG = "La administración de precios forma parte del plan Gestión integral";
@@ -13,6 +14,7 @@ type ProductRow = {
   price: number | null;
   promo_price: number | null;
   cost_last: number | null;
+  packaging_cost?: number | null;
   margin_list_id: string | null;
   sku: string | null;
   is_combo: boolean;
@@ -47,7 +49,7 @@ export async function POST(request: Request) {
   const cols = await queryMany<{ table_name: string; column_name: string }>(
     `SELECT table_name, column_name FROM information_schema.columns
       WHERE table_schema='public'
-        AND ((table_name='products' AND column_name IN ('cost_last','sku','is_combo','price_source','pricing_skipped','margin_list_id','promo_price'))
+        AND ((table_name='products' AND column_name IN ('cost_last','packaging_cost','sku','is_combo','price_source','pricing_skipped','margin_list_id','promo_price'))
           OR (table_name='vendors' AND column_name IN ('price_round_step','price_round_mode','price_round_tail')))`
   ).catch(() => []);
   const has = (t: string, c: string) => cols.some((x) => x.table_name === t && x.column_name === c);
@@ -72,6 +74,7 @@ export async function POST(request: Request) {
   const products = await queryMany<ProductRow>(
     `SELECT id, name, price, ${has("products", "promo_price") ? "promo_price" : "NULL::numeric AS promo_price"},
             ${has("products", "cost_last") ? "cost_last" : "NULL::numeric AS cost_last"},
+            ${has("products", "packaging_cost") ? "packaging_cost" : "0::numeric AS packaging_cost"},
             ${has("products", "margin_list_id") ? "margin_list_id" : "NULL::uuid AS margin_list_id"},
             ${has("products", "sku") ? "sku" : "NULL::text AS sku"},
             ${has("products", "is_combo") ? "COALESCE(is_combo,false) AS is_combo" : "false AS is_combo"}
@@ -106,9 +109,11 @@ export async function POST(request: Request) {
     const isGift = (p.sku || "").startsWith("GC-");
     const skipReason = p.is_combo || isGift ? "combo/giftcard" : p.cost_last == null ? "sin_costo" : !list ? "sin_lista" : null;
     const rounding = list ? resolveRounding({ step: list.step, mode: list.mode, tail: list.tail }) : globalRounding;
+    // Costo efectivo = producto + empaque (in_recipe ya lo incluye y tiene 0).
+    const effectiveCost = effectiveCostOf(p);
     const suggested =
       !skipReason && list
-        ? clampPrice(priceFromCost(Number(p.cost_last), list.rule as MarginRule, Number(list.pct), rounding) ?? 0, rounding)
+        ? clampPrice(priceFromCost(effectiveCost, list.rule as MarginRule, Number(list.pct), rounding) ?? 0, rounding)
         : null;
     const ratio =
       includePromos && p.promo_price != null && Number(p.price) > 0
@@ -118,7 +123,8 @@ export async function POST(request: Request) {
     return {
       id: p.id,
       name: p.name,
-      cost: p.cost_last != null ? Number(p.cost_last) : null,
+      cost: effectiveCost,
+      packaging_cost: Number(p.packaging_cost) || 0,
       oldPrice: p.price != null ? Number(p.price) : null,
       newPrice: suggested,
       listId: finalListId,

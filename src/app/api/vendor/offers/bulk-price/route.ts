@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { queryMany, withTransaction } from "@/lib/db";
 import { priceFromCost, clampPrice, promoFromRatio } from "@/lib/cost-reprice";
+import { effectiveCostFromDb } from "@/lib/product-packaging";
 import { applyRounding, describeRounding, isDefaultRounding, resolveRounding, type Rounding } from "@/lib/price-rounding";
 
 type Op = "pct_up" | "pct_down" | "add" | "set" | "markup_pct" | "margin_pct";
@@ -132,7 +133,7 @@ export async function POST(request: Request) {
       `SELECT table_name, column_name
          FROM information_schema.columns
         WHERE table_schema = 'public'
-          AND ((table_name = 'products' AND column_name IN ('cost_last', 'sku', 'is_combo'))
+          AND ((table_name = 'products' AND column_name IN ('cost_last', 'packaging_cost', 'sku', 'is_combo'))
             OR (table_name = 'product_variants' AND column_name = 'cost_last'))`
     );
   } catch {
@@ -143,6 +144,7 @@ export async function POST(request: Request) {
   }
   const has = new Set(schema.map((c) => `${c.table_name}.${c.column_name}`));
   const hasProductsCost = has.has("products.cost_last");
+  const hasPackagingCost = has.has("products.packaging_cost");
   const hasVariantsCost = has.has("product_variants.cost_last");
   const hasSku = has.has("products.sku");
   const hasComboCol = has.has("products.is_combo");
@@ -186,10 +188,12 @@ export async function POST(request: Request) {
         price: number;
         promo_price: number | null;
         cost_last: number | null;
+        packaging_cost?: number | null;
         is_combo: boolean;
       }>(
         `SELECT id, price, promo_price,
-                ${hasProductsCost ? "cost_last" : "NULL::numeric AS cost_last"}${hasComboCol ? ", COALESCE(is_combo, false) AS is_combo" : ", false AS is_combo"}
+                ${hasProductsCost ? "cost_last" : "NULL::numeric AS cost_last"},
+                ${hasPackagingCost ? "packaging_cost" : "0::numeric AS packaging_cost"}${hasComboCol ? ", COALESCE(is_combo, false) AS is_combo" : ", false AS is_combo"}
            FROM products
           WHERE vendor_id = $1 AND id = ANY($2::uuid[])
             ${giftFilter}`,
@@ -210,7 +214,7 @@ export async function POST(request: Request) {
           skippedCombo++;
           continue;
         }
-        const newPrice = basePrice(Number(r.price), r.cost_last);
+        const newPrice = basePrice(Number(r.price), effectiveCostFromDb(r));
         if (newPrice == null) {
           skippedNoCost++;
           continue;
@@ -247,9 +251,11 @@ export async function POST(request: Request) {
         price: number;
         promo: number | null;
         cost_last: number | null;
+        packaging_cost?: number | null;
         is_combo: boolean;
       }>(
         `SELECT v.id, v.product_id, v.price, v.promo, ${hasVariantsCost ? 'v.cost_last' : 'NULL::numeric AS cost_last'},
+                ${hasPackagingCost ? "p.packaging_cost" : "0::numeric AS packaging_cost"},
                 ${hasComboCol ? "COALESCE(p.is_combo, false)" : "false"} AS is_combo
            FROM product_variants v
            JOIN products p ON p.id = v.product_id
@@ -266,7 +272,7 @@ export async function POST(request: Request) {
 
       for (const v of variantRows) {
         if (v.is_combo) continue; // el combo no se vende por costo
-        const newPrice = basePrice(Number(v.price), v.cost_last);
+        const newPrice = basePrice(Number(v.price), effectiveCostFromDb(v));
         if (newPrice == null) {
           skippedNoCost++;
           continue;

@@ -967,36 +967,41 @@ export async function POST(request: Request) {
             const costCols = await queryMany<{ table_name: string; column_name: string }>(
               `SELECT table_name, column_name FROM information_schema.columns
                 WHERE table_schema = 'public'
-                  AND ((table_name = 'products' AND column_name = 'cost_last')
+                  AND ((table_name = 'products' AND column_name IN ('cost_last', 'packaging_cost'))
                     OR (table_name = 'product_variants' AND column_name = 'cost_last'))`
             );
             const hasCost = new Set(costCols.map((c) => `${c.table_name}.${c.column_name}`));
+            const hasPackagingCost = hasCost.has("products.packaging_cost");
             if (hasCost.has("products.cost_last")) {
               const pIds = [...new Set(stockParsed.map((s: any) => (typeof s?.product_id === "string" ? s.product_id : null)).filter(Boolean))] as string[];
               const vIds = hasCost.has("product_variants.cost_last")
                 ? ([...new Set(stockParsed.map((s: any) => (typeof s?.variant_id === "string" ? s.variant_id : null)).filter(Boolean))] as string[])
                 : [];
               const pRows = pIds.length
-                ? await queryMany<{ id: string; cost_last: number | null }>(
-                    `SELECT id, cost_last FROM products WHERE id = ANY($1) AND vendor_id = $2`,
+                ? await queryMany<{ id: string; cost_last: number | null; packaging_cost?: number | null }>(
+                    `SELECT id, cost_last${hasPackagingCost ? ", packaging_cost" : ""}
+                       FROM products WHERE id = ANY($1) AND vendor_id = $2`,
                     [pIds, vendorId]
                   )
                 : [];
               const vRows = vIds.length
-                ? await queryMany<{ id: string; cost_last: number | null }>(
-                    `SELECT v.id, v.cost_last FROM product_variants v JOIN products p ON p.id = v.product_id
-                     WHERE v.id = ANY($1) AND p.vendor_id = $2`,
+                ? await queryMany<{ id: string; cost_last: number | null; packaging_cost?: number | null }>(
+                    `SELECT v.id, v.cost_last${hasPackagingCost ? ", p.packaging_cost AS packaging_cost" : ""}
+                       FROM product_variants v JOIN products p ON p.id = v.product_id
+                      WHERE v.id = ANY($1) AND p.vendor_id = $2`,
                     [vIds, vendorId]
                   )
                 : [];
               const costById = new Map<string, number>();
               for (const r of pRows) {
                 const c = Number(r.cost_last);
-                if (Number.isFinite(c) && c >= 0) costById.set(String(r.id), c);
+                const pk = hasPackagingCost ? Number(r.packaging_cost) || 0 : 0;
+                if (Number.isFinite(c) && c >= 0) costById.set(String(r.id), Math.round((c + pk) * 10000) / 10000);
               }
               for (const r of vRows) {
                 const c = Number(r.cost_last);
-                if (Number.isFinite(c) && c >= 0) costById.set(`v:${String(r.id)}`, c);
+                const pk = hasPackagingCost ? Number(r.packaging_cost) || 0 : 0;
+                if (Number.isFinite(c) && c >= 0) costById.set(`v:${String(r.id)}`, Math.round((c + pk) * 10000) / 10000);
               }
               stockParsed.forEach((s: any, idx: number) => {
                 if (!orderItems[idx]) return;

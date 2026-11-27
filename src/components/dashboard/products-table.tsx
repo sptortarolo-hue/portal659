@@ -8,6 +8,7 @@ import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { ProductImage } from "@/components/product-image";
 import { isGiftProductRow } from "@/lib/gift-card-share";
 import { gainFromPriceCost } from "@/lib/price-rounding";
+import { effectiveCostFromDb } from "@/lib/product-packaging";
 import { GiftcardManageButton } from "@/components/dashboard/giftcard-manage-button";
 import { getPricingStatus } from "@/lib/pricing-status";
 
@@ -26,6 +27,9 @@ type Offer = {
   stock_control?: boolean;
   /** Costo de compra (inventario): distinto del food-cost de preparación. */
   cost_last?: number | null;
+  /** Empaque por producto (se suma al costo para margen y precio sugerido). */
+  packaging_cost?: number | null;
+  packaging_mode?: string | null;
   promo_price: number | null;
   requires_prep?: boolean;
   cash_discount_excluded?: boolean;
@@ -303,13 +307,18 @@ export function ProductsTable({
                   ) : showBuyCost && offer.cost_last != null ? (
                     <span
                       className="tabular-nums"
-                      title="Costo de compra (último)"
+                      title={Number(offer.packaging_cost || 0) > 0
+                        ? `Costo ${Number(offer.cost_last).toLocaleString("es-AR")} + empaque ${Number(offer.packaging_cost).toLocaleString("es-AR")}`
+                        : "Costo de compra (último)"}
                     >
-                      ${Number(offer.cost_last).toLocaleString("es-AR")}
+                      ${Number(effectiveCostFromDb(offer)).toLocaleString("es-AR")}
+                      {Number(offer.packaging_cost || 0) > 0 && (
+                        <span className="ml-0.5 text-[10px] text-muted-foreground" title="Incluye empaque">📦</span>
+                      )}
                       {(() => {
                         const g = gainFromPriceCost(
                           Number(offer.promo_price ?? offer.price),
-                          Number(offer.cost_last)
+                          effectiveCostFromDb(offer) ?? Number(offer.cost_last)
                         );
                         if (!g) return null;
                         return (

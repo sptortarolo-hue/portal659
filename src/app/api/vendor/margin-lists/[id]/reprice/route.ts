@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { gateRequest, gateError } from "@/lib/subscription-gate";
 import { queryMany, queryOne, withTransaction } from "@/lib/db";
 import { priceFromCost, clampPrice, promoFromRatio, type MarginRule } from "@/lib/cost-reprice";
+import { effectiveCostFromDb } from "@/lib/product-packaging";
 import { describeRounding, isDefaultRounding, resolveRounding, type Rounding } from "@/lib/price-rounding";
 
 export const dynamic = "force-dynamic";
@@ -72,11 +73,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     `SELECT table_name, column_name
        FROM information_schema.columns
       WHERE table_schema = 'public'
-        AND ((table_name = 'products' AND column_name IN ('cost_last', 'sku', 'is_combo'))
+        AND ((table_name = 'products' AND column_name IN ('cost_last', 'packaging_cost', 'sku', 'is_combo'))
           OR (table_name = 'product_variants' AND column_name = 'cost_last'))`
   ).catch(() => [] as { table_name: string; column_name: string }[]);
   const has = new Set(schema.map((c) => `${c.table_name}.${c.column_name}`));
   const hasProductsCost = has.has("products.cost_last");
+  const hasPackagingCost = has.has("products.packaging_cost");
   const hasVariantsCost = has.has("product_variants.cost_last");
   const hasSku = has.has("products.sku");
   const hasComboCol = has.has("products.is_combo");
@@ -102,10 +104,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       price: number;
       promo_price: number | null;
       cost_last: number | null;
+      packaging_cost?: number | null;
       is_combo: boolean;
     }>(
       `SELECT id, name, price, promo_price,
-              ${hasProductsCost ? "cost_last" : "NULL::numeric AS cost_last"}${hasComboCol ? ", COALESCE(is_combo, false) AS is_combo" : ", false AS is_combo"}
+              ${hasProductsCost ? "cost_last" : "NULL::numeric AS cost_last"},
+              ${hasPackagingCost ? "packaging_cost" : "0::numeric AS packaging_cost"}${hasComboCol ? ", COALESCE(is_combo, false) AS is_combo" : ", false AS is_combo"}
          FROM products
         WHERE vendor_id = $1 AND margin_list_id = $2 ${giftFilter}`,
       [gate.vendor.id, id]
@@ -123,11 +127,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           price: number;
           promo: number | null;
           cost_last: number | null;
+          packaging_cost?: number | null;
           is_combo: boolean;
         }>(
           `SELECT v.id, v.product_id, p.name AS product_name, v.color, v.talle,
                   v.price, v.promo,
                   ${hasVariantsCost ? "v.cost_last" : "NULL::numeric AS cost_last"},
+                  ${hasPackagingCost ? "p.packaging_cost" : "0::numeric AS packaging_cost"},
                   ${hasComboCol ? "COALESCE(p.is_combo, false)" : "false"} AS is_combo
              FROM product_variants v
              JOIN products p ON p.id = v.product_id
@@ -160,13 +166,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       if (p.is_combo) {
         skippedCombo++;
         items.push({
-          id: p.id, kind: "product", name: p.name, cost: p.cost_last != null ? Number(p.cost_last) : null,
+          id: p.id, kind: "product", name: p.name, cost: effectiveCostFromDb(p),
           oldPrice: Number(p.price), newPrice: null, oldPromo: p.promo_price != null ? Number(p.promo_price) : null,
           newPromo: null, skip: "combo",
         });
         continue;
       }
-      const cost = p.cost_last != null ? Number(p.cost_last) : null;
+      const cost = effectiveCostFromDb(p);
       const newPriceRaw = priceFromCost(cost, rule, pct, rounding);
       if (newPriceRaw == null) {
         skippedNoCost++;
@@ -192,7 +198,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       if (v.is_combo) continue; // el combo no se vende por costo
       const label = [v.color, v.talle].filter((s) => String(s || "").trim()).join(" ");
       const name = label ? `${v.product_name} — ${label}` : v.product_name;
-      const cost = v.cost_last != null ? Number(v.cost_last) : null;
+      const cost = effectiveCostFromDb(v);
       const newPriceRaw = priceFromCost(cost, rule, pct, rounding);
       if (newPriceRaw == null) {
         skippedNoCost++;

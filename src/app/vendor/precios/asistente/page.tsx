@@ -9,12 +9,24 @@ import { getJson } from "@/components/dashboard/shared";
 import { CategorySelect, type CategoryOption } from "@/components/dashboard/category-select";
 import { loadDraft, saveDraft } from "@/lib/draft";
 import { getPricingStatus } from "@/lib/pricing-status";
+import {
+  ProductPackagingSection,
+  type PackagingCatalogItem,
+  type PackagingDraftLine,
+} from "@/components/dashboard/product-packaging-section";
+import { categoryKey } from "@/lib/product-packaging";
 
 type Product = {
   id: string;
   name: string;
   price?: number | null;
   cost_last?: number | null;
+  category?: string | null;
+  /** Empaque por producto (migrate-product-packaging.sql). */
+  packaging_cost?: number | null;
+  packaging_mode?: string | null;
+  packaging_lines?: { ingredient_id: string; name: string; qty: number; unit_cost: number; base_unit?: string | null }[];
+  effective_cost?: number | null;
   margin_list_id?: string | null;
   price_source?: string | null;
   pricing_skipped?: unknown;
@@ -55,6 +67,9 @@ type GuideDraft = {
   selectedCostId: string | null;
   selectedListId: string | null;
   selectedPriceId: string | null;
+  packEnabled?: boolean;
+  packMode?: string;
+  packLines?: PackagingDraftLine[];
 };
 
 const STEPS = [
@@ -135,6 +150,14 @@ export default function PricingGuidePage() {
   const [categoryChoice, setCategoryChoice] = useState("");
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [costInput, setCostInput] = useState("");
+  // Empaque por producto (paso 3): biblioteca + líneas del producto actual.
+  const [packCatalog, setPackCatalog] = useState<PackagingCatalogItem[]>([]);
+  const [packDefaults, setPackDefaults] = useState<
+    { id: string; category_key: string; category: string | null; lines: PackagingDraftLine[] }[]
+  >([]);
+  const [packEnabled, setPackEnabled] = useState(false);
+  const [packMode, setPackMode] = useState("none");
+  const [packLines, setPackLines] = useState<PackagingDraftLine[]>([]);
   const [suggested, setSuggested] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -150,12 +173,18 @@ export default function PricingGuidePage() {
       getJson<{ offers?: Product[] }>("/api/vendor/offers").catch(() => null),
       getJson<{ lists?: ListRow[] }>("/api/vendor/margin-lists").catch(() => null),
       getJson<{ categories?: CategoryOption[] }>("/api/vendor/categories").catch(() => null),
-    ]).then(([me, off, ml, cats]) => {
+      getJson<{
+        ingredients?: PackagingCatalogItem[];
+        defaults?: { id: string; category_key: string; category: string | null; lines: PackagingDraftLine[] }[];
+      }>("/api/vendor/product-packaging").catch(() => null),
+    ]).then(([me, off, ml, cats, pk]) => {
       setVendorId(me?.vendor?.id || null);
       setIvaRecuperable(me?.vendor?.iva_recuperable === true);
       setProducts(off?.offers || []);
       setLists(ml?.lists || []);
       setCategories(cats?.categories || []);
+      setPackCatalog(pk?.ingredients || []);
+      setPackDefaults(pk?.defaults || []);
       const draft = loadDraft<GuideDraft>(me?.vendor?.id, "pricing-guide");
       if (draft) {
         setStep(draft.step || 1);
@@ -170,6 +199,9 @@ export default function PricingGuidePage() {
         setSelectedCostId(draft.selectedCostId || null);
         setSelectedListId(draft.selectedListId || null);
         setSelectedPriceId(draft.selectedPriceId || null);
+        setPackEnabled(draft.packEnabled === true);
+        setPackMode(draft.packMode || "none");
+        setPackLines(Array.isArray(draft.packLines) ? draft.packLines : []);
       } else {
         const prods = off?.offers || [];
         const missingCost = prods.filter((p) => relevant(p) && p.cost_last == null).length;
@@ -185,10 +217,11 @@ export default function PricingGuidePage() {
       const draft: GuideDraft = {
         step, extracted, url, fileHash, lineIndex, createdLines, savedPurchaseId,
         ivaRecuperable, duplicateOverride, selectedCostId, selectedListId, selectedPriceId,
+        packEnabled, packMode, packLines,
       };
       saveDraft(vendorId, "pricing-guide", draft);
     }
-  }, [vendorId, step, extracted, url, fileHash, lineIndex, createdLines, savedPurchaseId, ivaRecuperable, duplicateOverride, selectedCostId, selectedListId, selectedPriceId]);
+  }, [vendorId, step, extracted, url, fileHash, lineIndex, createdLines, savedPurchaseId, ivaRecuperable, duplicateOverride, selectedCostId, selectedListId, selectedPriceId, packEnabled, packMode, packLines]);
 
   const missingCost = useMemo(
     () => products.filter((p) => relevant(p) && p.cost_last == null),
@@ -225,10 +258,19 @@ export default function PricingGuidePage() {
 
   useEffect(() => {
     setCostInput(currentCostProduct?.cost_last != null ? String(currentCostProduct.cost_last) : "");
+    const def = packDefaults.find((d) => d.category_key === categoryKey(currentCostProduct?.category));
+    const pkMode = currentCostProduct?.packaging_mode || (def ? "category" : "none");
+    const pkLines = currentCostProduct?.packaging_lines || [];
+    setPackMode(pkMode);
+    setPackEnabled(pkMode === "simple" || pkMode === "category");
+    setPackLines(pkLines.map((l) => ({
+      ingredient_id: l.ingredient_id, name: l.name, qty: l.qty,
+      unit_cost: l.unit_cost, base_unit: l.base_unit,
+    })));
     setListChoice(lists[0]?.id || "");
     setSuggested(null);
     setMsg("");
-  }, [currentCostProduct?.id, currentListProduct?.id, currentPriceProduct?.id, lists]);
+  }, [currentCostProduct?.id, currentListProduct?.id, currentPriceProduct?.id, lists, packDefaults]);
 
   function go(n: number) { setStep(n); setMsg(""); setSuggested(null); }
 
@@ -355,6 +397,30 @@ export default function PricingGuidePage() {
     } finally { setBusy(false); }
   }
 
+  /** Guarda el empaque del producto del paso 3 (mejor-esfuerzo). */
+  async function savePackagingFor(productId: string) {
+    if (!packEnabled && packMode === "none") return;
+    const nextMode =
+      (packMode === "in_recipe" || packMode === "category") && !packEnabled
+        ? packMode
+        : packEnabled
+          ? packMode === "category" ? "category" : "simple"
+          : "none";
+    const res = await fetch("/api/vendor/product-packaging", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        productId,
+        mode: nextMode,
+        lines: nextMode === "simple"
+          ? packLines.map((l) => ({ ingredient_id: l.ingredient_id, qty: l.qty }))
+          : [],
+      }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok || d.ok === false) throw new Error(d?.error || "No se pudo guardar el empaque");
+  }
+
   async function saveCurrentCost() {
     if (!currentCostProduct) return;
     const cost = Number(String(costInput).replace(/\./g, "").replace(",", "."));
@@ -368,9 +434,15 @@ export default function PricingGuidePage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.ok === false) throw new Error(data?.error || "No se pudo guardar");
+      let pkNote = "";
+      try {
+        await savePackagingFor(currentCostProduct.id);
+      } catch {
+        pkNote = " (el empaque no se pudo guardar)";
+      }
       await reloadProducts();
       setSelectedCostId(null);
-      setMsg("Costo guardado. Vamos con el siguiente.");
+      setMsg(`Costo guardado${pkNote}. Vamos con el siguiente.`);
     } catch (e: any) {
       setMsg(e?.message || "No se pudo guardar el costo");
     } finally { setBusy(false); }
@@ -647,6 +719,32 @@ export default function PricingGuidePage() {
                   placeholder="Costo $"
                   className="max-w-xs"
                 />
+                {packCatalog.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    💡 Si el producto lleva bolsa o etiqueta, cargalo antes como <strong>insumo</strong> en
+                    Preparación y Costo → Insumos (unidad <code>u</code>).
+                  </p>
+                )}
+                {(packCatalog.length > 0 || packDefaults.length > 0) && (
+                  <ProductPackagingSection
+                    mode={packMode}
+                    enabled={packEnabled}
+                    lines={packLines}
+                    catalog={packCatalog}
+                    onEnabled={setPackEnabled}
+                    onLines={setPackLines}
+                    onMode={setPackMode}
+                    disabled={busy}
+                    productCost={Number(costInput) || 0}
+                    categoryName={currentCostProduct?.category || null}
+                    hasCategoryDefault={packDefaults.some(
+                      (d) => d.category_key === categoryKey(currentCostProduct?.category)
+                    )}
+                    categoryLines={
+                      packDefaults.find((d) => d.category_key === categoryKey(currentCostProduct?.category))?.lines || []
+                    }
+                  />
+                )}
                 <Button onClick={saveCurrentCost} disabled={busy}>{busy ? "Guardando…" : "Guardar y siguiente"}</Button>
               </div>
             ) : (
@@ -712,9 +810,18 @@ export default function PricingGuidePage() {
                   Faltan {missingPrice.length} · producto {missingPrice.findIndex((p) => p.id === currentPriceProduct.id) + 1} de {missingPrice.length}
                 </p>
                 <p className="font-medium">{currentPriceProduct.name}</p>
-                <p className="text-sm text-muted-foreground">
-                  Costo: ${Number(currentPriceProduct.cost_last || 0).toLocaleString("es-AR")}
-                </p>
+                <div className="text-sm text-muted-foreground space-y-0.5">
+                  <p>Costo del producto: ${Number(currentPriceProduct.cost_last || 0).toLocaleString("es-AR")}</p>
+                  {Number(currentPriceProduct.packaging_cost || 0) > 0 && (
+                    <p>📦 Empaque: ${Number(currentPriceProduct.packaging_cost).toLocaleString("es-AR")}</p>
+                  )}
+                  <p className="font-medium text-foreground">
+                    Costo para calcular: ${Number(
+                      currentPriceProduct.effective_cost ??
+                        ((Number(currentPriceProduct.cost_last) || 0) + (Number(currentPriceProduct.packaging_cost) || 0))
+                    ).toLocaleString("es-AR")}
+                  </p>
+                </div>
                 {suggested == null ? (
                   <Button onClick={previewCurrentPrice} disabled={busy}>{busy ? "Calculando…" : "Ver precio sugerido"}</Button>
                 ) : (

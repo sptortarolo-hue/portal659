@@ -5,6 +5,7 @@ import { queryEffectiveModifiers } from "@/lib/modifier-rules";
 import { resolveVendorPlan } from "@/lib/plans";
 import { isValidDateOnly, toDateOnly } from "@/lib/expiry";
 import { normalizePlu } from "@/lib/scale-barcode";
+import { attachPackagingToRows } from "@/lib/product-packaging-server";
 import { NextResponse } from "next/server";
 import type { Plan, Vendor } from "@/types/database";
 
@@ -82,7 +83,10 @@ export async function GET(request: Request) {
   const normalizedOffers = (offers || []).map((o) =>
     "expires_at" in o ? { ...o, expires_at: toDateOnly(o.expires_at) } : o
   );
-  return NextResponse.json({ offers: normalizedOffers, modifiersByProduct, comboItemsByProduct });
+  // Empaque por producto (migrate-product-packaging.sql): cada offer viaja
+  // con packaging_lines + effective_cost para el panel y el asistente.
+  const enrichedOffers = await attachPackagingToRows(normalizedOffers, vendor.id);
+  return NextResponse.json({ offers: enrichedOffers, modifiersByProduct, comboItemsByProduct });
 }
 
 export async function POST(request: Request) {

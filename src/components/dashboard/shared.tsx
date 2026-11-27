@@ -132,6 +132,9 @@ type Offer = {
   stock_control?: boolean;
   /** Costo de compra (inventario): distinto del food-cost de preparación. */
   cost_last?: number | null;
+  /** Empaque por producto (se suma al costo). */
+  packaging_cost?: number | null;
+  packaging_mode?: string | null;
   promo_price: number | null;
   requires_prep?: boolean;
   /** Solo sale en la sección Promo (no figura en el menú). */
@@ -358,6 +361,8 @@ type OfferFormProps = {
   setOffCountPack?: (v: boolean) => void;
   offPackagePrice?: string;
   setOffPackagePrice?: (v: string) => void;
+  /** Sección opcional de empaque por producto (comercio de barrio). */
+  packagingSection?: ReactNode;
   /** Foto remota sugerida por lookup (se descarga al guardar). */
   remotePhoto?: string | null;
   onRemotePhoto?: (url: string | null) => void;
@@ -405,6 +410,7 @@ export function OfferForm({
   showEnvasado = false,
   offCountPack = false, setOffCountPack,
   offPackagePrice = "", setOffPackagePrice,
+  packagingSection = null,
   remotePhoto = null, onRemotePhoto,
   offIsCombo = false, setOffIsCombo,
   offComboItems = [], setOffComboItems,
@@ -580,6 +586,7 @@ export function OfferForm({
             })()}
           </div>
         )}
+        {packagingSection}
         {!offIsCombo && showSupplier && setOffSupplierId && (
           <SupplierSelect value={offSupplierId} onChange={setOffSupplierId} />
         )}
@@ -991,7 +998,10 @@ export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable,
                     )}
                     {showBuyCost && offer.cost_last != null && (
                       <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                        Costo: ${Number(offer.cost_last).toLocaleString("es-AR")}
+                        Costo: ${Number(
+                          (Number(offer.cost_last) || 0) + (Number(offer.packaging_cost) || 0)
+                        ).toLocaleString("es-AR")}
+                        {Number(offer.packaging_cost || 0) > 0 ? " 📦" : ""}
                       </Badge>
                     )}
                   </div>

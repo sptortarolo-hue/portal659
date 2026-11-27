@@ -8,7 +8,6 @@ import { OfferCard } from "@/components/offers/offer-card";
 import { ServiceOfferCard } from "@/components/offers/service-offer-card";
 import { HorizontalCarousel } from "@/components/ui/horizontal-carousel";
 import { SectionHeading } from "@/components/home/section-heading";
-import { OfferCountdown } from "@/components/home/offer-countdown";
 
 export type FeaturedOfferItem =
   | {
@@ -93,13 +92,12 @@ export function SplitOffersSection({ items, zoneName }: { items: FeaturedOfferIt
   const data = spotlightData(current);
 
   return (
-    <section className="container mx-auto px-4 py-10 sm:py-12 scroll-mt-20" id="ofertas">
+    <section className="container mx-auto scroll-mt-[112px] px-4 py-10 sm:scroll-mt-24 sm:py-12" id="ofertas">
       <SectionHeading
         icon={Sparkles}
         eyebrow="Hoy"
         title="Ofertas del día"
         description={`Los productos y servicios que los comercios de ${zoneName} destacan hoy`}
-        rightSlot={<OfferCountdown />}
       />
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,0.42fr)_minmax(0,1fr)]">

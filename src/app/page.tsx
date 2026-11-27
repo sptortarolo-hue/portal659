@@ -278,15 +278,18 @@ export default async function HomePage() {
           </div>
 
           {/* Pista de scroll: el contenido continúa justo debajo */}
-          <a href="#categorias" className="pv2-scroll-cue mt-4 inline-flex items-center gap-2 text-xs font-semibold">
-            Deslizá para descubrir
-            <ChevronDown className="pv2-scroll-chevron h-4 w-4" strokeWidth={2} aria-hidden="true" />
+          <a href="#categorias" className="pv2-scroll-cue mt-5 inline-flex items-center gap-3" aria-label="Explorar el contenido del inicio">
+            <span className="pv2-scroll-cue-icon">
+              <ChevronDown className="pv2-scroll-chevron h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+            </span>
+            <span className="hidden sm:inline">Explorá todo lo que hay abajo</span>
+            <span className="sm:hidden">Deslizá para descubrir</span>
           </a>
         </div>
       </section>
 
       {/* Categorías: carrusel de píldoras con íconos vectoriales */}
-      <section className="container mx-auto px-4 pt-6 pb-10 sm:pt-8 sm:pb-12" id="categorias">
+      <section className="container mx-auto scroll-mt-[112px] px-4 pt-6 pb-10 sm:scroll-mt-24 sm:pt-8 sm:pb-12" id="categorias">
         <div className="pv2-connector mb-5" aria-hidden="true" />
         <HorizontalCarousel>
           {VERTICALS.map((vert, i) => (
@@ -312,7 +315,7 @@ export default async function HomePage() {
       <SplitOffersSection items={offerSectionItems} zoneName={zone.name} />
 
       {/* Lo más pedido (ranking animado) */}
-      <div id="populares">
+      <div id="populares" className="scroll-mt-[112px] sm:scroll-mt-24">
         <MostOrderedSection />
       </div>
 

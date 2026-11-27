@@ -326,11 +326,34 @@ html:has(main.pv2) {
 /* --- Pista de scroll / continuidad entre hero y categorías --------------- */
 
 .pv2-scroll-cue {
-  color: var(--pv2-ink);
+  background: var(--pv2-surface);
+  border: 1px solid var(--pv2-accent);
+  border-radius: 9999px;
+  box-shadow: var(--pv2-shadow);
+  color: var(--pv2-ink-strong);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  padding: 0.4rem 0.9rem 0.4rem 0.45rem;
   text-decoration: none;
-  transition: color 200ms ease, gap 200ms ease;
+  transition: box-shadow 200ms ease, gap 200ms ease, transform 200ms ease;
 }
-.pv2-scroll-cue:hover { color: var(--pv2-accent-hover); gap: 0.65rem; }
+.pv2-scroll-cue:hover {
+  box-shadow: var(--pv2-shadow-hover);
+  gap: 0.85rem;
+  transform: translateY(-2px);
+}
+
+.pv2-scroll-cue-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 9999px;
+  background: var(--pv2-accent);
+  color: var(--pv2-ink-strong);
+  flex-shrink: 0;
+}
 
 .pv2-scroll-chevron {
   animation: pv2-bob 1.8s ease-in-out infinite;

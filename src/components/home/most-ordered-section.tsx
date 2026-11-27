@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Flame, TrendingUp } from "lucide-react";
 import { SectionHeading } from "@/components/home/section-heading";
 import { HorizontalCarousel } from "@/components/ui/horizontal-carousel";
+import { ProductImage } from "@/components/product-image";
 
 type MostOrderedItem = {
   product_id: string;
@@ -13,6 +14,8 @@ type MostOrderedItem = {
   store_name: string;
   store_slug: string;
   store_vertical: string;
+  image_url?: string | null;
+  category?: string | null;
 };
 
 /** Count-up corto y cleanup; el valor final y el texto los decide el caller. */
@@ -46,7 +49,19 @@ function RankedCard({ item, index }: { item: MostOrderedItem; index: number }) {
       className="block min-w-[220px] max-w-[260px] snap-start group animate-fade-in-up"
       style={{ animationDelay: `${index * 90}ms` }}
     >
-      <div className="pv2-card h-full p-5">
+      <div className="pv2-card h-full overflow-hidden">
+        <div className="relative aspect-[4/3] w-full overflow-hidden bg-muted">
+          <ProductImage
+            src={item.image_url ?? null}
+            name={item.product_name}
+            category={item.category ?? null}
+            vertical={item.store_vertical}
+            alt={item.product_name}
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+            iconClassName="h-10 w-10"
+          />
+        </div>
+        <div className="p-5">
         <div className="mb-3 flex items-center gap-2">
           <span className="pv2-chip">#{index + 1}</span>
           <span className="pv2-section-icon h-8 w-8">
@@ -65,6 +80,7 @@ function RankedCard({ item, index }: { item: MostOrderedItem; index: number }) {
         <p className="mt-3 text-xs font-medium text-muted-foreground">
           Ver tienda →
         </p>
+        </div>
       </div>
     </Link>
   );
@@ -100,7 +116,9 @@ export function MostOrderedSection() {
         <HorizontalCarousel>
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="min-w-[220px] max-w-[260px] snap-start">
-              <div className="pv2-card h-full p-5">
+              <div className="pv2-card h-full overflow-hidden">
+                <div className="pv2-skeleton aspect-[4/3] w-full" />
+                <div className="p-5">
                 <div className="mb-3 flex items-center gap-2">
                   <span className="pv2-skeleton h-8 w-8" />
                   <span className="pv2-skeleton h-5 w-16" />
@@ -108,6 +126,7 @@ export function MostOrderedSection() {
                 <div className="pv2-skeleton h-4 w-4/5" />
                 <div className="pv2-skeleton mt-2 h-3 w-3/5" />
                 <div className="pv2-skeleton mt-3 h-3 w-24" />
+                </div>
               </div>
             </div>
           ))}

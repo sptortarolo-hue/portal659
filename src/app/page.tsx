@@ -213,7 +213,7 @@ export default async function HomePage() {
       name: "Ofertas de Sicardi y Garibaldi",
       vertical: null as string | null,
     },
-    ...featuredItems.slice(0, 2).map((it) => {
+    ...featuredItems.slice(0, 4).map((it) => {
       const slug = it.data.vendors?.slug || "";
       const vendor = vendorById.get(it.data.vendors?.id || "");
       return {
@@ -238,7 +238,7 @@ export default async function HomePage() {
       name: "Lo más pedido del barrio",
       vertical: null as string | null,
     },
-  ].slice(0, 4);
+  ].slice(0, 6);
 
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.portal659.com.ar").replace(/\/$/, "");
   const jsonLd = [

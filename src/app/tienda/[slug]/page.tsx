@@ -957,7 +957,7 @@ export default async function TiendaPage({
                     </h3>
                     <div className="space-y-3">
                       {s.items.map((o: any) => (
-                        <div key={o.id} data-pname={String(o.name).toLowerCase()}>
+                        <div key={o.id} id={`product-${o.id}`} data-pname={String(o.name).toLowerCase()} className="scroll-mt-24">
                           <GastroProductRow
                             product={o}
                             vendor={vendorBrief}
@@ -1311,7 +1311,7 @@ export default async function TiendaPage({
                             ...(imagesByProduct[o.id] || []),
                           ];
                           return (
-                            <div key={o.id} data-pname={String(o.name).toLowerCase()} className="pv2-card p-3 space-y-2">
+                            <div key={o.id} id={`product-${o.id}`} data-pname={String(o.name).toLowerCase()} className="pv2-card scroll-mt-24 p-3 space-y-2">
                               <div className="flex items-start gap-3">
                                 {oAllImages.length > 0 && (
                                   <div className="h-16 w-16 rounded-lg overflow-hidden flex-shrink-0">
@@ -1334,7 +1334,7 @@ export default async function TiendaPage({
                           );
                         }
                         return (
-                        <div key={o.id} data-pname={String(o.name).toLowerCase()}>
+                        <div key={o.id} id={`product-${o.id}`} data-pname={String(o.name).toLowerCase()} className="scroll-mt-24">
                           <GastroProductRow
                             product={o}
                             vendor={vendorBrief}

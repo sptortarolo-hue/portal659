@@ -8,6 +8,9 @@ import { sortTalles } from "@/lib/size-guides";
 import { verticalSeoName } from "@/lib/json-ld";
 import { fetchRankStats, rankVendors } from "@/lib/ranking";
 import { CashPrice } from "@/components/store/cash-price";
+import { VendorCard } from "@/components/store/vendor-card";
+import { VerticalIcon } from "@/components/home/vertical-icon";
+import { SearchX, ShoppingBag, Store } from "lucide-react";
 import type { Plan } from "@/types/database";
 import type { Metadata } from "next";
 import { Card, CardContent } from "@/components/ui/card";
@@ -87,19 +90,6 @@ type ProductRow = {
   vendors?: { vertical: string | null; store_name: string | null; slug: string | null } | null;
 };
 
-/** Pill de modo de venta (compartida por las tarjetas de esta página). */
-function OnlineBadge({ online }: { online: boolean }) {
-  return (
-    <span
-      className={`flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full tabular-nums ${
-        online ? "bg-green-100 text-green-700" : "bg-muted text-muted-foreground"
-      }`}
-    >
-      {online ? "🛒 Pedí online" : "💬 Solo contacto"}
-    </span>
-  );
-}
-
 export default async function BuscarPage({
   searchParams,
 }: {
@@ -155,11 +145,7 @@ export default async function BuscarPage({
     return `/buscar${s ? `?${s}` : ""}`;
   };
   const pillCls = (active: boolean) =>
-    `rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-      active
-        ? "bg-primary text-primary-foreground border-primary"
-        : "border-border text-muted-foreground hover:border-primary hover:text-primary"
-    }`;
+    `pv2-pill inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold ${active ? "pv2-active" : ""}`;
 
   const allVendors = (await queryMany<Record<string, unknown>>(
     `SELECT * FROM vendors
@@ -180,12 +166,12 @@ export default async function BuscarPage({
     const activeVert = vertical ? VERTICALS.find((vt) => vt.slug === vertical) : null;
     const vertSeo = vertical ? verticalSeoName(vertical) : null;
     return (
-      <main className="container mx-auto px-4 py-8 max-w-4xl">
-        <div className="mb-6">
-          <h1 className="font-display text-3xl font-semibold mb-2">
+      <main className="pv2 container mx-auto px-4 py-10 sm:py-12 max-w-4xl">
+        <div className="mb-8">
+          <h1 className="pv2-title text-3xl mb-2">
             {activeVert && vertSeo ? `${vertSeo} en ${zone.name}` : "Explorar comercios"}
           </h1>
-          <p className="text-muted-foreground text-sm">
+          <p className="pv2-subtitle text-sm">
             {activeVert
               ? `${activeVert.description} en ${zone.name} (La Plata): mirá catálogos y precios, pedí online o contactá directo por WhatsApp, 0% comisión.`
               : `Comercios de ${zone.name} · elegí una categoría para filtrar`}
@@ -194,74 +180,49 @@ export default async function BuscarPage({
 
         {/* Vertical filters */}
         <div className="flex flex-wrap gap-2 mb-8">
-          <Link
-            href={hrefVertical(null)}
-            className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-              !vertical ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:border-primary hover:text-primary"
-            }`}
-          >
-            Todos
-          </Link>
+          <Link href={hrefVertical(null)} className={pillCls(!vertical)}>Todos</Link>
           {VERTICALS.map((vert) => (
             <Link
               key={vert.slug}
               href={hrefVertical(vert.slug)}
-              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                vertical === vert.slug
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "border-border text-muted-foreground hover:border-primary hover:text-primary"
-              }`}
+              className={pillCls(vertical === vert.slug)}
             >
-              {vert.emoji} {vert.name}
+              <VerticalIcon slug={vert.slug} className="h-3.5 w-3.5" />
+              {vert.name}
             </Link>
           ))}
-          <Link
-            href={hrefOnline(!onlineOnly)}
-            className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-              onlineOnly
-                ? "bg-green-600 text-white border-green-600"
-                : "border-border text-muted-foreground hover:border-green-600 hover:text-green-700"
-            }`}
-          >
-            🛒 Venden online{onlineCount > 0 ? ` (${onlineCount})` : ""}
+          <Link href={hrefOnline(!onlineOnly)} className={pillCls(onlineOnly)}>
+            <ShoppingBag className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+            Venden online{onlineCount > 0 ? ` (${onlineCount})` : ""}
           </Link>
         </div>
 
         {list.length === 0 ? (
           <div className="text-center py-16">
-            <p className="text-6xl mb-4">🏪</p>
-            <p className="text-lg font-medium mb-2">Todavía no hay comercios en esta categoría</p>
-            <p className="text-sm text-muted-foreground mb-6">Probá con otra categoría o volvé a todos.</p>
-            <Link href="/buscar" className="rounded-full bg-primary text-primary-foreground px-5 py-2.5 text-sm font-medium hover:bg-primary/90">
+            <span className="pv2-section-icon mx-auto mb-4 h-14 w-14">
+              <Store className="h-7 w-7" strokeWidth={1.8} aria-hidden="true" />
+            </span>
+            <p className="pv2-title text-lg mb-2">Todavía no hay comercios en esta categoría</p>
+            <p className="pv2-subtitle text-sm mb-6">Probá con otra categoría o volvé a todos.</p>
+            <Link href="/buscar" className="pv2-btn pv2-btn-primary px-5 py-2.5 text-sm">
               Ver todos
             </Link>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             {list.map((v) => (
-              <Link key={v.id} href={`/tienda/${v.slug}`} className="block">
-                <Card className="hover:shadow-lg transition-shadow cursor-pointer overflow-hidden h-full">
-                  {v.image_url ? (
-                    <div className="h-28 w-full">
-                      <ProductImage src={v.image_url} name={v.store_name} vertical={v.vertical} alt={v.store_name} className="w-full h-full object-cover" />
-                    </div>
-                  ) : (
-                    <div className="h-28 w-full flex items-center justify-center overflow-hidden">
-                      <ProductImage src={null} name={v.store_name} vertical={v.vertical} alt={v.store_name} className="w-full h-full" iconClassName="h-10 w-10" />
-                    </div>
-                  )}
-                  <CardContent className="p-4">
-                    <h3 className="font-semibold">{v.store_name}</h3>
-                    {v.description && <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{v.description}</p>}
-                    <div className="flex items-center justify-between gap-2 mt-2">
-                      <p className="text-xs text-primary font-medium">
-                        {!isOnline(v) || v.vertical === "servicio" ? "Ver y contactar →" : "Ver y pedir →"}
-                      </p>
-                      <OnlineBadge online={isOnline(v)} />
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
+              <VendorCard
+                key={v.id}
+                id={v.id}
+                slug={v.slug}
+                store_name={v.store_name}
+                image_url={v.image_url}
+                description={v.description}
+                vertical={v.vertical}
+                hours={v.hours}
+                open_override={v.open_override ?? null}
+                acceptsCart={isOnline(v)}
+              />
             ))}
           </div>
         )}
@@ -395,12 +356,12 @@ export default async function BuscarPage({
   const totalResults = vendors.length + products.length;
 
   return (
-    <main className="container mx-auto px-4 py-8 max-w-4xl">
+    <main className="pv2 container mx-auto px-4 py-10 sm:py-12 max-w-4xl">
       <div className="mb-8">
-        <h1 className="font-display text-3xl font-semibold mb-2">
+        <h1 className="pv2-title text-3xl mb-2">
           Resultados para &ldquo;{query}&rdquo;
         </h1>
-        <p className="text-muted-foreground text-sm">
+        <p className="pv2-subtitle text-sm">
           {totalResults === 0
             ? "No encontramos nada"
             : `${totalResults} resultado${totalResults !== 1 ? "s" : ""}`}
@@ -410,36 +371,20 @@ export default async function BuscarPage({
 
       {/* Vertical filters */}
       <div className="flex flex-wrap gap-2 mb-8">
-        <Link
-          href={hrefVertical(null)}
-          className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-            !vertical ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:border-primary hover:text-primary"
-          }`}
-        >
-          Todos
-        </Link>
+        <Link href={hrefVertical(null)} className={pillCls(!vertical)}>Todos</Link>
         {VERTICALS.map((vert) => (
           <Link
             key={vert.slug}
             href={hrefVertical(vert.slug)}
-            className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-              vertical === vert.slug
-                ? `bg-${vert.color} text-white border-${vert.color}`
-                : `border-${vert.color}/30 text-${vert.color} hover:bg-${vert.color}/10`
-            }`}
+            className={pillCls(vertical === vert.slug)}
           >
-            {vert.emoji} {vert.name}
+            <VerticalIcon slug={vert.slug} className="h-3.5 w-3.5" />
+            {vert.name}
           </Link>
         ))}
-        <Link
-          href={hrefOnline(!onlineOnly)}
-          className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-            onlineOnly
-              ? "bg-green-600 text-white border-green-600"
-              : "border-border text-muted-foreground hover:border-green-600 hover:text-green-700"
-          }`}
-        >
-          🛒 Venden online
+        <Link href={hrefOnline(!onlineOnly)} className={pillCls(onlineOnly)}>
+          <ShoppingBag className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+          Venden online
         </Link>
       </div>
 
@@ -482,7 +427,7 @@ export default async function BuscarPage({
               step="any"
               placeholder="mín"
               defaultValue={min ?? ""}
-              className="h-8 w-24 rounded-md border border-input bg-background px-2 text-xs"
+              className="h-9 w-24 rounded-lg border border-input bg-background px-2 text-xs"
               aria-label="Precio mínimo"
             />
             <span className="text-xs text-muted-foreground">–</span>
@@ -493,10 +438,10 @@ export default async function BuscarPage({
               step="any"
               placeholder="máx"
               defaultValue={max ?? ""}
-              className="h-8 w-24 rounded-md border border-input bg-background px-2 text-xs"
+              className="h-9 w-24 rounded-lg border border-input bg-background px-2 text-xs"
               aria-label="Precio máximo"
             />
-            <button type="submit" className="h-8 rounded-full border border-border bg-card px-3 text-xs font-medium hover:border-primary">
+            <button type="submit" className="pv2-btn pv2-btn-primary h-9 px-4 text-xs">
               Filtrar
             </button>
             {(minVal != null || maxVal != null) && (
@@ -510,10 +455,12 @@ export default async function BuscarPage({
 
       {totalResults === 0 ? (
         <div className="text-center py-16">
-          <p className="text-6xl mb-4">🔍</p>
-          <p className="text-lg font-medium mb-2">No encontramos resultados para &ldquo;{query}&rdquo;</p>
-          <p className="text-sm text-muted-foreground mb-6">Probá con otras palabras clave o explorá los comercios del barrio.</p>
-          <Link href="/" className="rounded-full bg-primary text-primary-foreground px-5 py-2.5 text-sm font-medium hover:bg-primary/90">
+          <span className="pv2-section-icon mx-auto mb-4 h-14 w-14">
+            <SearchX className="h-7 w-7" strokeWidth={1.8} aria-hidden="true" />
+          </span>
+          <p className="pv2-title text-lg mb-2">No encontramos resultados para &ldquo;{query}&rdquo;</p>
+          <p className="pv2-subtitle text-sm mb-6">Probá con otras palabras clave o explorá los comercios del barrio.</p>
+          <Link href="/" className="pv2-btn pv2-btn-primary px-5 py-2.5 text-sm">
             Volver al inicio
           </Link>
         </div>
@@ -522,32 +469,21 @@ export default async function BuscarPage({
           {/* Vendors */}
           {vendors.length > 0 && (
             <section>
-              <h2 className="font-display text-xl font-semibold mb-4">Comercios ({vendors.length})</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <h2 className="pv2-title text-xl mb-5">Comercios ({vendors.length})</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 {vendors.map((v) => (
-                  <Link key={v.id} href={`/tienda/${v.slug}`} className="block">
-                    <Card className="hover:shadow-lg transition-shadow cursor-pointer overflow-hidden">
-                      {v.image_url ? (
-                        <div className="h-28 w-full">
-                          <ProductImage src={v.image_url} name={v.store_name} vertical={v.vertical} alt={v.store_name} className="w-full h-full" />
-                        </div>
-                      ) : (
-                        <div className="h-28 w-full bg-gradient-to-br from-secondary to-accent flex items-center justify-center">
-                          <span className="font-display text-4xl font-bold text-primary/30">{v.store_name.charAt(0)}</span>
-                        </div>
-                      )}
-                      <CardContent className="p-4">
-                        <h3 className="font-semibold">{v.store_name}</h3>
-                        {v.description && <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{v.description}</p>}
-                        <div className="flex items-center justify-between gap-2 mt-2">
-                          <p className="text-xs text-primary font-medium">
-                            {!onlineById.get(v.id) || v.vertical === "servicio" ? "Ver y contactar →" : "Ver y pedir →"}
-                          </p>
-                          <OnlineBadge online={!!onlineById.get(v.id)} />
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </Link>
+                  <VendorCard
+                    key={v.id}
+                    id={v.id}
+                    slug={v.slug}
+                    store_name={v.store_name}
+                    image_url={v.image_url}
+                    description={v.description}
+                    vertical={v.vertical}
+                    hours={v.hours}
+                    open_override={v.open_override ?? null}
+                    acceptsCart={onlineById.get(v.id) ?? null}
+                  />
                 ))}
               </div>
             </section>
@@ -556,30 +492,30 @@ export default async function BuscarPage({
           {/* Products */}
           {products.length > 0 && (
             <section>
-              <h2 className="font-display text-xl font-semibold mb-4">Productos ({products.length})</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <h2 className="pv2-title text-xl mb-5">Productos ({products.length})</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 {products.map((p) => (
-                  <Link key={p.id} href={`/tienda/${p.vendors?.slug || ""}`} className="block">
-                    <Card className="hover:shadow-lg transition-shadow cursor-pointer overflow-hidden">
-                      <div className="flex items-center gap-3 p-4">
+                  <Link key={p.id} href={`/tienda/${p.vendors?.slug || ""}`} className="block h-full">
+                    <Card className="pv2-card flex h-full items-center overflow-hidden">
+                      <div className="flex w-full items-center gap-4 p-4">
                         {p.image_url ? (
-                          <div className="h-16 w-16 rounded-lg overflow-hidden flex-shrink-0">
-                            <ProductImage src={p.image_url} name={p.name} category={p.category} vertical={p.vendors?.vertical} alt={p.name} className="w-full h-full object-cover" />
+                          <div className="h-20 w-20 flex-shrink-0 overflow-hidden rounded-xl">
+                            <ProductImage src={p.image_url} name={p.name} category={p.category} vertical={p.vendors?.vertical} alt={p.name} className="h-full w-full object-cover" />
                           </div>
                         ) : (
-                          <div className="h-16 w-16 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden">
-                            <ProductImage src={null} name={p.name} category={p.category} vertical={p.vendors?.vertical} alt={p.name} className="w-full h-full" iconClassName="h-7 w-7" />
+                          <div className="h-20 w-20 flex-shrink-0 overflow-hidden rounded-xl">
+                            <ProductImage src={null} name={p.name} category={p.category} vertical={p.vendors?.vertical} alt={p.name} className="h-full w-full" iconClassName="h-7 w-7" />
                           </div>
                         )}
                         <div className="min-w-0 flex-1">
-                          <p className="font-semibold text-sm truncate">{p.name}</p>
-                          {p.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{p.description}</p>}
-                          <div className="flex items-center gap-2 mt-1 min-w-0">
-                            <span className="text-xs text-muted-foreground truncate">{p.vendors?.store_name}</span>
-                            {p.category && <span className="text-xs text-muted-foreground truncate shrink-0">· {p.category}</span>}
+                          <p className="pv2-title truncate text-sm">{p.name}</p>
+                          {p.description && <p className="pv2-subtitle mt-0.5 line-clamp-2 text-xs">{p.description}</p>}
+                          <div className="mt-2 flex items-center gap-2 min-w-0">
+                            <span className="pv2-chip pv2-chip-muted truncate">{p.vendors?.store_name}</span>
+                            {p.category && <span className="truncate text-xs text-muted-foreground">{p.category}</span>}
                           </div>
                         </div>
-                        <span className="font-bold text-sm flex-shrink-0">
+                        <span className="pv2-price flex-shrink-0 text-base">
                           {(() => {
                             const info = priceInfo(p);
                             const pct = cashByVendor.get(p.vendor_id) ?? 0;
@@ -595,7 +531,7 @@ export default async function BuscarPage({
                                 excluded={p.cash_discount_excluded}
                                 cashPct={pct}
                                 size="sm"
-                                plainClassName="font-bold text-sm flex-shrink-0"
+                                plainClassName="pv2-price text-base flex-shrink-0"
                               />
                             ) : (
                               <>{info.label}</>

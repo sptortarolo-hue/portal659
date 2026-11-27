@@ -6,13 +6,13 @@ import { vendorSellsOnline, resolveVendorPlan } from "@/lib/plans";
 import { HorizontalCarousel } from "@/components/ui/horizontal-carousel";
 import { VendorCard } from "@/components/store/vendor-card";
 import { MostOrderedSection } from "@/components/home/most-ordered-section";
+import { OpenNowSection } from "@/components/home/open-now-section";
 import { BackButtonGuard } from "@/components/home/back-button-guard";
 import { SectionHeading } from "@/components/home/section-heading";
-import { VerticalIcon } from "@/components/home/vertical-icon";
+import { VerticalIcon, verticalIconComponent } from "@/components/home/vertical-icon";
 import { PromoCarousel } from "@/components/home/promo-carousel";
-import { DiscoveryGrid, type DiscoveryVendor } from "@/components/home/discovery-grid";
 import { fetchRankStats, rankVendors } from "@/lib/ranking";
-import { ArrowRight, CalendarDays, Compass, Flame, MapPin, Newspaper, TrendingUp } from "lucide-react";
+import { ArrowRight, CalendarDays, Compass, Flame, MapPin, Newspaper, Sparkles, TrendingUp } from "lucide-react";
 import { itemListJsonLd, organizationJsonLd, websiteJsonLd } from "@/lib/json-ld";
 import type { Vendor, Plan, Product } from "@/types/database";
 
@@ -158,6 +158,23 @@ export default async function HomePage() {
     (slug) => vendorsByVertical[slug] || []
   );
 
+  const renderVendorCard = (v: Vendor, i: number) => (
+    <div key={v.id} className="flex snap-start animate-fade-in-up" style={{ animationDelay: `${(i % 6) * 0.06}s` }}>
+      <VendorCard
+        id={v.id}
+        slug={v.slug}
+        store_name={v.store_name}
+        image_url={v.image_url}
+        logo_url={v.logo_url}
+        description={v.description}
+        vertical={v.vertical}
+        hours={v.hours}
+        open_override={v.open_override ?? null}
+        acceptsCart={onlineByVendor[v.id] ?? null}
+      />
+    </div>
+  );
+
   // Novedades del barrio: mismos info_items de /barrio, filtrados por zona.
   // Best-effort: si la tabla no está, la sección simplemente no se muestra.
   type InfoItem = {
@@ -182,21 +199,6 @@ export default async function HomePage() {
   } catch {
     barrioNews = [];
   }
-
-  const featuredIds = new Set(destacados.map((v) => v.id));
-  const discoveryVendors: DiscoveryVendor[] = (vendors || []).map((v) => ({
-    id: v.id,
-    slug: v.slug,
-    store_name: v.store_name,
-    image_url: v.image_url ?? null,
-    logo_url: v.logo_url ?? null,
-    description: v.description ?? null,
-    vertical: v.vertical ?? null,
-    hours: v.hours ?? null,
-    open_override: v.open_override ?? null,
-    acceptsCart: onlineByVendor[v.id] ?? null,
-    featured: featuredIds.has(v.id),
-  }));
 
   const vendorById = new Map((vendors || []).map((v) => [v.id, v]));
   const fallbackImage = featuredItems[0]?.data.image_url || (vendors || [])[0]?.image_url || null;
@@ -341,16 +343,42 @@ export default async function HomePage() {
         <MostOrderedSection />
       </div>
 
-      {/* Cerca tuyo: feed único con filtros (reemplaza los carruseles por rubro) */}
-      <section className="container mx-auto px-4 py-10 sm:py-12 scroll-mt-20" id="abiertos">
-        <SectionHeading
-          icon={MapPin}
-          title="Cerca tuyo"
-          description={`Comercios, productos y servicios de ${zone.name}`}
-          count={discoveryVendors.length}
-        />
-        <DiscoveryGrid vendors={discoveryVendors} />
-      </section>
+      {/* Abiertos ahora (cliente — zona horaria del usuario) */}
+      <OpenNowSection vendors={rankVendors(vendors || [], rankStats)} onlineByVendor={onlineByVendor} />
+
+      {/* Destacados del barrio */}
+      {destacados.length > 0 && (
+        <section className="container mx-auto px-4 py-10 sm:py-12 scroll-mt-20" id="destacados">
+          <SectionHeading
+            icon={Sparkles}
+            title="Destacados del barrio"
+            description={`Comercios que la comunidad elige en ${zone.name}`}
+            count={destacados.length}
+          />
+          <HorizontalCarousel>{destacados.map(renderVendorCard)}</HorizontalCarousel>
+        </section>
+      )}
+
+      {/* Comercios por rubro: un carrusel por vertical */}
+      {VERTICALS.map((vert) => {
+        const list = vendorsByVertical[vert.slug] || [];
+        if (list.length === 0) return null;
+        return (
+          <section
+            key={vert.slug}
+            className="container mx-auto px-4 py-10 sm:py-12 scroll-mt-20"
+            id={vert.slug}
+          >
+            <SectionHeading
+              icon={verticalIconComponent(vert.slug)}
+              title={vert.name}
+              description={vert.description}
+              count={list.length}
+            />
+            <HorizontalCarousel>{list.map(renderVendorCard)}</HorizontalCarousel>
+          </section>
+        );
+      })}
 
       {/* Servicios y profesionales */}
       {serviceProfessionals.length > 0 && (

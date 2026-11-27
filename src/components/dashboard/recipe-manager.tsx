@@ -102,7 +102,13 @@ function ThresholdSettings({
 // Tab Preparación y Costo: productos/platos con semáforo + editor | biblioteca de insumos | compras | envasado.
 // ---------------------------------------------------------------------------
 export function RecipeManager({ isComercio = false }: { isComercio?: boolean } = {}) {
-  const [view, setView] = useState<"platos" | "insumos" | "compras" | "envasado">("platos");
+  // Deep-link desde el empaque: /vendor/dashboard?tab=recetas&insumos=1 abre
+  // directo en la biblioteca de insumos (donde se cargan bolsas/etiquetas).
+  const [view, setView] = useState<"platos" | "insumos" | "compras" | "envasado">(() => {
+    if (typeof window !== "undefined" &&
+        new URLSearchParams(window.location.search).get("insumos") === "1") return "insumos";
+    return "platos";
+  });
   const [products, setProducts] = useState<Product[]>([]);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);

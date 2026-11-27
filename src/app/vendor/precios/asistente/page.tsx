@@ -720,10 +720,14 @@ export default function PricingGuidePage() {
                   className="max-w-xs"
                 />
                 {packCatalog.length === 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    💡 Si el producto lleva bolsa o etiqueta, cargalo antes como <strong>insumo</strong> en
-                    Preparación y Costo → Insumos (unidad <code>u</code>).
-                  </p>
+                  <div className="flex flex-wrap items-center gap-2 rounded-lg bg-muted/50 p-2.5">
+                    <p className="text-xs text-muted-foreground flex-1 min-w-[180px]">
+                      💡 Si el producto lleva bolsa o etiqueta, cargalo antes como <strong>insumo</strong> (unidad <code>u</code>).
+                    </p>
+                    <Link href="/vendor/dashboard?tab=recetas&insumos=1" target="_blank" rel="noopener noreferrer">
+                      <Button type="button" size="sm" variant="outline">Ir a Insumos ↗</Button>
+                    </Link>
+                  </div>
                 )}
                 {(packCatalog.length > 0 || packDefaults.length > 0) && (
                   <ProductPackagingSection

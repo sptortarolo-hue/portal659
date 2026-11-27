@@ -8,6 +8,8 @@
  * Con default de categoría: switch "Usar empaque por defecto de X". Si se
  * apaga, aparecen las líneas para el override del producto (patrón Dots).
  */
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -111,10 +113,14 @@ export function ProductPackagingSection({
   function linesEditor() {
     if (catalog.length === 0) {
       return (
-        <p className="text-xs text-muted-foreground">
-          Primero cargá bolsas o etiquetas como <strong>insumos</strong> en Preparación y Costo → Insumos
-          (unidad <code>u</code>).
-        </p>
+        <div className="flex flex-wrap items-center gap-2 rounded-lg bg-muted/50 p-2.5">
+          <p className="text-xs text-muted-foreground flex-1 min-w-[160px]">
+            Primero cargá bolsas o etiquetas como <strong>insumos</strong> (unidad <code>u</code>).
+          </p>
+          <Link href="/vendor/dashboard?tab=recetas&insumos=1" target="_blank" rel="noopener noreferrer">
+            <Button type="button" size="sm" variant="outline">Ir a Insumos ↗</Button>
+          </Link>
+        </div>
       );
     }
     return (

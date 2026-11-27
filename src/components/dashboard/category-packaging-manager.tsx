@@ -6,6 +6,7 @@
  * Los productos pueden salirse con el override del editor de producto.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getJson } from "@/components/dashboard/shared";
@@ -119,6 +120,14 @@ export function CategoryPackagingManager({ categories, onChange, refreshKey }: P
           Cargalo una vez y lo heredan todos los productos de esa categoría. Los productos que lo cambian
           en su editor tienen prioridad.
         </p>
+        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-muted/50 p-2.5">
+          <p className="text-xs text-muted-foreground flex-1 min-w-[180px]">
+            Primero cargá bolsas, etiquetas o contenedores como <strong>insumos</strong> (unidad <code>u</code>).
+          </p>
+          <Link href="/vendor/dashboard?tab=recetas&insumos=1" target="_blank" rel="noopener noreferrer">
+            <Button type="button" size="sm" variant="outline">Ir a Insumos ↗</Button>
+          </Link>
+        </div>
       </div>
 
       {uniqueCategories.length === 0 ? (

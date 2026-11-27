@@ -113,16 +113,29 @@ export function SplitOffersSection({ items, zoneName }: { items: FeaturedOfferIt
             if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setPaused(false);
           }}
         >
-          <ProductImage
-            key={`bg-${current.id}`}
-            src={current.imageUrl}
-            name={current.name}
-            vertical={current.vertical}
-            alt=""
-            fit="cover"
-            className="absolute inset-0 h-full w-full scale-110 opacity-30 blur-xl"
-            eager
-          />
+          {current.imageUrl && (
+            <div className="absolute inset-0 overflow-hidden" aria-hidden>
+              <div
+                key={`bg-${current.id}`}
+                className="h-full w-full"
+                style={{
+                  filter: "blur(36px) saturate(1.2)",
+                  opacity: 0.55,
+                  animation: reduced ? "none" : "pv2-kenburns 12s ease-in-out infinite alternate",
+                }}
+              >
+                <ProductImage
+                  src={current.imageUrl}
+                  name={current.name}
+                  vertical={current.vertical}
+                  alt=""
+                  fit="cover"
+                  iconClassName="h-24 w-24"
+                  eager
+                />
+              </div>
+            </div>
+          )}
           <ProductImage
             key={`fg-${current.id}`}
             src={current.imageUrl}
@@ -136,7 +149,7 @@ export function SplitOffersSection({ items, zoneName }: { items: FeaturedOfferIt
           />
           <div
             className="pointer-events-none absolute inset-0"
-            style={{ background: "linear-gradient(0deg, rgba(49,46,129,.94) 0%, rgba(49,46,129,.35) 55%, rgba(49,46,129,.05) 100%)" }}
+            style={{ background: "linear-gradient(180deg, rgba(49,46,129,.10) 0%, rgba(49,46,129,.12) 34%, rgba(49,46,129,.62) 72%, rgba(49,46,129,.94) 100%)" }}
           />
           {!reduced && items.length > 1 && (
             <div

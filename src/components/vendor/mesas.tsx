@@ -1532,12 +1532,34 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
       await goOfflineClose();
       return;
     }
+    // La factura viaja con el cierre: la emite el servidor (offline no factura).
+    const useFiscal = fiscalReady && withFiscal && typeof navigator !== "undefined" && navigator.onLine;
     let res: Response;
     try {
       res = await fetch(`/api/vendor/tables/${tableId}/close`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paymentMethod: payment, manualDiscount: tableManualPayload, cashAmount: cashToSend, payments: splitToSend, bankAccountId: payment === "transferencia" ? transferAccountId : undefined }),
+        body: JSON.stringify({
+          paymentMethod: payment,
+          manualDiscount: tableManualPayload,
+          cashAmount: cashToSend,
+          payments: splitToSend,
+          bankAccountId: payment === "transferencia" ? transferAccountId : undefined,
+          ...(useFiscal
+            ? {
+                fiscal:
+                  fiscalReceptorTipo === "cf"
+                    ? {}
+                    : {
+                        receptorDocTipo: fiscalReceptorTipo === "cuit" ? 80 : 96,
+                        receptorDocNro: fiscalReceptorNro.replace(/\D/g, ""),
+                        receptorNombre: fiscalReceptorNombre.trim() || undefined,
+                        receptorCondIva:
+                          fiscalReceptorTipo === "cuit" ? Number(fiscalReceptorCond) || 6 : 5,
+                      },
+              }
+            : {}),
+        }),
       });
     } catch (e) {
       if (isNetworkError(e)) {
@@ -1586,9 +1608,8 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
       setFiscalReceptorNombre("");
       setFiscalReceptorCond("6");
 
-      // Factura C de la cuenta: una sola por cierre, total de la mesa.
-      // Idéntico al flujo de Mostrador; offline no factura (ARCA pide red).
-      const useFiscal = fiscalReady && withFiscal && typeof navigator !== "undefined" && navigator.onLine;
+      // La Factura C la emitió el servidor junto con el cierre: acá solo
+      // mostramos el CAE e imprimimos el ticket con el bloque fiscal.
       const fiscalOrderIds: string[] = Array.isArray(data.orderIds) ? data.orderIds.map(String) : [];
       if (useFiscal && fiscalOrderIds.length > 0 && data.principalOrderId) {
         const checkPrintRes = async (p: Promise<Response>, docName: string): Promise<string | null> => {
@@ -1601,61 +1622,38 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
             return `${docName} no salió: ${describePrintError("Failed to fetch")}`;
           }
         };
-        setMsg(`${baseMsg} · 🧾 Facturando en ARCA…`);
-        try {
-          const fres = await fetch("/api/vendor/fiscal/emitir", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              orderIds: fiscalOrderIds,
-              ...(fiscalReceptorTipo === "cf"
-                ? {}
-                : {
-                    receptorDocTipo: fiscalReceptorTipo === "cuit" ? 80 : 96,
-                    receptorDocNro: fiscalReceptorNro.replace(/\D/g, ""),
-                    receptorNombre: fiscalReceptorNombre.trim() || undefined,
-                    receptorCondIva: fiscalReceptorTipo === "cuit" ? Number(fiscalReceptorCond) || 6 : 5,
-                  }),
-            }),
-            signal: AbortSignal.timeout(60000),
-          });
-          const fdata = await fres.json().catch(() => ({}));
-          if (fres.ok && fdata.invoice) {
-            const inv = fdata.invoice;
-            const fiscalMsg =
-              `${baseMsg} · 🧾 Factura C ${String(inv.punto_venta).padStart(4, "0")}-${String(inv.cbte_nro).padStart(8, "0")} (CAE …${String(inv.cae).slice(-4)})`;
-            const ticketErr = await checkPrintRes(
-              fetch("/api/print", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  orderId: String(data.principalOrderId || inv.order_id || ""),
-                  type: "ticket",
-                  tableName,
-                  items: Array.isArray(data.fiscalItems) ? data.fiscalItems : [],
-                  total: Number(data.total),
-                  // "¿Con cuánto paga?" (efectivo): el ticket imprime el vuelto
-                  // de la CUENTA (el pedido portador tiene otro total).
-                  cashAmount: Number(data.cashAmount) > 0 ? Number(data.cashAmount) : undefined,
-                  // Pago combinado: una línea por medio con su monto (y el
-                  // tender de la parte en efectivo para el vuelto).
-                  payments: Array.isArray((data as any)?.payments) ? (data as any).payments : undefined,
-                }),
+        const fdata = (data as any)?.fiscal;
+        if (fdata?.ok && fdata.invoice) {
+          const inv = fdata.invoice;
+          const fiscalMsg =
+            `${baseMsg} · 🧾 Factura C ${String(inv.punto_venta).padStart(4, "0")}-${String(inv.cbte_nro).padStart(8, "0")} (CAE …${String(inv.cae).slice(-4)})`;
+          const ticketErr = await checkPrintRes(
+            fetch("/api/print", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                orderId: String(data.principalOrderId || inv.order_id || ""),
+                type: "ticket",
+                tableName,
+                items: Array.isArray(data.fiscalItems) ? data.fiscalItems : [],
+                total: Number(data.total),
+                // "¿Con cuánto paga?" (efectivo): el ticket imprime el vuelto
+                // de la CUENTA (el pedido portador tiene otro total).
+                cashAmount: Number(data.cashAmount) > 0 ? Number(data.cashAmount) : undefined,
+                // Pago combinado: una línea por medio con su monto (y el
+                // tender de la parte en efectivo para el vuelto).
+                payments: Array.isArray((data as any)?.payments) ? (data as any).payments : undefined,
               }),
-              "El ticket fiscal"
-            );
-            setMsg(!ticketErr ? `${fiscalMsg} · 🖨️ Impreso ✓` : `${fiscalMsg} · ⚠️ ${ticketErr}`);
-            setTimeout(() => setMsg(""), 10000);
-          } else if (fdata.error) {
-            const hint = fdata.hint ? ` 💡 ${fdata.hint}` : "";
-            setMsg(`${baseMsg} · ⚠️ Cobrado sin fiscal: ${fdata.error}${hint}`);
-            setTimeout(() => setMsg(""), 10000);
-          } else {
-            setMsg(`${baseMsg} · ⚠️ Cobrado sin fiscal confirmado: ARCA tardó demasiado (reintentá desde Config → Fiscal)`);
-            setTimeout(() => setMsg(""), 10000);
-          }
-        } catch {
-          setMsg(`${baseMsg} · ⚠️ Cobrado sin fiscal confirmado: sin conexión (reintentá desde Config → Fiscal)`);
+            }),
+            "El ticket fiscal"
+          );
+          setMsg(!ticketErr ? `${fiscalMsg} · 🖨️ Impreso ✓` : `${fiscalMsg} · ⚠️ ${ticketErr}`);
+          setTimeout(() => setMsg(""), 10000);
+        } else {
+          const detail = fdata?.error
+            ? ` ${fdata.error}${fdata.hint ? ` 💡 ${fdata.hint}` : ""}`
+            : " ARCA tardó demasiado";
+          setMsg(`${baseMsg} · ⚠️ Cobrado sin fiscal:${detail} (reintentá desde Facturación)`);
           setTimeout(() => setMsg(""), 10000);
         }
       } else {

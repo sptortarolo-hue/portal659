@@ -653,8 +653,8 @@ function formatFiscalDate(input: string): string {
   }
   const d = new Date(input);
   if (!Number.isNaN(d.getTime())) {
-    const p = (n: number) => String(n).padStart(2, "0");
-    return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
+    // Reutiliza el formateo en TZ AR del resto del ticket (el VPS corre UTC).
+    return formatArgDate(d);
   }
   return input;
 }

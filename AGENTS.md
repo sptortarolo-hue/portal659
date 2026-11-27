@@ -395,6 +395,7 @@ Generador de cartel para imprimir/pegar en mesa o vidriera, **con onda**: el com
 - `docs/plan-multicommerce-portal659.md` — plan de producto multicommerce.
 - `docs/migracion-vexyhost.md` — runbook de migración de VPS + backup self-managed (R2).
 - `docs/monitoreo-portal659.md` — runbook del monitor de salud (521), auto-heal y forense.
+- `docs/facturacion-electronica.md` — runbook de Factura C / NC C con ARCA (conexión por comercio, migraciones, emisión, QA y troubleshooting).
 - `docs/lanzamiento-portal659.md` — propuesta de valor, marketing, métricas y backlog.
 - `docs/PRODUCCION.md` — puesta en producción y roadmap.
 - `src/lib/config.ts` — `ZONES`, `ACTIVE_ZONES`, `DEFAULT_ZONE`, `VERTICALS`.

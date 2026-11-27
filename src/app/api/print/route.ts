@@ -476,7 +476,7 @@ export async function POST(request: Request) {
     // a la migración fiscal sin aplicar — sin factura, sale sin bloque fiscal.
     let turnoFiscal: FiscalPrintInfo | null = null;
     if (vendor.cuit) {
-      const inv = await queryOne<{
+      type TurnoInvRow = {
         cbte_tipo: number;
         punto_venta: number;
         cbte_nro: number;
@@ -487,13 +487,28 @@ export async function POST(request: Request) {
         receptor_doc_tipo: number | null;
         receptor_doc_nro: string | null;
         receptor_nombre: string | null;
-      }>(
-        `SELECT cbte_tipo, punto_venta, cbte_nro, cae,
-                CASE WHEN pg_typeof(cae_vto) = 'date'::regtype THEN to_char(cae_vto, 'YYYYMMDD') ELSE cae_vto::text END AS cae_vto,
-                total, created_at, receptor_doc_tipo, receptor_doc_nro, receptor_nombre
-           FROM invoices WHERE vendor_id = $1 AND booking_id = $2 ORDER BY created_at ASC LIMIT 1`,
-        [vendor.id, bookingId]
-      ).catch(() => null);
+      };
+      const caeVtoTurno = `CASE WHEN pg_typeof(cae_vto) = 'date'::regtype THEN to_char(cae_vto, 'YYYYMMDD') ELSE cae_vto::text END AS cae_vto`;
+      const buildTurnoSql = (receptorCols: string) =>
+        `SELECT cbte_tipo, punto_venta, cbte_nro, cae, ${caeVtoTurno}, total, created_at, ${receptorCols}
+           FROM invoices WHERE vendor_id = $1 AND booking_id = $2 ORDER BY created_at ASC LIMIT 1`;
+      let inv: TurnoInvRow | null = null;
+      try {
+        inv =
+          (await queryOne<TurnoInvRow>(
+            buildTurnoSql("receptor_doc_tipo, receptor_doc_nro, receptor_nombre"),
+            [vendor.id, bookingId]
+          )) ?? null;
+      } catch {
+        // migrate-fiscal-receptor.sql (o booking_id) sin aplicar: igual imprime.
+        inv =
+          (await queryOne<TurnoInvRow>(
+            buildTurnoSql(
+              "NULL::integer AS receptor_doc_tipo, NULL::text AS receptor_doc_nro, NULL::text AS receptor_nombre"
+            ),
+            [vendor.id, bookingId]
+          ).catch(() => null)) ?? null;
+      }
       if (inv) {
         const { buildQrUrl } = await import("@/lib/arca/qr");
         turnoFiscal = {
@@ -507,7 +522,7 @@ export async function POST(request: Request) {
           docLabel: "FACTURA C",
           receptorDocTipo: inv.receptor_doc_tipo ?? null,
           receptorDocNro: inv.receptor_doc_nro ?? null,
-          receptorNombre: inv.receptor_nombre ?? null,
+          receptorNombre: inv.receptor_nombre || turno.customer_name || null,
           asocLabel: null,
           qrUrl: buildQrUrl({
             cuit: vendor.cuit,
@@ -516,7 +531,9 @@ export async function POST(request: Request) {
             cbteNro: Number(inv.cbte_nro),
             importe: Number(inv.total),
             cae: String(inv.cae),
-            fecha: new Date(),
+            fecha: inv.created_at ? new Date(inv.created_at) : new Date(),
+            receptorDocTipo: inv.receptor_doc_tipo,
+            receptorDocNro: inv.receptor_doc_nro,
           }),
         };
       }
@@ -908,7 +925,9 @@ export async function POST(request: Request) {
             cbteNro: Number(inv.cbte_nro),
             importe: Number(inv.total),
             cae: String(inv.cae),
-            fecha: new Date(),
+            fecha: inv.created_at ? new Date(inv.created_at) : new Date(),
+            receptorDocTipo: inv.receptor_doc_tipo,
+            receptorDocNro: inv.receptor_doc_nro,
           }),
         };
       }

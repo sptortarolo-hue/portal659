@@ -1,4 +1,5 @@
 import { queryMany, queryOne } from "@/lib/db";
+import { invoiceCustomerSql } from "@/lib/arca/invoice-customer";
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { resolveVendorPlan } from "@/lib/plans";
 import type { Plan, Vendor } from "@/types/database";
@@ -13,6 +14,8 @@ type Row = {
   cae: string;
   env: string;
   customer_name: string | null;
+  customer_phone?: string | null;
+  booking_id?: string | null;
 };
 
 const csvCell = (v: string | number | null | undefined): string => {
@@ -55,10 +58,11 @@ export async function GET(request: Request) {
   const hasta = searchParams.get("hasta") || now.toISOString().slice(0, 10);
   const format = searchParams.get("format") || "json";
 
+  const customer = await invoiceCustomerSql();
   const rows = await queryMany<Row>(
     `SELECT i.cbte_tipo, i.total, i.created_at, i.cbte_nro, i.punto_venta,
-            i.cae, i.env, o.customer_name
-     FROM invoices i LEFT JOIN orders o ON o.id = i.order_id
+            i.cae, i.env, ${customer.customerExpr} AS customer_name${customer.extraCols}
+     FROM invoices i LEFT JOIN orders o ON o.id = i.order_id ${customer.join}
      WHERE i.vendor_id = $1 AND i.created_at >= $2::date
        AND i.created_at < ($3::date + INTERVAL '1 day')
      ORDER BY i.created_at ASC`,
@@ -81,7 +85,7 @@ export async function GET(request: Request) {
   };
 
   if (format === "csv") {
-    const header = ["Fecha", "Tipo", "Número", "Cliente", "Total", "CAE", "Entorno"];
+    const header = ["Fecha", "Tipo", "Número", "Cliente", "Origen", "Total", "CAE", "Entorno"];
     const lines = list.map((r) =>
       [
         csvCell(String(r.created_at).slice(0, 10)),
@@ -90,6 +94,7 @@ export async function GET(request: Request) {
           `${String(r.punto_venta).padStart(4, "0")}-${String(r.cbte_nro).padStart(8, "0")}`
         ),
         csvCell(r.customer_name || ""),
+        csvCell(r.booking_id ? "Turno" : "Pedido"),
         csvCell(Number(r.total).toFixed(2)),
         csvCell(r.cae),
         csvCell(r.env === "homo" ? "Prueba" : "Producción"),

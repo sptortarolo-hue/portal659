@@ -81,6 +81,7 @@ export async function POST(request: Request) {
     payments,
     bankAccountId,
     deferPayment,
+    fiscal,
   } = body;
 
   // Venta directa (mostrador, todos los verticales): vende en el acto sin
@@ -386,6 +387,9 @@ export async function POST(request: Request) {
   let giftcardIssued: { id: string; code: string; amount: number }[] = [];
   let resolvedVolumeApplied: ResolvedPricing["volumeApplied"] = [];
   let resolvedManualDiscount = 0;
+  let fiscalResult:
+    | { ok: boolean; invoice?: unknown; error?: string; hint?: string; code?: string; skipped?: string }
+    | null = null;
   try {
     order = await withTransaction(async (tx) => {
     // Stock: la venta de mostrador descuenta igual que el canal app (la
@@ -730,6 +734,29 @@ const entries: Array<[string, unknown]> = [
 
     return order ?? null;
   });
+
+  // Factura C al contado: el cliente manda el opt-in (`fiscal`) junto con el
+  // cobro. Emitir acá —y no desde el navegador— evita que una venta cobrada
+  // quede sin comprobante si se cierra la pestaña. Best-effort: ARCA nunca
+  // debe hacer fallar una venta ya registrada.
+  if (order?.id && fiscal && deferPayment !== true) {
+    try {
+      const { emitFiscalForOrder } = await import("@/lib/arca/emit-for-order");
+      fiscalResult = await emitFiscalForOrder({
+        vendorId: gate.vendor.id,
+        orderId: order.id,
+        total: Number((order as any)?.total ?? 0) || undefined,
+        receptorDocTipo: fiscal.receptorDocTipo,
+        receptorDocNro: fiscal.receptorDocNro,
+        receptorNombre: fiscal.receptorNombre,
+        receptorCondIva: fiscal.receptorCondIva,
+      });
+    } catch (e) {
+      const { logApiError } = await import("@/lib/api-error");
+      logApiError("pos/order/fiscal", e);
+      fiscalResult = { ok: false, error: "No se pudo emitir el comprobante" };
+    }
+  }
   } catch (e) {
     if (e instanceof OutOfStockError) {
       return NextResponse.json({ error: e.message }, { status: 409 });
@@ -760,5 +787,5 @@ const entries: Array<[string, unknown]> = [
     );
   }
 
-  return NextResponse.json({ ok: true, orderId: order?.id, order, volumeDiscount: (order as any)?.volume_discount ?? 0, volumeApplied: resolvedVolumeApplied, manualDiscount: resolvedManualDiscount, giftcardIssued, payments: resolvedSplit, adjustmentRows, adjustClosingId: adjustClosing?.id ?? null, store: { name: gate.vendor.store_name, logo: ((gate.vendor as any)?.logo_url ?? null) as string | null } });
+  return NextResponse.json({ ok: true, orderId: order?.id, order, volumeDiscount: (order as any)?.volume_discount ?? 0, volumeApplied: resolvedVolumeApplied, manualDiscount: resolvedManualDiscount, giftcardIssued, payments: resolvedSplit, adjustmentRows, adjustClosingId: adjustClosing?.id ?? null, fiscal: fiscalResult, store: { name: gate.vendor.store_name, logo: ((gate.vendor as any)?.logo_url ?? null) as string | null } });
 }

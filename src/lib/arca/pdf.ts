@@ -26,7 +26,9 @@ export type InvoicePdfData = {
     receptor_doc_nro?: string | null;
     receptor_nombre?: string | null;
   };
-  order: Pick<Order, "items" | "customer_name" | "payment_method" | "created_at"> | null;
+  order: Pick<Order, "items" | "customer_name" | "created_at"> & {
+    payment_method: string | null;
+  } | null;
   qrUrl: string;
 };
 
@@ -36,13 +38,19 @@ const money = (n: number) =>
 const fdate = (iso: string): string => {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
+  // El VPS corre en UTC: sin TZ AR, todo lo posterior a las 21:00 cambia de día.
+  return new Intl.DateTimeFormat("es-AR", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(d);
 };
 
 const caeVto = (vto: string): string => {
   const c = (vto || "").replace(/\D/g, "");
-  return c.length === 8 ? fdate(`${c.slice(0, 4)}-${c.slice(4, 6)}-${c.slice(6, 8)}`) : vto;
+  // YYYYMMDD es una fecha civil de ARCA: nunca reparsearla como Date (UTC).
+  return c.length === 8 ? `${c.slice(6, 8)}/${c.slice(4, 6)}/${c.slice(0, 4)}` : vto;
 };
 
 function condLabel(cond: string | null | undefined): string {

@@ -31,6 +31,8 @@ type InvoiceRow = {
   created_at: string;
   pickup_number: number | null;
   customer_name: string | null;
+  booking_id?: string | null;
+  booking_customer_name?: string | null;
   asoc_pto?: number | null;
   asoc_nro?: number | null;
 };
@@ -52,6 +54,7 @@ function FiscalSteps({
   step3Done,
   step4Done,
   step5Done,
+  step6Done,
   onStep3Done,
 }: {
   env: string;
@@ -60,21 +63,23 @@ function FiscalSteps({
   step3Done: boolean;
   step4Done: boolean;
   step5Done: boolean;
+  step6Done: boolean;
   onStep3Done: () => void;
 }) {
   const steps = [
-    { done: step1Done, label: "Cargá CUIT y punto de venta", anchor: null as string | null },
-    { done: step2Done, label: "Generá la clave + CSR acá", anchor: null },
+    { done: step1Done, label: "Cargá CUIT, punto de venta y condición IVA", anchor: null as string | null },
+    { done: step2Done, label: "Generá la clave + CSR acá (sin instalar nada)", anchor: null },
     {
       done: step3Done,
       label:
         env === "prod"
-          ? "Pegá el CSR en Adm. de Certificados (ARCA)"
-          : "Pegá el CSR en WSASS (ARCA)",
+          ? "En ARCA: crear certificado y asociar el servicio WSFE"
+          : "En ARCA (WSASS): crear certificado y autorizar wsfe",
       anchor: "https://www.arca.gob.ar/",
     },
     { done: step4Done, label: "Pegá acá el .crt que te devuelve ARCA", anchor: null },
-    { done: step5Done, label: "Probá la conexión", anchor: null },
+    { done: step5Done, label: "Probá la conexión (login)", anchor: null },
+    { done: step6Done, label: "Verificá la facturación (WSFE + punto de venta)", anchor: null },
   ];
   const current = steps.findIndex((s) => !s.done);
   return (
@@ -122,6 +127,15 @@ function FiscalReport() {
   const [hasta, setHasta] = useState(today);
   const [data, setData] = useState<{
     summary: { facturas: number; notas_credito: number; facturado: number; anulado: number; neto: number };
+    rows?: {
+      created_at: string;
+      cbte_tipo: number;
+      cbte_nro: number;
+      punto_venta: number;
+      total: number;
+      customer_name: string | null;
+      booking_id?: string | null;
+    }[];
   } | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -175,6 +189,38 @@ function FiscalReport() {
           ⬇️ CSV
         </a>
       </div>
+      {data?.rows && data.rows.length > 0 && (
+        <div className="max-h-40 overflow-y-auto rounded-lg border border-border">
+          <table className="w-full text-left text-[11px]">
+            <thead className="sticky top-0 bg-muted text-muted-foreground">
+              <tr>
+                <th className="px-2 py-1">Fecha</th>
+                <th className="px-2 py-1">Comprobante</th>
+                <th className="px-2 py-1">Cliente</th>
+                <th className="px-2 py-1 text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.rows.map((r, i) => (
+                <tr key={i} className="border-t border-border">
+                  <td className="px-2 py-1 tabular-nums">{String(r.created_at).slice(0, 10)}</td>
+                  <td className="px-2 py-1 tabular-nums">
+                    {cbteLabel(r.cbte_tipo)} {String(r.punto_venta).padStart(4, "0")}-
+                    {String(r.cbte_nro).padStart(8, "0")}
+                  </td>
+                  <td className="max-w-[10rem] truncate px-2 py-1" title={r.customer_name || ""}>
+                    {r.customer_name || "Consumidor final"}
+                    {r.booking_id ? " · Turno" : ""}
+                  </td>
+                  <td className="px-2 py-1 text-right tabular-nums">
+                    ${Number(r.total).toLocaleString("es-AR")}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       <div className="grid grid-cols-3 gap-1.5 text-center">
         <div className="rounded-lg bg-muted px-1 py-2">
           <p className="text-[10px] text-muted-foreground">Facturado{s ? ` (${s.facturas})` : ""}</p>
@@ -215,6 +261,7 @@ export function FiscalConfigSection({ defaultOpen = false }: { defaultOpen?: boo
 
   const [cuit, setCuit] = useState("");
   const [ptoVta, setPtoVta] = useState("");
+  const [condIva, setCondIva] = useState("monotributo");
   const [env, setEnv] = useState("homo");
   const [certPem, setCertPem] = useState("");
   const [keyPem, setKeyPem] = useState("");
@@ -223,6 +270,18 @@ export function FiscalConfigSection({ defaultOpen = false }: { defaultOpen?: boo
   const [csrCopied, setCsrCopied] = useState(false);
   const [pingBusy, setPingBusy] = useState(false);
   const [pingResult, setPingResult] = useState<{ ok: boolean; ms?: number; error?: string; hint?: string } | null>(null);
+  const [verifyBusy, setVerifyBusy] = useState(false);
+  const [verifyResult, setVerifyResult] = useState<{
+    ok: boolean;
+    env?: string;
+    ms?: number;
+    ultimo?: number;
+    proximo?: number;
+    puntosVenta?: number[];
+    warnings?: string[];
+    error?: string;
+    hint?: string;
+  } | null>(null);
   // Paso 3 (pegar CSR en ARCA) es manual: el comercio lo marca como hecho.
   const [arcaStepDone, setArcaStepDone] = useState(false);
   const certFileRef = useRef<HTMLInputElement>(null);
@@ -237,6 +296,7 @@ export function FiscalConfigSection({ defaultOpen = false }: { defaultOpen?: boo
         setStatus(data);
         setCuit(data.cuit || "");
         setPtoVta(data.fiscal_punto_venta != null ? String(data.fiscal_punto_venta) : "");
+        setCondIva(data.fiscal_cond_iva || "monotributo");
         setEnv(data.fiscal_env || "homo");
       }
       const inv = await fetch("/api/vendor/fiscal/invoices").then((r) => r.json()).catch(() => null);
@@ -347,6 +407,32 @@ export function FiscalConfigSection({ defaultOpen = false }: { defaultOpen?: boo
     setPingBusy(false);
   }
 
+  // Verificación end-to-end SIN numeración: WSAA + WSFE + punto de venta.
+  async function verifyArca() {
+    setVerifyBusy(true);
+    setVerifyResult(null);
+    try {
+      const res = await fetch("/api/vendor/fiscal/verify", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      setVerifyResult(
+        res.ok
+          ? {
+              ok: true,
+              env: data.env,
+              ms: data.ms,
+              ultimo: data.ultimo,
+              proximo: data.proximo,
+              puntosVenta: data.puntosVenta,
+              warnings: data.warnings,
+            }
+          : { ok: false, error: data.error || "ARCA no contestó", hint: data.hint }
+      );
+    } catch {
+      setVerifyResult({ ok: false, error: "Se cortó esperando a ARCA (proxy o red del VPS)" });
+    }
+    setVerifyBusy(false);
+  }
+
   async function save(data: Record<string, unknown>) {
     setSaving(true);
     setMsg(null);
@@ -402,6 +488,24 @@ export function FiscalConfigSection({ defaultOpen = false }: { defaultOpen?: boo
               : "⚠️ Completá CUIT, punto de venta y certificado para activar"}
           </div>
 
+          {status.cert_info?.notAfter &&
+            Math.ceil((new Date(status.cert_info.notAfter).getTime() - Date.now()) / 86400000) <= 30 && (
+              <div className="rounded-xl border border-amber-300 bg-amber-50 p-2.5 text-xs font-medium text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
+                ⚠️ Tu certificado vence el{" "}
+                {new Date(status.cert_info.notAfter).toLocaleDateString("es-AR")}. Generá uno nuevo en ARCA
+                (podés usar la misma clave, no hace falta repetir el CSR) y pegalo en el paso 4.
+              </div>
+            )}
+
+          <details className="rounded-xl border border-border bg-muted/40 p-2.5 text-xs">
+            <summary className="cursor-pointer font-bold">Antes de empezar — esto se hace una sola vez</summary>
+            <div className="mt-2 space-y-1 text-muted-foreground">
+              <p>El portal guarda el certificado cifrado y no volvés a ARCA hasta que venza (1 año).</p>
+              <p>Necesitás el <strong>CUIT del comercio</strong> (no el del contador) y su <strong>Clave Fiscal</strong> en <a href="https://www.arca.gob.ar/" target="_blank" rel="noopener noreferrer" className="text-primary underline">arca.gob.ar</a>.</p>
+              <p>Probá primero en <strong>Prueba</strong>. Recién cuando todo salga bien pasás a <strong>Producción</strong>.</p>
+            </div>
+          </details>
+
           <FiscalSteps
             env={status.fiscal_env}
             step1Done={!!(status.cuit && status.fiscal_punto_venta)}
@@ -409,6 +513,7 @@ export function FiscalConfigSection({ defaultOpen = false }: { defaultOpen?: boo
             step3Done={arcaStepDone || status.has_cert}
             step4Done={status.has_cert}
             step5Done={!!pingResult?.ok}
+            step6Done={!!verifyResult?.ok}
             onStep3Done={() => setArcaStepDone(true)}
           />
 
@@ -429,6 +534,43 @@ export function FiscalConfigSection({ defaultOpen = false }: { defaultOpen?: boo
           )}
 
           {status.ready && (
+            <div className="space-y-1.5 rounded-xl border border-border p-2.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" size="sm" variant="outline" disabled={verifyBusy} onClick={verifyArca}>
+                  {verifyBusy ? "Verificando…" : "✅ Verificar facturación (sin gastar numeración)"}
+                </Button>
+                {verifyResult?.ok && (
+                  <span className="text-xs font-bold text-green-600">
+                    WSFE autorizado · PV {status.fiscal_punto_venta} válido · último N°{verifyResult.ultimo} (próximo {verifyResult.proximo})
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Solo consulta a ARCA si el servicio WSFE está autorizado y qué punto de venta tenés habilitado. No emite facturas ni consume números.
+              </p>
+              {verifyResult?.ok && verifyResult.puntosVenta && verifyResult.puntosVenta.length > 0 && (
+                <p className="text-[11px] text-muted-foreground">
+                  Puntos de venta habilitados: {verifyResult.puntosVenta.join(", ")}
+                </p>
+              )}
+              {verifyResult?.warnings?.map((w, i) => (
+                <p key={i} className="text-xs font-medium text-amber-700 dark:text-amber-400">⚠️ {w}</p>
+              ))}
+              {verifyResult && !verifyResult.ok && (
+                <p className="text-xs font-medium text-red-600">
+                  ⚠️ {verifyResult.error}
+                  {verifyResult.hint && <><br />💡 {verifyResult.hint}</>}
+                </p>
+              )}
+              {verifyResult?.ok && (
+                <p className="text-[11px] text-muted-foreground">
+                  Ahora hacé una venta de prueba con "Con comprobante fiscal" y revisá que el ticket tenga CAE + QR. Recién ahí pasá a Producción.
+                </p>
+              )}
+            </div>
+          )}
+
+          {status.ready && (
              <label className="flex items-center gap-2 text-sm mt-2">
                <input
                  type="checkbox"
@@ -444,11 +586,11 @@ export function FiscalConfigSection({ defaultOpen = false }: { defaultOpen?: boo
                      .then((d) => setStatus((s: any) => ({ ...s, fiscal_auto_emit: d?.fiscal_auto_emit === true })));
                  }}
                />
-               Emitir comprobante fiscal automáticamente al cobrar con QR MP
+               Emitir comprobante fiscal automáticamente al cobrar con Mercado Pago (QR y online)
              </label>
            )}
 
-           <div className="grid grid-cols-2 gap-2">
+           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <div>
               <Label>CUIT</Label>
               <Input
@@ -467,14 +609,34 @@ export function FiscalConfigSection({ defaultOpen = false }: { defaultOpen?: boo
                 onChange={(e) => setPtoVta(e.target.value)}
               />
             </div>
+            <div>
+              <Label>Condición frente al IVA</Label>
+              <select
+                value={condIva}
+                onChange={(e) => setCondIva(e.target.value)}
+                className="h-9 w-full rounded-lg border border-input bg-background px-2 text-xs"
+              >
+                <option value="monotributo">Monotributo</option>
+                <option value="responsable_inscripto">Responsable inscripto</option>
+              </select>
+            </div>
           </div>
+          <p className="text-[11px] text-muted-foreground">
+            La condición se imprime en el encabezado; esta versión emite siempre Factura C.
+          </p>
           <Button
             type="button"
             size="sm"
             disabled={saving}
-            onClick={() => save({ cuit, fiscal_punto_venta: ptoVta === "" ? null : Number(ptoVta) })}
+            onClick={() =>
+               save({
+                 cuit,
+                 fiscal_punto_venta: ptoVta === "" ? null : Number(ptoVta),
+                 fiscal_cond_iva: condIva,
+               })
+             }
           >
-            {saving ? "Guardando…" : "Guardar CUIT y punto de venta"}
+            {saving ? "Guardando…" : "Guardar datos fiscales"}
           </Button>
 
           <div>
@@ -556,9 +718,37 @@ export function FiscalConfigSection({ defaultOpen = false }: { defaultOpen?: boo
                         ⬇️ Descargar .csr
                       </Button>
                     </div>
-                    <p className="text-[11px] text-muted-foreground">
-                      En ARCA (WSASS o Adm. de Certificados) subí el archivo descargado.
-                    </p>
+                    <details className="w-full rounded-lg border border-border bg-background p-2 text-[11px]" open>
+                      <summary className="cursor-pointer font-bold">
+                        Paso 3: qué hacer en ARCA con este CSR (el paso que todos se saltean)
+                      </summary>
+                      <div className="mt-2 space-y-2 text-muted-foreground">
+                        {env === "prod" ? (
+                          <>
+                            <p className="font-medium text-foreground">PRODUCCIÓN</p>
+                            <ol className="list-decimal space-y-1 pl-4">
+                              <li>Entrá a <a href="https://www.arca.gob.ar/" target="_blank" rel="noopener noreferrer" className="text-primary underline">arca.gob.ar</a> con tu <strong>Clave Fiscal</strong> (nivel 2 o más) del CUIT del paso 1.</li>
+                              <li>Buscá <strong>Administración de Certificados Digitales</strong> → <strong>Agregar Alias</strong>.</li>
+                              <li>Alias: escribí <code>portal659</code> (sin espacios). Pegá el CSR completo y confirmá.</li>
+                              <li>En la lista, <strong>Ver</strong> ese alias y <strong>Descargar</strong> el <code>.crt</code>. Volvé acá al paso 4.</li>
+                              <li className="font-medium text-amber-700 dark:text-amber-400">⚠️ Después, en el <strong>Administrador de Relaciones de Clave Fiscal</strong> → <strong>Nueva Relación</strong>: servicio <strong>Factura Electrónica / WSFE</strong>, representante <strong>tu Computador Fiscal (el alias portal659)</strong> → Confirmar. Sin esto la factura falla con "no autorizado", aunque la conexión dé bien.</li>
+                            </ol>
+                          </>
+                        ) : (
+                          <>
+                            <p className="font-medium text-foreground">PRUEBA (HOMOLOGACIÓN)</p>
+                            <ol className="list-decimal space-y-1 pl-4">
+                              <li>Entrá a <a href="https://www.arca.gob.ar/" target="_blank" rel="noopener noreferrer" className="text-primary underline">arca.gob.ar</a> y buscá <strong>WSASS</strong>. Si no aparece en tus servicios, primero hacé <strong>Adherir WSASS</strong> en <em>Servicios interactivos</em>.</li>
+                              <li>Elegí <strong>Nuevo Certificado</strong>. Alias: <code>portal659</code> (sin espacios).</li>
+                              <li>En <strong>Solicitud del certificado en formato PKCS#10</strong> pegá el CSR completo y tocá <strong>Crear DN y obtener certificado</strong>.</li>
+                              <li>Copiá todo desde <code>-----BEGIN CERTIFICATE-----</code> hasta <code>-----END CERTIFICATE-----</code> y guardalo en un Bloc de notas como <code>certificado-prueba.crt</code>. Volvé acá al paso 4.</li>
+                              <li className="font-medium text-amber-700 dark:text-amber-400">⚠️ En WSASS buscá <strong>Autorización de acceso a un servicio</strong>: certificado recién creado + CUIT representado + servicio <code>wsfe</code> → Confirmar. Sin esto la factura falla con "no autorizado".</li>
+                            </ol>
+                          </>
+                        )}
+                        <p>Si los botones se llaman distinto, buscá las palabras <strong>certificado</strong>, <strong>CSR</strong> y <strong>wsfe</strong>. La <strong>clave privada nunca se sube a ARCA</strong> ni se la mandes a nadie.</p>
+                      </div>
+                    </details>
                   </div>
                 )}
               </div>
@@ -631,12 +821,32 @@ export function FiscalConfigSection({ defaultOpen = false }: { defaultOpen?: boo
                     <span className="text-muted-foreground tabular-nums">
                       ${Number(inv.total).toLocaleString("es-AR")}
                     </span>
+                    {inv.customer_name && (
+                      <span
+                        className="min-w-0 truncate text-muted-foreground"
+                        title={inv.customer_name}
+                      >
+                        {inv.customer_name}
+                      </span>
+                    )}
+                    {inv.booking_id && (
+                      <span className="flex-shrink-0 text-[10px] text-muted-foreground">Turno</span>
+                    )}
                     {inv.cbte_tipo === 13 && inv.asoc_nro != null && (
                       <span className="text-muted-foreground" title="Factura anulada">
                         → {String(inv.asoc_pto ?? inv.punto_venta).padStart(4, "0")}-{String(inv.asoc_nro).padStart(8, "0")}
                       </span>
                     )}
-                    <span className="ml-auto text-muted-foreground tabular-nums" title={`CAE ${inv.cae}`}>
+                    <a
+                      href={`/api/vendor/fiscal/pdf?invoiceId=${encodeURIComponent(inv.id)}&format=url`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ml-auto flex-shrink-0 text-primary underline"
+                      title="Abrir PDF del comprobante"
+                    >
+                      📄 PDF
+                    </a>
+                    <span className="text-muted-foreground tabular-nums" title={`CAE ${inv.cae}`}>
                       CAE …{inv.cae.slice(-4)}
                       {inv.env === "homo" ? " 🧪" : ""}
                     </span>

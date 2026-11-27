@@ -1777,6 +1777,22 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       // el total real; si no cierra, la venta sale con medio único.
       payments: splitToSend,
       bankAccountId: payment === "transferencia" ? transferAccountId : undefined,
+      // Factura C al contado: el opt-in viaja CON el cobro y la emite el
+      // servidor. El QR MP (defer) ya factura desde el webhook.
+      ...(useFiscal && !defer
+        ? {
+            fiscal:
+              fiscalReceptorTipo === "cf"
+                ? {}
+                : {
+                    receptorDocTipo: fiscalReceptorTipo === "cuit" ? 80 : 96,
+                    receptorDocNro: fiscalReceptorNro.replace(/\D/g, ""),
+                    receptorNombre: fiscalReceptorNombre.trim() || undefined,
+                    receptorCondIva:
+                      fiscalReceptorTipo === "cuit" ? Number(fiscalReceptorCond) || 6 : 5,
+                  },
+          }
+        : {}),
       client_key: newClientKey(),
       occurred_at: new Date().toISOString(),
       // Ajuste post-cierre: el servidor estampa las fechas del cierre elegido
@@ -2073,73 +2089,39 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     clearSaleForm();
     setFiscalPrintId(null);
 
-    // Fiscal opt-in por venta: se espera el CAE (hasta 60s) y se imprime UN
-    // solo ticket ya con Factura C + QR. La cocina ya recibió su comanda.
-    const wantFiscal = useFiscal && data.orderId;
+    // La Factura C la emitió el servidor dentro del cobro: acá solo mostramos
+    // el CAE y reimprimimos el ticket con el bloque fiscal. No hay segundo
+    // fetch: si el navegador se cierra, la venta ya quedó facturada.
+    const wantFiscal = useFiscal && !!data.orderId && !defer;
     if (wantFiscal) {
       const fiscalOrderId = data.orderId as string;
-      setMsg(`${baseMsg} · 🧾 Facturando en ARCA…`);
-      try {
-      const fres = await fetchWithAuthRefresh("/api/vendor/fiscal/emitir", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orderId: fiscalOrderId,
-          ...(fiscalReceptorTipo === "cf"
-            ? {}
-            : {
-                receptorDocTipo: fiscalReceptorTipo === "cuit" ? 80 : 96,
-                receptorDocNro: fiscalReceptorNro.replace(/\D/g, ""),
-                receptorNombre: fiscalReceptorNombre.trim() || undefined,
-                receptorCondIva: fiscalReceptorTipo === "cuit" ? Number(fiscalReceptorCond) || 6 : 5,
-              }),
-        }),
-        signal: AbortSignal.timeout(60000),
-      });
-        const fdata = await fres.json().catch(() => ({}));
-        if (fres.ok && fdata.invoice) {
-          const inv = fdata.invoice;
-          const fiscalMsg =
-            `${baseMsg} · 🧾 Factura C ${String(inv.punto_venta).padStart(4, "0")}-${String(inv.cbte_nro).padStart(8, "0")} (CAE …${String(inv.cae).slice(-4)})`;
-          if (wantFiscalTicket) {
-            // Un solo paso: el ticket sale con el bloque fiscal incluido.
-            const ticketErr = await checkPrintRes(
-              fetch("/api/print", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ orderId: fiscalOrderId, type: "ticket" }),
-              }),
-              "El ticket fiscal"
-            );
-            if (!ticketErr) setMsg(`${fiscalMsg}${comandaSuffix()} · 🖨️ Impreso ✓`);
-            else {
-              setMsg(`${fiscalMsg}${comandaSuffix()} · ⚠️ ${ticketErr}`);
-              setFiscalPrintId(fiscalOrderId);
-            }
-          } else {
-            setMsg(`${fiscalMsg}${comandaSuffix()}`);
-          }
-        } else if (fdata.error) {
-          const hint = fdata.hint ? ` 💡 ${fdata.hint}` : "";
-          setMsg(`${baseMsg}${comandaSuffix()} · ⚠️ Cobrado sin fiscal: ${fdata.error}${hint} (reintentá desde Config → Fiscal)`);
-          if (wantFiscalTicket) {
-            printSaleDoc().then((serr) => {
-              if (serr) setMsg((m) => `${m} · ⚠️ ${serr}`);
-            }).catch(() => {});
+      const fdata = (data as any)?.fiscal;
+      if (fdata?.ok && fdata.invoice) {
+        const inv = fdata.invoice;
+        const fiscalMsg =
+          `${baseMsg} · 🧾 Factura C ${String(inv.punto_venta).padStart(4, "0")}-${String(inv.cbte_nro).padStart(8, "0")} (CAE …${String(inv.cae).slice(-4)})`;
+        if (wantFiscalTicket) {
+          const ticketErr = await checkPrintRes(
+            fetch("/api/print", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ orderId: fiscalOrderId, type: "ticket" }),
+            }),
+            "El ticket fiscal"
+          );
+          if (!ticketErr) setMsg(`${fiscalMsg}${comandaSuffix()} · 🖨️ Impreso ✓`);
+          else {
+            setMsg(`${fiscalMsg}${comandaSuffix()} · ⚠️ ${ticketErr}`);
+            setFiscalPrintId(fiscalOrderId);
           }
         } else {
-          // Respuesta vacía o timeout: el CAE puede llegar igual en el
-          // server; sale el comprobante común y queda reimpresión fiscal.
-          setMsg(`${baseMsg}${comandaSuffix()} · ⚠️ Cobrado sin fiscal confirmado: ARCA tardó demasiado (revisá el detalle del pedido)`);
-          if (wantFiscalTicket) {
-            printSaleDoc().then((serr) => {
-              if (serr) setMsg((m) => `${m} · ⚠️ ${serr}`);
-            }).catch(() => {});
-          }
-          setFiscalPrintId(fiscalOrderId);
+          setMsg(`${fiscalMsg}${comandaSuffix()}`);
         }
-      } catch {
-        setMsg(`${baseMsg}${comandaSuffix()} · ⚠️ Cobrado sin fiscal confirmado: sin conexión (reintentá desde Config → Fiscal)`);
+      } else {
+        const detail = fdata?.error
+          ? ` ${fdata.error}${fdata.hint ? ` 💡 ${fdata.hint}` : ""}`
+          : " ARCA tardó demasiado";
+        setMsg(`${baseMsg}${comandaSuffix()} · ⚠️ Cobrado sin fiscal:${detail} (reintentá desde el detalle del pedido)`);
         if (wantFiscalTicket) {
           printSaleDoc().then((serr) => {
             if (serr) setMsg((m) => `${m} · ⚠️ ${serr}`);
@@ -3678,13 +3660,8 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         fiscalAutoEmit={fiscalAutoEmit}
         onPaid={(id) => {
           if (!qrOrderId) return;
-          if (fiscalAutoEmit && fiscalReady) {
-            fetch("/api/vendor/fiscal/emitir", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ orderId: qrOrderId }),
-            }).catch(() => {});
-          }
+          // La factura la emite el servidor (webhook de MP / markPaid del QR).
+          // Antes la emitía acá y al cerrar el navegador nunca se facturaba.
           // Impresión no fiscal si auto_print está ON.
           if (autoPrint) {
             fetch("/api/print", {

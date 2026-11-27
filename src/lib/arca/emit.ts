@@ -80,6 +80,8 @@ async function emitirComprobante(
       importe: input.total,
       cae,
       fecha: when,
+      receptorDocTipo: input.receptor?.docTipo,
+      receptorDocNro: input.receptor?.docNro,
     });
 
   try {

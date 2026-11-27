@@ -113,6 +113,22 @@ export async function PATCH(request: Request) {
     }
     updates.fiscal_env = body.fiscal_env;
   }
+  if (body.fiscal_cond_iva !== undefined) {
+    const cond = String(body.fiscal_cond_iva || "").trim().toLowerCase();
+    if (!["monotributo", "responsable_inscripto"].includes(cond)) {
+      return NextResponse.json(
+        { error: "Condición IVA inválida (monotributo|responsable_inscripto)" },
+        { status: 400 }
+      );
+    }
+    const hasColumn = await queryOne<{ e: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = 'vendors' AND column_name = 'fiscal_cond_iva'
+       ) AS e`
+    ).catch(() => ({ e: false }));
+    if (hasColumn?.e) updates.fiscal_cond_iva = cond;
+  }
   // Borra certificado + clave (el comercio queda sin fiscal hasta subir otro).
   if (body.clear_fiscal_creds === true) {
     updates.fiscal_cert = null;

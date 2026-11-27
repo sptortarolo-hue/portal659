@@ -54,7 +54,9 @@ export function BookingCobroModal({
   const [CuentaLine, setCuentaLine] = useState<{ description: string; qty: string; unitPrice: string }[]>([]);
   const [receptorTipo, setReceptorTipo] = useState<"cf" | "dni" | "cuit">("cf");
   const [receptorNro, setReceptorNro] = useState("");
-  const [receptorNombre, setReceptorNombre] = useState("");
+  // Precargamos el nombre del turno: si no, la Factura C sale a consumidor final
+  // aunque el turno tenga cliente (PDF, ticket y reporte sin nombre).
+  const [receptorNombre, setReceptorNombre] = useState(booking.customer_name || "");
   const [receptorCond, setReceptorCond] = useState("6");
   const [err, setErr] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);

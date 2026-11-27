@@ -32,6 +32,13 @@ export async function getInvoicePdfBundle(
     `SELECT items, customer_name, payment_method, created_at FROM orders WHERE id = $1 LIMIT 1`,
     [(invoice as { order_id: string }).order_id]
   );
+  // Las facturas de turno no tienen order_id: el cliente vive en bookings.
+  const booking = (invoice as { booking_id?: string | null }).booking_id
+    ? await queryOne<{ customer_name: string | null }>(
+        `SELECT customer_name FROM bookings WHERE id = $1 LIMIT 1`,
+        [(invoice as { booking_id: string }).booking_id]
+      ).catch(() => null)
+    : null;
 
   const qrUrl = buildQrUrl({
     cuit: (vendor.cuit || "").replace(/\D/g, ""),
@@ -40,7 +47,9 @@ export async function getInvoicePdfBundle(
     cbteNro: Number(invoice.cbte_nro),
     importe: Number(invoice.total),
     cae: String(invoice.cae),
-    fecha: new Date(),
+    fecha: invoice.created_at ? new Date(invoice.created_at) : new Date(),
+    receptorDocTipo: invoice.receptor_doc_tipo,
+    receptorDocNro: invoice.receptor_doc_nro,
   });
 
   const pdf = await buildInvoicePdf({
@@ -62,6 +71,9 @@ export async function getInvoicePdfBundle(
       created_at: String(invoice.created_at),
       asoc_pto: (invoice as { asoc_pto?: number | null }).asoc_pto ?? null,
       asoc_nro: (invoice as { asoc_nro?: number | null }).asoc_nro ?? null,
+      receptor_doc_tipo: invoice.receptor_doc_tipo ?? null,
+      receptor_doc_nro: invoice.receptor_doc_nro ?? null,
+      receptor_nombre: invoice.receptor_nombre ?? booking?.customer_name ?? null,
     },
     order: order
       ? {
@@ -70,7 +82,14 @@ export async function getInvoicePdfBundle(
           payment_method: order.payment_method,
           created_at: order.created_at,
         }
-      : null,
+      : booking?.customer_name
+        ? {
+            items: [],
+            customer_name: booking.customer_name,
+            payment_method: null,
+            created_at: String(invoice.created_at),
+          }
+        : null,
     qrUrl,
   });
 

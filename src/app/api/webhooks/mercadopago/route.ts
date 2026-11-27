@@ -14,6 +14,32 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 
 /**
+ * Emisión fiscal automática post-cobro. Best-effort por diseño: si ARCA falla
+ * se loguea y el cobro queda intacto (se puede reemitir a mano desde el panel).
+ * Nunca debe lanzar hacia el webhook: un 500 haría reintentar a MP.
+ */
+async function autoFiscalForPaidOrder(params: {
+  vendorId: string;
+  orderId?: string | null;
+  bookingId?: string | null;
+  total?: number | null;
+  receptorNombre?: string | null;
+}) {
+  try {
+    const { emitFiscalForOrder } = await import("@/lib/arca/emit-for-order");
+    const r = await emitFiscalForOrder({
+      ...params,
+      requireAutoEmit: true,
+    });
+    if (!r.ok && r.error) {
+      logApiError("mp-webhook/fiscal", new Error(`${r.code || "fiscal"}: ${r.error}`));
+    }
+  } catch (e) {
+    logApiError("mp-webhook/fiscal", e);
+  }
+}
+
+/**
  * Verificación de firma de webhooks de Mercado Pago (esquema v1).
  * Header: `x-signature: ts=<ts>,v1=<sha256hex>`.
  * MP NO firma el body: firma el manifiesto
@@ -192,6 +218,13 @@ export async function POST(request: Request) {
               /* columna sin migrar: la seña se marca a mano */
             }
           }
+          if (qrOrder.order_id) {
+            await autoFiscalForPaidOrder({
+              vendorId: qrOrder.vendor_id,
+              orderId: qrOrder.order_id,
+              total: qrOrder.amount,
+            });
+          }
           try {
             const vendor = await queryOne<{ user_id: string }>(
               `SELECT user_id FROM vendors WHERE id = $1 LIMIT 1`,
@@ -314,6 +347,13 @@ export async function POST(request: Request) {
                 } catch {
                   /* columna sin migrar: la seña se marca a mano */
                 }
+              }
+              if (qrOrder.order_id) {
+                await autoFiscalForPaidOrder({
+                  vendorId: qrOrder.vendor_id,
+                  orderId: qrOrder.order_id,
+                  total: qrOrder.amount,
+                });
               }
               try {
                 const { sendPushToUser } = await import("@/lib/push");
@@ -825,6 +865,13 @@ export async function POST(request: Request) {
                 [String(payment.id || ""), orderId]
               ).catch((e) => logApiError("mp-webhook/order-paid", e));
 
+              await autoFiscalForPaidOrder({
+                vendorId: wOrder.vendor_id,
+                orderId: wOrder.id,
+                total: wOrder.total,
+                receptorNombre: wOrder.customer_name,
+              });
+
               // Tarjetas emitidas por esta venta (idempotente por unidad).
               try {
                 const { issueGiftcardsForOrder } = await import("@/lib/giftcards");
@@ -1303,6 +1350,17 @@ export async function POST(request: Request) {
             throw e;
           }
         });
+
+        // Factura C automática (opt-in del comercio). Va antes de la impresión
+        // para que el ticket salga con CAE + QR en el mismo trabajo.
+        if (order?.id) {
+          await autoFiscalForPaidOrder({
+            vendorId,
+            orderId: order.id,
+            total: Number(payment.transaction_amount),
+            receptorNombre: customerName,
+          });
+        }
 
         const vendor = await queryOne<{ user_id: string; store_name: string }>(
           `SELECT user_id, store_name FROM vendors WHERE id = $1 LIMIT 1`,

@@ -10,7 +10,8 @@ import { Button } from "@/components/ui/button";
  */
 type InvoiceRef = {
   id: string;
-  order_id: string;
+  order_id: string | null;
+  booking_id?: string | null;
   cbte_tipo?: number | null;
   punto_venta: number;
   cbte_nro: number;
@@ -19,7 +20,13 @@ type InvoiceRef = {
   asoc_nro?: number | null;
 };
 
-export function FiscalBillButton({ orderId }: { orderId: string }) {
+export function FiscalBillButton({
+  orderId,
+  bookingId,
+}: {
+  orderId?: string;
+  bookingId?: string;
+}) {
   const [ready, setReady] = useState(false);
   const [existing, setExisting] = useState<InvoiceRef | null>(null);
   const [creditNote, setCreditNote] = useState<InvoiceRef | null>(null);
@@ -39,7 +46,8 @@ export function FiscalBillButton({ orderId }: { orderId: string }) {
   const [receptorCond, setReceptorCond] = useState("6");
 
   async function refreshInvoices(): Promise<InvoiceRef[]> {
-    const inv = await fetch("/api/vendor/fiscal/invoices").then((r) => r.json()).catch(() => null);
+    const qs = bookingId ? `?bookingId=${encodeURIComponent(bookingId)}` : orderId ? `?orderId=${encodeURIComponent(orderId)}` : "";
+    const inv = await fetch(`/api/vendor/fiscal/invoices${qs}`).then((r) => r.json()).catch(() => null);
     return (inv?.invoices || []) as InvoiceRef[];
   }
 
@@ -53,7 +61,11 @@ export function FiscalBillButton({ orderId }: { orderId: string }) {
         setReady(true);
         const list = await refreshInvoices();
         if (!alive) return;
-        const found = list.find((i) => i.order_id === orderId && (i.cbte_tipo ?? 11) === 11);
+        const found = list.find(
+          (i) =>
+            (bookingId ? i.booking_id === bookingId : i.order_id === orderId) &&
+            (i.cbte_tipo ?? 11) === 11
+        );
         if (found) setExisting(found);
         const nc = list.find((i) => (i.cbte_tipo ?? 0) === 13 && i.asoc_pto === found?.punto_venta && i.asoc_nro === found?.cbte_nro);
         if (nc) setCreditNote(nc);
@@ -64,7 +76,7 @@ export function FiscalBillButton({ orderId }: { orderId: string }) {
     return () => {
       alive = false;
     };
-  }, [orderId]);
+  }, [orderId, bookingId]);
 
   if (!ready) return null;
 
@@ -78,7 +90,11 @@ export function FiscalBillButton({ orderId }: { orderId: string }) {
       const res = await fetch("/api/print", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId, type: "ticket", ...(invoiceId ? { invoiceId } : {}) }),
+        body: JSON.stringify(
+          bookingId
+            ? { type: "turno", bookingId }
+            : { orderId, type: "ticket", ...(invoiceId ? { invoiceId } : {}) }
+        ),
       });
       const data = await res.json().catch(() => ({}));
       if (data.ok || data.skipped) {
@@ -175,11 +191,11 @@ export function FiscalBillButton({ orderId }: { orderId: string }) {
               </Button>
             </div>
           </div>
-        ) : (
+        ) : !bookingId ? (
           <Button variant="outline" className="w-full text-red-600 border-red-200 hover:bg-red-50" disabled={ncBusy} onClick={issueCreditNote}>
             {ncBusy ? "↩️ Anulando en ARCA…" : "↩️ Anular con nota de crédito"}
           </Button>
-        )}
+        ) : null}
         <Button variant="outline" className="w-full" disabled={printing} onClick={() => reprint()}>
           {printing ? "🖨️ Imprimiendo…" : "🖨️ Reimprimir ticket fiscal"}
         </Button>
@@ -283,7 +299,7 @@ export function FiscalBillButton({ orderId }: { orderId: string }) {
       const res = await fetch("/api/vendor/fiscal/emitir", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId, ...receptor }),
+        body: JSON.stringify({ ...(bookingId ? { bookingId } : { orderId }), ...receptor }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.invoice) {

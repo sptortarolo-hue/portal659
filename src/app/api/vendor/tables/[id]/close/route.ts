@@ -547,6 +547,37 @@ export async function POST(
     }
   });
 
+  // Factura C del cierre: misma opt-in del check "con fiscal" que mandaba el
+  // navegador después de cerrar. Se emite acá para que la venta nunca quede
+  // cobrada sin comprobante si se cierra la pestaña. Best-effort.
+  const closeFiscal = body?.fiscal;
+  const closeOrderIds = list.map((o) => o.id);
+  const principalOrderId =
+    [...list].sort((a, b) =>
+      String((a as any).created_at) < String((b as any).created_at) ? -1 : 1
+    ).slice(-1)[0]?.id ?? null;
+  let fiscalResult:
+    | { ok: boolean; invoice?: unknown; error?: string; hint?: string; code?: string; skipped?: string }
+    | null = null;
+  if (closeFiscal && closeOrderIds.length > 0 && principalOrderId) {
+    try {
+      const { emitFiscalForOrder } = await import("@/lib/arca/emit-for-order");
+      fiscalResult = await emitFiscalForOrder({
+        vendorId,
+        orderIds: closeOrderIds,
+        total: Number(total) || undefined,
+        receptorDocTipo: closeFiscal.receptorDocTipo,
+        receptorDocNro: closeFiscal.receptorDocNro,
+        receptorNombre: closeFiscal.receptorNombre,
+        receptorCondIva: closeFiscal.receptorCondIva,
+      });
+    } catch (e) {
+      const { logApiError } = await import("@/lib/api-error");
+      logApiError("tables/close/fiscal", e);
+      fiscalResult = { ok: false, error: "No se pudo emitir el comprobante" };
+    }
+  }
+
   const result = {
     ok: true,
     table: { ...table, status: "libre" },
@@ -567,7 +598,8 @@ export async function POST(
     // Factura C de la cuenta (check "con fiscal" en Mesas): pedidos cerrados
     // en ESTE cierre, principal (el más nuevo, donde se adjunta la factura,
     // UNIQUE vendor+order) e ítems agregados de toda la mesa.
-    orderIds: list.map((o) => o.id),
+    orderIds: closeOrderIds,
+    fiscal: fiscalResult,
     principalOrderId:
       [...list]
         .sort((a, b) => (String((a as any).created_at) < String((b as any).created_at) ? -1 : 1))

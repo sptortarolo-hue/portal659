@@ -1,4 +1,5 @@
 import { queryMany, queryOne } from "@/lib/db";
+import { invoiceCustomerSql } from "@/lib/arca/invoice-customer";
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { resolveVendorPlan } from "@/lib/plans";
 import type { Plan, Vendor } from "@/types/database";
@@ -28,11 +29,30 @@ export async function GET(request: Request) {
     );
   }
 
+  const customer = await invoiceCustomerSql();
+  const { searchParams } = new URL(request.url);
+  const bookingId = searchParams.get("bookingId");
+  const orderId = searchParams.get("orderId");
+  const lookup = bookingId
+    ? customer.hasBookingRef
+      ? { where: "AND i.booking_id = $2", value: bookingId }
+      : null
+    : orderId
+      ? { where: "AND i.order_id = $2", value: orderId }
+      : null;
+  // Sin la columna booking_id no pueden existir facturas de turno: devolvemos
+  // lista vacía en vez de un 42703.
+  if (bookingId && !customer.hasBookingRef) {
+    return NextResponse.json({ invoices: [] });
+  }
+
   const rows = await queryMany(
-    `SELECT i.*, o.pickup_number, o.customer_name, o.method, o.channel
-     FROM invoices i LEFT JOIN orders o ON o.id = i.order_id
-     WHERE i.vendor_id = $1 ORDER BY i.created_at DESC LIMIT 50`,
-    [vendor.id]
+    `SELECT i.*, o.pickup_number, ${customer.customerExpr} AS customer_name,
+            o.method, o.channel${customer.extraCols}
+     FROM invoices i LEFT JOIN orders o ON o.id = i.order_id ${customer.join}
+     WHERE i.vendor_id = $1 ${lookup?.where ?? ""}
+     ORDER BY i.created_at DESC LIMIT 50`,
+    lookup ? [vendor.id, lookup.value] : [vendor.id]
   );
   return NextResponse.json({ invoices: rows || [] });
 }

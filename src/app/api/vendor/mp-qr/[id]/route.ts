@@ -105,6 +105,21 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         } catch { /* columnas sin migrar */ }
       }
     }
+    // El webhook puede no llegar (polling): emitir acá también. El pre-check +
+    // UNIQUE de invoices evita duplicar si después llega el webhook.
+    if (row.order_id && !isPreview) {
+      try {
+        const { emitFiscalForOrder } = await import("@/lib/arca/emit-for-order");
+        await emitFiscalForOrder({
+          vendorId,
+          orderId: row.order_id,
+          total: row.amount,
+          requireAutoEmit: true,
+        });
+      } catch (e) {
+        console.warn("[mp-qr] fiscal automático falló:", (e as any)?.message);
+      }
+    }
     try {
       const v = await queryOne<{ user_id: string }>(
         `SELECT user_id FROM vendors WHERE id = $1 LIMIT 1`,

@@ -71,12 +71,24 @@ export async function POST(
     punto_venta: number | null;
     cbte_nro: number | null;
     created_at: string | null;
+    receptor_doc_tipo?: number | null;
+    receptor_doc_nro?: string | null;
   }>(
     `SELECT id, number, cae, cae_vto::text AS cae_expiry, pdf_url, total::numeric AS total,
-            cbte_tipo, punto_venta, cbte_nro, created_at::text AS created_at
+            cbte_tipo, punto_venta, cbte_nro, created_at::text AS created_at,
+            receptor_doc_tipo, receptor_doc_nro
      FROM invoices WHERE booking_id = $1 AND vendor_id = $2 LIMIT 1`,
     [id, vendor.id]
-  ).catch(() => null);
+  ).catch(async () =>
+    // migrate-fiscal-receptor.sql sin aplicar: igual compartimos el comprobante.
+    queryOne(
+      `SELECT id, number, cae, cae_vto::text AS cae_expiry, pdf_url, total::numeric AS total,
+              cbte_tipo, punto_venta, cbte_nro, created_at::text AS created_at,
+              NULL::integer AS receptor_doc_tipo, NULL::text AS receptor_doc_nro
+       FROM invoices WHERE booking_id = $1 AND vendor_id = $2 LIMIT 1`,
+      [id, vendor.id]
+    ).catch(() => null)
+  );
 
   const isFiscal = !!invoice && !!invoice.cae;
   const total = invoice?.total != null ? Number(invoice.total) : Number(booking.service_price || 0);
@@ -97,7 +109,17 @@ export async function POST(
       const cae = invoice.cae!;
       const fecha = invoice.created_at ? new Date(invoice.created_at) : new Date();
       const { buildQrUrl } = await import("@/lib/arca/qr");
-      qrData = buildQrUrl({ cuit, ptoVta, cbteTipo, cbteNro, importe, cae, fecha });
+      qrData = buildQrUrl({
+        cuit,
+        ptoVta,
+        cbteTipo,
+        cbteNro,
+        importe,
+        cae,
+        fecha,
+        receptorDocTipo: invoice.receptor_doc_tipo,
+        receptorDocNro: invoice.receptor_doc_nro,
+      });
     } catch {
       /* sin QR */
     }

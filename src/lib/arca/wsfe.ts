@@ -8,6 +8,7 @@
  * decimales; en C el neto = total (sin IVA discriminado).
  */
 import { ArcaError, dropWsaaTicket, getWsaaTicket, redactXml, type ArcaEnv } from "./wsaa";
+import { arYYYYMMDD } from "./fecha.ts";
 
 export const CBTE_FACTURA_C = 11;
 /** Nota de Crédito C (anulaciones/devoluciones, asociada a la factura). */
@@ -241,6 +242,40 @@ export async function ultimoAutorizado(
   });
 }
 
+/**
+ * Puntos de venta habilitados (FEParamGetPtosVenta). Solo lectura: se usa en
+ * `/fiscal/verify` para decirle al comercio qué números tiene disponibles
+ * cuando cargó uno que no existe. Nunca emite ni gasta numeración.
+ */
+export async function puntosVentaHabilitados(auth: WsfeAuth): Promise<number[]> {
+  return withTicket(auth, async (token, sign) => {
+    const body =
+      `<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" ` +
+      `><soap:Header/><soap:Body>` +
+      `<FEParamGetPtosVenta xmlns="http://ar.gov.afip.dif.FEV1/">${authBlock(token, sign, auth.cuit)}` +
+      `</FEParamGetPtosVenta></soap:Body></soap:Envelope>`;
+    const xml = await soapFetch(
+      WSFE_URL[auth.env],
+      body,
+      "http://ar.gov.afip.dif.FEV1/FEParamGetPtosVenta",
+      { retryNetwork: true }
+    );
+    const errs = parseArcaErrors(xml);
+    if (errs.length > 0) throw new ArcaError(`ARCA: ${errs[0].msg}`, `code ${errs[0].code}`);
+
+    const out: number[] = [];
+    const re = /<(?:(\w+):)?PtoVenta(?:\s[^>]*)?>[\s\S]*?<\/(?:\1:)?PtoVenta>/g;
+    for (const m of xml.matchAll(re)) {
+      const block = m[0];
+      // Con fecha de baja no habilita para emitir.
+      if (/<(?:(\w+):)?FechaBaja(?:\s[^>]*)?>[^<]+/.test(block)) continue;
+      const nro = block.match(/<(?:(\w+):)?Nro(?:\s[^>]*)?>\s*(\d+)/)?.[2];
+      if (nro && !out.includes(Number(nro))) out.push(Number(nro));
+    }
+    return out.sort((a, b) => a - b);
+  });
+}
+
 export type CbteAsociado = {
   tipo: number;
   ptoVta: number;
@@ -271,8 +306,7 @@ export type SolicitarCaeResult = {
 };
 
 const money = (n: number) => (Math.round(n * 100) / 100).toFixed(2);
-const yyyymmdd = (d: Date) =>
-  `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+const yyyymmdd = (d: Date) => arYYYYMMDD(d);
 
 /** Pide CAE para una Factura C concreta. Lanza ArcaError si es rechazada. */
 export async function solicitarCaeC(

@@ -2,6 +2,8 @@
  * QR fiscal ARCA (obligatorio en el comprobante).
  * Payload JSON → base64url → URL de verificación.
  */
+import { arFechaISO } from "./fecha.ts";
+
 export type QrPayload = {
   cuit: string;
   ptoVta: number;
@@ -10,14 +12,17 @@ export type QrPayload = {
   importe: number;
   cae: string;
   fecha: Date;
+  /** Receptor identificado. Default 99 / "0" = consumidor final. */
+  receptorDocTipo?: number | null;
+  receptorDocNro?: string | null;
 };
 
 export function buildQrPayload(p: QrPayload): Record<string, number | string> {
-  const d = p.fecha;
-  const fecha = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const tipoDocRec = Number(p.receptorDocTipo) || 99;
+  const docNro = String(p.receptorDocNro ?? "").replace(/\D/g, "");
   return {
     ver: 1,
-    fecha,
+    fecha: arFechaISO(p.fecha),
     cuit: Number(p.cuit.replace(/\D/g, "")),
     ptoVta: p.ptoVta,
     tipoCmp: p.cbteTipo,
@@ -25,8 +30,8 @@ export function buildQrPayload(p: QrPayload): Record<string, number | string> {
     importe: Math.round(p.importe * 100) / 100,
     moneda: "PES",
     ctz: 1,
-    tipoDocRec: 99,
-    nroDocRec: 0,
+    tipoDocRec,
+    nroDocRec: tipoDocRec === 99 ? 0 : Number(docNro || 0),
     tipoCodAut: "E",
     codAut: p.cae,
   };

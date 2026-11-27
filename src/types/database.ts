@@ -618,8 +618,8 @@ export type Vendor = {
   trial_ends_at: string | null;
   /** CUIT del comercio para facturación electrónica ARCA. NULL = sin fiscal. */
   cuit?: string | null;
-  /** Condición frente al IVA (v1: solo "monotributo" → Factura C). */
-  fiscal_cond_iva?: string | null;
+  /** Condición frente al IVA del emisor (solo etiqueta; v1 emite siempre Factura C). */
+  fiscal_cond_iva?: "monotributo" | "responsable_inscripto" | string | null;
   /** Punto de venta electrónico ARCA. NULL = sin configurar. */
   fiscal_punto_venta?: number | null;
   /** Certificado X.509 (PEM, CIFRADO en reposo). */

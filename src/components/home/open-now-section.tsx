@@ -22,16 +22,42 @@ export function OpenNowSection({ vendors, onlineByVendor }: { vendors: Vendor[];
     setReady(true);
   }, [vendors]);
 
-  if (!ready || open.length === 0) return null;
+  // El punto "live" se renderiza acá (no en SectionHeading) para poder darle
+  // la clase pv2-live-dot sin tocar el componente compartido.
+  const heading = (
+    <div className="flex items-center transition-all duration-300">
+      <span className="pv2-live-dot relative mr-1 flex h-2.5 w-2.5 flex-shrink-0" aria-hidden="true">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--pv2-accent)] opacity-60" />
+        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[var(--pv2-accent)]" />
+      </span>
+      <SectionHeading icon={Store} title="Abiertos ahora" description="Pedíles en este momento" />
+    </div>
+  );
+
+  if (!ready) {
+    return (
+      <section className="container mx-auto px-4 pb-10 sm:pb-12" id="abiertos" aria-busy="true">
+        {heading}
+        <HorizontalCarousel>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="min-w-[220px] max-w-[260px] snap-start">
+              <div className="pv2-card h-full p-4">
+                <div className="pv2-skeleton h-28 w-full" />
+                <div className="pv2-skeleton mt-3 h-4 w-4/5" />
+                <div className="pv2-skeleton mt-2 h-3 w-3/5" />
+              </div>
+            </div>
+          ))}
+        </HorizontalCarousel>
+      </section>
+    );
+  }
+
+  if (open.length === 0) return null;
 
   return (
     <section className="container mx-auto px-4 pb-10 sm:pb-12" id="abiertos">
-      <SectionHeading
-        icon={Store}
-        live
-        title="Abiertos ahora"
-        description="Pedíles en este momento"
-      />
+      {heading}
       <HorizontalCarousel>
         {open.map((v) => (
           <VendorCard

@@ -281,8 +281,37 @@ html:has(main.pv2) {
   border-top: 1px solid var(--pv2-line);
 }
 
-.pv2-nav-item { color: var(--pv2-muted); }
-.pv2-nav-item[data-active="true"] { color: var(--pv2-ink); }
+.pv2-nav-item { color: var(--pv2-muted); transition: color 200ms ease, transform 200ms ease; }
+.pv2-nav-item[data-active="true"] {
+  color: var(--pv2-ink);
+  transform: translateY(-2px);
+}
+
+/* --- Estados de carga y dinamismo -------------------------------------- */
+
+.pv2-skeleton {
+  border-radius: 16px;
+  background: linear-gradient(
+    100deg,
+    color-mix(in srgb, var(--pv2-muted) 8%, var(--pv2-surface)) 30%,
+    color-mix(in srgb, var(--pv2-muted) 18%, var(--pv2-surface)) 50%,
+    color-mix(in srgb, var(--pv2-muted) 8%, var(--pv2-surface)) 70%
+  );
+  background-size: 220% 100%;
+  animation: pv2-shimmer 1.4s linear infinite;
+}
+@keyframes pv2-shimmer {
+  from { background-position: 180% 0; }
+  to { background-position: -40% 0; }
+}
+
+.pv2-live-dot {
+  animation: pv2-live 1.8s ease-out infinite;
+}
+@keyframes pv2-live {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--pv2-accent) 55%, transparent); }
+  100% { box-shadow: 0 0 0 9px color-mix(in srgb, var(--pv2-accent) 0%, transparent); }
+}
 
 .pv2-cart-badge {
   background: var(--pv2-accent);

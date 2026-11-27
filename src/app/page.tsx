@@ -3,17 +3,16 @@ import { queryMany } from "@/lib/db";
 import { VERTICALS } from "@/lib/config";
 import { getZone } from "@/lib/zone";
 import { vendorSellsOnline, resolveVendorPlan } from "@/lib/plans";
-import { OfferCard } from "@/components/offers/offer-card";
-import { ServiceOfferCard } from "@/components/offers/service-offer-card";
 import { HorizontalCarousel } from "@/components/ui/horizontal-carousel";
 import { VendorCard } from "@/components/store/vendor-card";
 import { MostOrderedSection } from "@/components/home/most-ordered-section";
-import { OpenNowSection } from "@/components/home/open-now-section";
 import { BackButtonGuard } from "@/components/home/back-button-guard";
 import { SectionHeading } from "@/components/home/section-heading";
-import { VerticalIcon, verticalIconComponent } from "@/components/home/vertical-icon";
+import { VerticalIcon } from "@/components/home/vertical-icon";
+import { PromoCarousel } from "@/components/home/promo-carousel";
+import { DiscoveryGrid, type DiscoveryVendor } from "@/components/home/discovery-grid";
 import { fetchRankStats, rankVendors } from "@/lib/ranking";
-import { ArrowRight, CalendarDays, Compass, Flame, MapPin, Newspaper, Sparkles, TrendingUp } from "lucide-react";
+import { ArrowRight, CalendarDays, Compass, Flame, MapPin, Newspaper, TrendingUp } from "lucide-react";
 import { itemListJsonLd, organizationJsonLd, websiteJsonLd } from "@/lib/json-ld";
 import type { Vendor, Plan, Product } from "@/types/database";
 
@@ -184,6 +183,61 @@ export default async function HomePage() {
     barrioNews = [];
   }
 
+  const featuredIds = new Set(destacados.map((v) => v.id));
+  const discoveryVendors: DiscoveryVendor[] = (vendors || []).map((v) => ({
+    id: v.id,
+    slug: v.slug,
+    store_name: v.store_name,
+    image_url: v.image_url ?? null,
+    logo_url: v.logo_url ?? null,
+    description: v.description ?? null,
+    vertical: v.vertical ?? null,
+    hours: v.hours ?? null,
+    open_override: v.open_override ?? null,
+    acceptsCart: onlineByVendor[v.id] ?? null,
+    featured: featuredIds.has(v.id),
+  }));
+
+  const vendorById = new Map((vendors || []).map((v) => [v.id, v]));
+  const fallbackImage = featuredItems[0]?.data.image_url || (vendors || [])[0]?.image_url || null;
+
+  const promoSlides = [
+    {
+      title: "Lo mejor del barrio, en un solo lugar",
+      subtitle: "Pedí online o escribí por WhatsApp. 0% comisión.",
+      cta: "Ver ofertas",
+      href: "/buscar",
+      imageUrl: fallbackImage,
+      name: "Ofertas de Sicardi y Garibaldi",
+      vertical: null as string | null,
+    },
+    ...featuredItems.slice(0, 2).map((it) => {
+      const slug = it.data.vendors?.slug || "";
+      const vendor = vendorById.get(it.data.vendors?.id || "");
+      return {
+        title: it.data.name,
+        subtitle: it.data.vendors?.store_name || "",
+        cta: it.kind === "product" ? "Ver oferta" : "Reservar turno",
+        href:
+          it.kind === "product"
+            ? `/tienda/${slug}?menu=1&oferta=${it.id}`
+            : `/tienda/${slug}#reservar-turno`,
+        imageUrl: it.data.image_url || vendor?.image_url || null,
+        name: it.data.name,
+        vertical: it.data.vendors?.vertical || null,
+      };
+    }),
+    {
+      title: "Lo más pedido del barrio",
+      subtitle: "Lo que tus vecinos están comprando ahora",
+      cta: "Ver tendencias",
+      href: "#populares",
+      imageUrl: fallbackImage,
+      name: "Lo más pedido del barrio",
+      vertical: null as string | null,
+    },
+  ].slice(0, 4);
+
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.portal659.com.ar").replace(/\/$/, "");
   const jsonLd = [
     websiteJsonLd(siteUrl),
@@ -271,85 +325,32 @@ export default async function HomePage() {
         </HorizontalCarousel>
       </section>
 
-      {/* Banner de promociones (un solo banner, sin saturar) */}
-      <section className="container mx-auto px-4 pb-2">
-        <div className="pv2-card relative overflow-hidden bg-gradient-to-r from-[#eef0ff] to-[#f7fbe9] px-5 py-5 sm:px-7 sm:py-6">
-          <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-4">
-              <span className="pv2-section-icon h-12 w-12">
-                <Flame className="h-6 w-6" strokeWidth={1.8} aria-hidden="true" />
-              </span>
-              <div>
-                <h2 className="pv2-title text-lg sm:text-xl">Oferta de hoy</h2>
-                <p className="pv2-subtitle text-sm">
-                  Pediles directo a los comercios de tu barrio, sin vueltas.
-                </p>
-              </div>
-            </div>
-            <a href="#ofertas" className="pv2-btn pv2-btn-primary px-5 py-2.5 text-sm flex-shrink-0">
-              Ver ofertas
-              <ArrowRight className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
-            </a>
-          </div>
-        </div>
+      {/* Carrusel promocional animado: ofertas y sugerencias del día */}
+      <section className="container mx-auto px-4 py-8 sm:py-10 scroll-mt-20" id="ofertas">
+        <SectionHeading
+          icon={Flame}
+          eyebrow="Hoy"
+          title="Ofertas y sugerencias de hoy"
+          description={`Lo que los comercios de ${zone.name} te recomiendan ahora`}
+        />
+        <PromoCarousel slides={promoSlides} />
       </section>
 
-      {/* Abiertos ahora (cliente — zona horaria del usuario) */}
-      <OpenNowSection vendors={rankVendors(vendors || [], rankStats)} onlineByVendor={onlineByVendor} />
-
-      {/* Oferta de hoy (productos y servicios destacados, uno por comercio) */}
-      {featuredItems.length > 0 && (
-        <section className="container mx-auto px-4 py-10 sm:py-12 scroll-mt-20" id="ofertas">
-          <SectionHeading
-            icon={Flame}
-            eyebrow="Hoy"
-            title="La oferta de hoy"
-            description={`Lo que los comercios de ${zone.name} te recomiendan hoy`}
-          />
-          <HorizontalCarousel>
-            {featuredItems.map((it) =>
-              it.kind === "product" ? (
-                <div key={`p-${it.id}`} className="flex min-w-[280px] max-w-[320px] snap-start">
-                  <OfferCard
-                    name={it.data.name}
-                    description={it.data.description}
-                    price={Number(it.data.price)}
-                    promoPrice={it.data.promo_price != null ? Number(it.data.promo_price) : null}
-                    category={it.data.category}
-                    storeName={it.data.vendors?.store_name || ""}
-                    storeSlug={it.data.vendors?.slug || ""}
-                    offerId={it.data.id}
-                    featured
-                    imageUrl={it.data.image_url}
-                    vertical={it.data.vendors?.vertical || null}
-                  />
-                </div>
-              ) : (
-                <div key={`s-${it.id}`} className="flex min-w-[280px] max-w-[320px] snap-start">
-                  <ServiceOfferCard
-                    name={it.data.name}
-                    description={it.data.description}
-                    durationMin={it.data.duration_min != null ? Number(it.data.duration_min) : null}
-                    price={it.data.price != null ? Number(it.data.price) : null}
-                    priceFrom={it.data.price_from != null ? Number(it.data.price_from) : null}
-                    priceTo={it.data.price_to != null ? Number(it.data.price_to) : null}
-                    storeName={it.data.vendors?.store_name || ""}
-                    storeSlug={it.data.vendors?.slug || ""}
-                    imageUrl={it.data.image_url}
-                    featured
-                    vertical={it.data.vendors?.vertical || null}
-                  />
-                </div>
-              )
-            )}
-          </HorizontalCarousel>
-        </section>
-      )}
-
-      {/* Lo más pedido */}
+      {/* Lo más pedido (ranking animado) */}
       <div id="populares">
         <MostOrderedSection />
       </div>
+
+      {/* Cerca tuyo: feed único con filtros (reemplaza los carruseles por rubro) */}
+      <section className="container mx-auto px-4 py-10 sm:py-12 scroll-mt-20" id="abiertos">
+        <SectionHeading
+          icon={MapPin}
+          title="Cerca tuyo"
+          description={`Comercios, productos y servicios de ${zone.name}`}
+          count={discoveryVendors.length}
+        />
+        <DiscoveryGrid vendors={discoveryVendors} />
+      </section>
 
       {/* Servicios y profesionales */}
       {serviceProfessionals.length > 0 && (
@@ -379,71 +380,6 @@ export default async function HomePage() {
           </HorizontalCarousel>
         </section>
       )}
-
-      {/* Destacados del barrio */}
-      {destacados.length > 0 && (
-        <section className="container mx-auto px-4 py-10 sm:py-12 scroll-mt-20" id="destacados">
-          <SectionHeading
-            icon={Sparkles}
-            title="Destacados del barrio"
-            description={`Comercios que la comunidad elige en ${zone.name}`}
-          />
-          <HorizontalCarousel>
-            {destacados.map((v) => (
-              <VendorCard
-                key={v.id}
-                id={v.id}
-                slug={v.slug}
-                store_name={v.store_name}
-                image_url={v.image_url}
-                logo_url={v.logo_url}
-                description={v.description}
-                vertical={v.vertical}
-                hours={v.hours}
-                open_override={v.open_override ?? null}
-                acceptsCart={onlineByVendor[v.id] ?? null}
-              />
-            ))}
-          </HorizontalCarousel>
-        </section>
-      )}
-
-      {/* Comercios por vertical (oculta las secciones vacías) */}
-      {VERTICALS.map((vert) => {
-        const list = vendorsByVertical[vert.slug] || [];
-        if (list.length === 0) return null;
-        return (
-          <section
-            key={vert.slug}
-            className="container mx-auto px-4 py-10 sm:py-12 scroll-mt-20"
-            id={vert.slug}
-          >
-            <SectionHeading
-              icon={verticalIconComponent(vert.slug)}
-              title={vert.name}
-              description={vert.description}
-              count={list.length}
-            />
-            <HorizontalCarousel>
-              {list.map((v) => (
-                <VendorCard
-                  key={v.id}
-                  id={v.id}
-                  slug={v.slug}
-                  store_name={v.store_name}
-                  image_url={v.image_url}
-                  logo_url={v.logo_url}
-                  description={v.description}
-                  vertical={v.vertical}
-                  hours={v.hours}
-                  open_override={v.open_override ?? null}
-                  acceptsCart={onlineByVendor[v.id] ?? null}
-                />
-              ))}
-            </HorizontalCarousel>
-          </section>
-        );
-      })}
 
       {/* Novedades del barrio */}
       {barrioNews.length > 0 && (

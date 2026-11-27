@@ -15,6 +15,61 @@ type MostOrderedItem = {
   store_vertical: string;
 };
 
+/** Count-up corto y cleanup; el valor final y el texto los decide el caller. */
+function useCountUp(target: number) {
+  const [value, setValue] = useState(0);
+
+  useEffect(() => {
+    setValue(0);
+    if (target <= 0) return;
+
+    const step = Math.max(1, Math.ceil(target / 25));
+    let current = 0;
+    const timer = setInterval(() => {
+      current = Math.min(target, current + step);
+      setValue(current);
+      if (current >= target) clearInterval(timer);
+    }, 40);
+
+    return () => clearInterval(timer);
+  }, [target]);
+
+  return value;
+}
+
+function RankedCard({ item, index }: { item: MostOrderedItem; index: number }) {
+  const sold = useCountUp(item.total_qty);
+
+  return (
+    <Link
+      href={`/tienda/${item.store_slug}?menu=1&oferta=${encodeURIComponent(item.product_id)}`}
+      className="block min-w-[220px] max-w-[260px] snap-start group animate-fade-in-up"
+      style={{ animationDelay: `${index * 90}ms` }}
+    >
+      <div className="pv2-card h-full p-5">
+        <div className="mb-3 flex items-center gap-2">
+          <span className="pv2-chip">#{index + 1}</span>
+          <span className="pv2-section-icon h-8 w-8">
+            <Flame className="h-4 w-4 pv2-icon-accent" strokeWidth={1.8} aria-hidden="true" />
+          </span>
+          <span className="pv2-chip ml-auto whitespace-nowrap tabular-nums">
+            {sold} vendidos
+          </span>
+        </div>
+        <p className="pv2-title truncate text-sm leading-tight">
+          {item.product_name}
+        </p>
+        <p className="pv2-subtitle mt-1 truncate text-xs">
+          {item.store_name}
+        </p>
+        <p className="mt-3 text-xs font-medium text-muted-foreground">
+          Ver tienda →
+        </p>
+      </div>
+    </Link>
+  );
+}
+
 export function MostOrderedSection() {
   const [items, setItems] = useState<MostOrderedItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,41 +84,46 @@ export function MostOrderedSection() {
       .catch(() => setLoading(false));
   }, []);
 
-  if (loading || items.length === 0) return null;
+  const heading = (
+    <SectionHeading
+      icon={TrendingUp}
+      eyebrow="Popular"
+      title="Lo más pedido del barrio"
+      description="Lo que más pidieron en los últimos 7 días"
+    />
+  );
+
+  if (loading) {
+    return (
+      <section className="container mx-auto px-4 py-10 sm:py-12" aria-busy="true">
+        {heading}
+        <HorizontalCarousel>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="min-w-[220px] max-w-[260px] snap-start">
+              <div className="pv2-card h-full p-5">
+                <div className="mb-3 flex items-center gap-2">
+                  <span className="pv2-skeleton h-8 w-8" />
+                  <span className="pv2-skeleton h-5 w-16" />
+                </div>
+                <div className="pv2-skeleton h-4 w-4/5" />
+                <div className="pv2-skeleton mt-2 h-3 w-3/5" />
+                <div className="pv2-skeleton mt-3 h-3 w-24" />
+              </div>
+            </div>
+          ))}
+        </HorizontalCarousel>
+      </section>
+    );
+  }
+
+  if (items.length === 0) return null;
 
   return (
     <section className="container mx-auto px-4 py-10 sm:py-12">
-      <SectionHeading
-        icon={TrendingUp}
-        eyebrow="Popular"
-        title="Lo más pedido del barrio"
-        description="Lo que más pidieron en los últimos 7 días"
-      />
+      {heading}
       <HorizontalCarousel>
-        {items.map((item) => (
-          <Link
-            key={item.product_id}
-            href={`/tienda/${item.store_slug}?menu=1&oferta=${encodeURIComponent(item.product_id)}`}
-            className="min-w-[220px] max-w-[260px] snap-start block group"
-          >
-            <div className="pv2-card h-full p-5">
-              <div className="mb-3 flex items-center gap-2">
-                <span className="pv2-section-icon h-8 w-8">
-                  <Flame className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
-                </span>
-                <span className="pv2-chip">{item.total_qty} vendidos</span>
-              </div>
-              <p className="pv2-title truncate text-sm leading-tight">
-                {item.product_name}
-              </p>
-              <p className="pv2-subtitle mt-1 truncate text-xs">
-                {item.store_name}
-              </p>
-              <p className="mt-3 text-xs font-medium text-muted-foreground">
-                Ver tienda →
-              </p>
-            </div>
-          </Link>
+        {items.map((item, index) => (
+          <RankedCard key={item.product_id} item={item} index={index} />
         ))}
       </HorizontalCarousel>
     </section>

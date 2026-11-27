@@ -4173,6 +4173,21 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp, age
     function stem(w) {
       return w.replace(/(es|s)$/i, "");
     }
+    // Búsqueda estricta: antes "me" matcheaba "indumentaria" por substring y
+    // el bot largaba todo el catálogo como si fuera esa categoría.
+    const SEARCH_STOP = new Set([
+      "hola", "holaa", "buenas", "buenos", "me", "mi", "un", "una", "uno", "unos", "unas",
+      "el", "la", "los", "las", "de", "del", "y", "o", "que", "quiero", "gusto", "gusta",
+      "comprar", "pedir", "algo", "por", "favor", "tengo", "hay", "tenes", "necesito",
+    ]);
+    function searchTokens(s) {
+      return norm(s).split(" ").filter(Boolean).map(stem)
+        .filter((q) => q.length >= 3 && !SEARCH_STOP.has(q));
+    }
+    function tokenHit(q, text) {
+      const tokens = norm(text).split(" ").filter(Boolean).map(stem);
+      return tokens.some((p) => p === q || (q.length >= 4 && p.startsWith(q)) || (p.length >= 4 && q.startsWith(p)));
+    }
 
     // 1b) Selección por NOMBRE de comercio: si el texto menciona el nombre de
     //     un comercio de la lista mostrada (o de la zona), entrar directo sin
@@ -4224,15 +4239,12 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp, age
     // Filtrar por texto si hay búsqueda (sobre el menú completo, en cliente).
     let matches = [];
     if (text.length > 2 && !/^(hola|buenas|buenos|chau|adios|gracias|ok|si|no|cancelar|ayuda|menu|menú|comercios)$/i.test(text.trim())) {
-      const t = norm(text);
-      const qTokens = t.split(" ").filter(Boolean).map(stem);
+      const qTokens = searchTokens(text);
       for (const v of vendorsWithProducts) {
         for (const p of v.products || []) {
-          const pn = norm(p.name);
-          const cn = norm(p.category);
-          const pTokens = pn.split(" ").filter(Boolean).map(stem);
-          // match si algún token de la búsqueda está en el nombre/categoría (o viceversa)
-          const hit = qTokens.some((qt) => pTokens.some((pt) => pt === qt || pt.includes(qt) || qt.includes(pt)) || cn.includes(qt) || qt.includes(cn));
+          // Coincidencia por PALABRA (no substring suelto): "me" no debe
+          // encontrar "MEGA" ni "indumentaria".
+          const hit = qTokens.some((qt) => tokenHit(qt, p.name) || tokenHit(qt, p.category));
           if (hit) matches.push({ vendor: v, product: p });
         }
       }
@@ -4256,11 +4268,12 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp, age
       });
       // Detectar si la búsqueda fue por categoría (el texto coincide con una
       // categoría existente) para mostrar un encabezado más claro.
-      const t = norm(text);
-      const qTokens = t.split(" ").filter(Boolean).map(stem);
+      const qTokens = searchTokens(text);
       const allCategories = new Set();
       for (const v of vendorsWithProducts) for (const p of v.products || []) if (p.category) allCategories.add(norm(p.category));
-      const categoryMatch = [...allCategories].find((c) => qTokens.some((qt) => c === qt || c.includes(qt) || qt.includes(c)));
+      const categoryMatch = [...allCategories].find((c) =>
+        qTokens.some((qt) => c === qt || (qt.length >= 4 && c.startsWith(qt)) || tokenHit(qt, c))
+      );
       if (!state.welcomed) {
         const _greetName = state.customerName ? ` ${state.customerName}` : "";
         const _lastOrderHint = state._lastOrder ? `\n¿El pedido de siempre? (${state._lastOrder.storeName}: ${state._lastOrder.pickupNumber ? "Nro. " + state._lastOrder.pickupNumber : ""}) o ¿algo diferente?` : "";

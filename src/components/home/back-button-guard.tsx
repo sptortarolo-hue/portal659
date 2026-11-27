@@ -14,6 +14,11 @@ export function BackButtonGuard() {
     window.history.pushState({ backButtonGuard: true }, "");
 
     const onPopState = () => {
+      // Los links internos con #ancla (Oferta de hoy, Lo más pedido, etc.)
+      // generan un popstate de mismo documento. No es una salida: no
+      // confirmamos ni re-empujamos estado, para no trabar el botón Atrás.
+      if (window.location.hash) return;
+
       const ok = window.confirm("¿Querés salir de la app?");
       if (ok) {
         // Permitir la salida: no re-empujar estado

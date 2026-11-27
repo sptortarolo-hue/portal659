@@ -12,7 +12,7 @@ import { SectionHeading } from "@/components/home/section-heading";
 import { VerticalIcon, verticalIconComponent } from "@/components/home/vertical-icon";
 import { SplitOffersSection, type FeaturedOfferItem } from "@/components/home/split-offers";
 import { fetchRankStats, rankVendors } from "@/lib/ranking";
-import { ArrowRight, CalendarDays, Compass, Flame, MapPin, Newspaper, Sparkles, TrendingUp } from "lucide-react";
+import { ArrowRight, CalendarDays, ChevronDown, Compass, Flame, LayoutGrid, MapPin, Newspaper, Sparkles, TrendingUp } from "lucide-react";
 import { itemListJsonLd, organizationJsonLd, websiteJsonLd } from "@/lib/json-ld";
 import type { Vendor, Plan, Product } from "@/types/database";
 
@@ -228,7 +228,7 @@ export default async function HomePage() {
       />
       {/* Hero corto: buscador + zona (solo cambia el diseño) */}
       <section className="pv2-hero relative overflow-hidden">
-        <div className="container mx-auto px-4 pt-10 pb-10 sm:pt-14 sm:pb-14 relative">
+        <div className="container mx-auto px-4 pt-10 pb-6 sm:pt-14 sm:pb-8 relative">
           <p className="pv2-eyebrow mb-3 inline-flex items-center gap-1.5">
             <MapPin className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
             {zone.name} · 0% comisión
@@ -267,16 +267,27 @@ export default async function HomePage() {
               <TrendingUp className="h-3.5 w-3.5 pv2-icon-accent" strokeWidth={2} aria-hidden="true" />
               Lo más pedido
             </a>
+            <a href="#categorias" className="pv2-pill inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold">
+              <LayoutGrid className="h-3.5 w-3.5 pv2-icon-accent" strokeWidth={2} aria-hidden="true" />
+              Categorías
+            </a>
             <Link href="/buscar" className="pv2-pill inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold">
               <Compass className="h-3.5 w-3.5 pv2-icon-accent" strokeWidth={2} aria-hidden="true" />
               Ver todo
             </Link>
           </div>
+
+          {/* Pista de scroll: el contenido continúa justo debajo */}
+          <a href="#categorias" className="pv2-scroll-cue mt-4 inline-flex items-center gap-2 text-xs font-semibold">
+            Deslizá para descubrir
+            <ChevronDown className="pv2-scroll-chevron h-4 w-4" strokeWidth={2} aria-hidden="true" />
+          </a>
         </div>
       </section>
 
       {/* Categorías: carrusel de píldoras con íconos vectoriales */}
-      <section className="container mx-auto px-4 py-10 sm:py-12" id="categorias">
+      <section className="container mx-auto px-4 pt-6 pb-10 sm:pt-8 sm:pb-12" id="categorias">
+        <div className="pv2-connector mb-5" aria-hidden="true" />
         <HorizontalCarousel>
           {VERTICALS.map((vert, i) => (
             <Link

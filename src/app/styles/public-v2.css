@@ -323,6 +323,34 @@ html:has(main.pv2) {
   to { transform: scale(1.34); }
 }
 
+/* --- Pista de scroll / continuidad entre hero y categorías --------------- */
+
+.pv2-scroll-cue {
+  color: var(--pv2-ink);
+  text-decoration: none;
+  transition: color 200ms ease, gap 200ms ease;
+}
+.pv2-scroll-cue:hover { color: var(--pv2-accent-hover); gap: 0.65rem; }
+
+.pv2-scroll-chevron {
+  animation: pv2-bob 1.8s ease-in-out infinite;
+}
+@keyframes pv2-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(5px); }
+}
+
+.pv2-connector {
+  height: 2px;
+  width: 56px;
+  border-radius: 9999px;
+  background: var(--pv2-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pv2-scroll-chevron { animation: none; }
+}
+
 .pv2-cart-badge {
   background: var(--pv2-accent);
   color: var(--pv2-ink-strong);

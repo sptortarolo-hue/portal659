@@ -157,7 +157,7 @@ export default function RootLayout({
             // Sin esto, al refrescar repintan después (parpadeo). Las metas
             // con media ya cubren el caso por defecto sin JS; acá se corrige
             // la preferencia guardada. ThemeColorSync mantiene runtime.
-            __html: `(function(){try{var t=localStorage.getItem("portal659-theme-v2");var d=t==="dark"||(t==="system"&&matchMedia("(prefers-color-scheme: dark)").matches)||(!t&&matchMedia("(min-width: 1024px)").matches);if(d)document.documentElement.classList.add("dark");var bar=d?"#000000":"#ffffff";var bg=d?"#0f1117":"#ffffff";var ms=document.querySelectorAll('meta[name="theme-color"]');for(var i=0;i<ms.length;i++)ms[i].setAttribute("content",bar);document.documentElement.style.backgroundColor=bg}catch(e){}})()`,
+            __html: `(function(){try{var t=localStorage.getItem("portal659-theme-v2");var d=t==="dark"||(t==="system"&&matchMedia("(prefers-color-scheme: dark)").matches);if(d)document.documentElement.classList.add("dark");var bar=d?"#000000":"#ffffff";var bg=d?"#0b1020":"#eef0ff";var ms=document.querySelectorAll('meta[name="theme-color"]');for(var i=0;i<ms.length;i++)ms[i].setAttribute("content",bar);document.documentElement.style.backgroundColor=bg}catch(e){}})()`,
           }}
         />
       </head>

@@ -5,8 +5,6 @@ import { createContext, useContext, useEffect, useState } from "react";
 type Theme = "light" | "dark" | "system";
 
 const STORAGE_KEY = "portal659-theme-v2";
-// Breakpoint desktop (lg de Tailwind): a partir de acá el default es oscuro.
-const DESKTOP_QUERY = "(min-width: 1024px)";
 
 const ThemeContext = createContext<{
   theme: Theme;
@@ -29,10 +27,9 @@ function getSystemTheme(): "light" | "dark" {
     : "light";
 }
 
-/** Default por viewport: desktop oscuro, mobile claro. */
+/** Default del sitio: claro. El oscuro solo se aplica si el usuario lo elige. */
 function getViewportTheme(): "light" | "dark" {
-  if (typeof window === "undefined") return "light";
-  return window.matchMedia(DESKTOP_QUERY).matches ? "dark" : "light";
+  return "light";
 }
 
 function getStored(): Theme | null {
@@ -72,20 +69,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setResolved(r);
     applyResolved(r);
   }, [theme, mounted]);
-
-  // Mientras no haya elección explícita, el tema sigue al viewport
-  // (rotar tablet, redimensionar ventana, devtools mobile/desktop).
-  useEffect(() => {
-    if (!mounted) return;
-    const mq = window.matchMedia(DESKTOP_QUERY);
-    const onViewport = () => {
-      if (!getStored()) {
-        setThemeState(getViewportTheme());
-      }
-    };
-    mq.addEventListener("change", onViewport);
-    return () => mq.removeEventListener("change", onViewport);
-  }, [mounted]);
 
   useEffect(() => {
     if (!mounted) return;

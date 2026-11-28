@@ -32,15 +32,34 @@
   color: var(--pv2-ink);
 }
 
-/* El fondo gris es del CONTENIDO; el chrome (nav/footer/carrito) sigue blanco. */
+/* Modo oscuro: misma jerarquía, superficies elevadas y acento lima. */
+html.dark .pv2 {
+  --pv2-bg: #0b1020;
+  --pv2-surface: #151b2e;
+  --pv2-ink: #a5b4fc;
+  --pv2-ink-strong: #eef2ff;
+  --pv2-muted: #94a3b8;
+  --pv2-line: #2a3350;
+  --pv2-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  --pv2-shadow-hover: 0 12px 32px rgba(0, 0, 0, 0.5);
+
+  --color-background: var(--pv2-bg);
+  --color-card: var(--pv2-surface);
+  --color-foreground: var(--pv2-ink-strong);
+  --color-muted: #1e2740;
+  --color-muted-foreground: var(--pv2-muted);
+  --color-border: var(--pv2-line);
+  --color-input: var(--pv2-line);
+  --color-ink: var(--pv2-ink-strong);
+  --color-accent: #1f2a12;
+}
+
+/* El fondo del documento depende del tema elegido por el usuario. */
 main.pv2 { background: var(--pv2-bg); }
 body:has(main.pv2) { background: #eef0ff; }
-
-/* El sistema público v2 es SIEMPRE claro (paleta de marca 60-30-10), inclusive
-   si el tema heredado del sitio está en oscuro. El panel/admin conserva su tema. */
-html:has(main.pv2) {
-  background: #eef0ff !important;
-}
+html.dark body:has(main.pv2) { background: #0b1020; }
+html:has(main.pv2):not(.dark) { background: #eef0ff !important; }
+html.dark:has(main.pv2) { background: #0b1020 !important; }
 
 /* --- Superficies y tipografía ------------------------------------------- */
 
@@ -383,3 +402,13 @@ html:has(main.pv2) {
 @media (prefers-reduced-motion: reduce) {
   .pv2, .pv2-card, .pv2-pill, .pv2-btn { transition: none; }
 }
+
+/* --- Ajustes puntuales del modo oscuro ---------------------------------- */
+
+html.dark .pv2-hero {
+  background: linear-gradient(180deg, #151b2e 0%, var(--pv2-bg) 100%);
+}
+html.dark .pv2-badge-closed { background: #25304a; color: #cbd5e1; }
+html.dark .pv2-bottom-nav { background: rgba(21, 27, 46, 0.9); }
+html.dark .pv2-search input::placeholder { color: #64748b; }
+

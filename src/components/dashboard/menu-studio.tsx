@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { PhotoPicker } from "@/components/ui/photo-picker";
 import { Modal } from "@/components/ui/modal";
 import { StickerPanel } from "@/components/dashboard/sticker-issuer";
+import { GondolaA4Panel } from "@/components/dashboard/gondola-a4-panel";
 import { readLabelPrinterConfig } from "@/lib/label-spec";
 import {
   OfferForm,
@@ -51,6 +52,8 @@ import { PlanLock } from "@/components/vendor/plan-lock";
 import type { Ingredient, Recipe, RecipeItem } from "@/types/database";
 
 type MenuCategory = { id: string; name: string; position: number };
+/** Solapas del modal de etiquetas. `a4` es solo PDF (nunca imprime en térmica). */
+type LabelsTab = "gondola" | "adhesiva" | "a4";
 
 type Offer = {
   id: string;
@@ -303,14 +306,15 @@ export function MenuStudio({
   // Etiquetas de góndola (requiere impresora + SKU en el producto).
   const [showLabels, setShowLabels] = useState(false);
   const LABELS_TAB_KEY = "portal659-labels-tab";
-  const [labelsTab, setLabelsTab] = useState<"gondola" | "adhesiva">(() => {
+  const [labelsTab, setLabelsTab] = useState<LabelsTab>(() => {
     try {
-      return localStorage.getItem(LABELS_TAB_KEY) === "adhesiva" ? "adhesiva" : "gondola";
+      const saved = localStorage.getItem(LABELS_TAB_KEY);
+      return saved === "adhesiva" || saved === "a4" ? saved : "gondola";
     } catch {
       return "gondola";
     }
   });
-  const pickLabelsTab = useCallback((tab: "gondola" | "adhesiva") => {
+  const pickLabelsTab = useCallback((tab: LabelsTab) => {
     setLabelsTab(tab);
     try {
       localStorage.setItem(LABELS_TAB_KEY, tab);
@@ -1909,9 +1913,9 @@ export function MenuStudio({
         open={showLabels}
         onClose={() => setShowLabels(false)}
         title="Etiquetas"
-        size={labelsTab === "adhesiva" ? "lg" : "md"}
+        size={labelsTab === "gondola" ? "md" : "lg"}
         footer={
-          labelsTab === "adhesiva" ? undefined : (
+          labelsTab === "gondola" ? (
           <>
             <Button
               type="button"
@@ -1954,10 +1958,10 @@ export function MenuStudio({
               Cancelar
             </Button>
           </>
-          )
+          ) : undefined
         }
       >
-        {/* Solapas del modal: góndola (térmica, como siempre) | adhesiva (PL-500) */}
+        {/* Solapas: góndola (térmica) | adhesiva (PL-500) | A4 (solo PDF) */}
         <div className="mb-3 flex flex-wrap gap-2">
           <button
             type="button"
@@ -1980,6 +1984,17 @@ export function MenuStudio({
             }`}
           >
             📦 Adhesiva (PL-500)
+          </button>
+          <button
+            type="button"
+            onClick={() => pickLabelsTab("a4")}
+            className={`h-9 px-4 rounded-md border text-sm font-medium transition-colors ${
+              labelsTab === "a4"
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border hover:bg-accent"
+            }`}
+          >
+            🗂️ A4 (hoja PDF)
           </button>
         </div>
 
@@ -2048,6 +2063,8 @@ export function MenuStudio({
             Logo + nombre + precio (con promo) + código de barras. Usá papel de etiquetas (no el rollo de tickets).
           </p>
         </div>
+        ) : labelsTab === "a4" ? (
+          <GondolaA4Panel offers={offers} />
         ) : labelPrinterReady ? (
           <StickerPanel vendor={vendor} offers={offers} />
         ) : (

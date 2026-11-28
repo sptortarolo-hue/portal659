@@ -6,6 +6,7 @@ import AdminSidebar from "@/components/admin/admin-sidebar";
 import AdminBottomNav from "@/components/admin/admin-bottom-nav";
 import { Menu, X } from "lucide-react";
 import Link from "next/link";
+import { SupportButton } from "@/components/panel/support-button";
 
 // El HTML del admin no debe cachearse (ni Next ni CDN): referencia hashes de
 // chunks que rotan en cada deploy; un HTML viejo = ChunkLoadError permanente.
@@ -50,6 +51,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               Panel Admin
             </Link>
             <div className="flex-1" />
+            <SupportButton area="admin" />
             <Link
               href="/"
               className="text-sm text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"

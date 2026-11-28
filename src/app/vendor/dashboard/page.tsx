@@ -54,6 +54,7 @@ import VendorSidebar from "@/components/vendor/vendor-sidebar";
 import { configSectionStatus as getConfigSectionStatus, sectionsForVertical, CONFIG_SECTION_GROUPS, configSectionLabel, configSectionIcon } from "@/components/dashboard/config-nav";
 import { StatusDot, configEnterState } from "@/components/dashboard/config-sections";
 import { NotificationBell } from "@/components/nav/notification-bell";
+import { SupportButton } from "@/components/panel/support-button";
 import { UserMenu } from "@/components/nav/user-menu";
 import { DashboardHome } from "@/components/dashboard/dashboard-home";
 import { VendorBotCard } from "@/components/dashboard/vendor-bot-card";
@@ -2001,6 +2002,7 @@ function VendorDashboardInner() {
                 <Share className="h-4 w-4 sm:mr-1.5" />
                 <span className="hidden sm:inline">Compartir</span>
               </Button>
+              <SupportButton area="vendor" />
               <div className="hidden lg:flex items-center gap-1 flex-shrink-0">
                 <NotificationBell />
                 <UserMenu />

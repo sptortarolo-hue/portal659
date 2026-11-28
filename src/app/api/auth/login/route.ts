@@ -49,7 +49,7 @@ export const POST = withRateLimit(async (request: Request) => {
         is_admin: boolean;
         totp_enabled: boolean;
       }>(
-        `SELECT id, email, full_name, role, password_hash, email_confirmed, token_version, is_admin, COALESCE(totp_enabled, false) AS totp_enabled FROM profiles'
+        `SELECT id, email, full_name, role, password_hash, email_confirmed, token_version, is_admin, COALESCE(totp_enabled, false) AS totp_enabled FROM profiles
          WHERE regexp_replace(whatsapp, '[^0-9]', '', 'g') = ANY($1)
             OR regexp_replace(phone, '[^0-9]', '', 'g') = ANY($1)
          LIMIT 1`,
@@ -59,6 +59,17 @@ export const POST = withRateLimit(async (request: Request) => {
   }
 
   if (!user || !user.password_hash) {
+    // Cuenta creada solo con Google (password_hash vacío): en vez de un
+    // "credenciales inválidas" que no explica nada, se le indica el botón.
+    if (user && !user.password_hash && (await usesGoogleLogin(user.id))) {
+      return NextResponse.json(
+        {
+          error: "google_account",
+          message: 'Esta cuenta usa Google. Entrá con "Continuar con Google".',
+        },
+        { status: 401 }
+      );
+    }
     return NextResponse.json({ error: "Credenciales inválidas" }, { status: 401 });
   }
 
@@ -114,3 +125,28 @@ export const POST = withRateLimit(async (request: Request) => {
 
   return response;
 }, { maxRequests: 15 });
+
+/**
+ * ¿La cuenta está vinculada a Google? Se consulta solo cuando el perfil no
+ * tiene contraseña, para devolver un mensaje útil en vez de "credenciales
+ * inválidas". Tolerante a migración pendiente: sin la columna `google_sub`
+ * devuelve false y el login sigue igual.
+ */
+async function usesGoogleLogin(userId: string): Promise<boolean> {
+  try {
+    const column = await queryOne<{ e: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'google_sub'
+       ) AS e`
+    );
+    if (column?.e !== true) return false;
+    const row = await queryOne<{ google_sub: string | null }>(
+      `SELECT google_sub FROM profiles WHERE id = $1`,
+      [userId]
+    );
+    return Boolean(row?.google_sub);
+  } catch {
+    return false;
+  }
+}

@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Logo } from "@/components/brand/logo";
+import { GoogleButton } from "@/components/auth/google-button";
 import { checkArgPhone, toE164Plus } from "@/lib/phone";
 
 function RegistroForm() {
@@ -90,6 +91,14 @@ function RegistroForm() {
         <p className="text-muted-foreground mt-2 text-center">
           Guardá favoritos, tus datos de contacto e historial de pedidos en Portal 659
         </p>
+      </div>
+
+      <div className="mb-6">
+        <GoogleButton
+          next={next}
+          label="Crear cuenta con Google"
+          hint="Usamos tu nombre y email de Google. Después podés agregar tu WhatsApp en Mi perfil."
+        />
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">

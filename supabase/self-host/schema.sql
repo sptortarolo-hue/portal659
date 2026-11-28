@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS profiles (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   email text UNIQUE NOT NULL,
   password_hash text NOT NULL DEFAULT '',
+  -- Login con Google: claim `sub` de Google (NULL = sin vincular).
+  google_sub text,
   reset_token_hash text,
   reset_token_expires timestamptz,
   magic_token_hash text,
@@ -29,6 +31,11 @@ CREATE TABLE IF NOT EXISTS profiles (
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
+
+-- Un perfil por cuenta de Google (los no vinculados quedan NULL).
+CREATE UNIQUE INDEX IF NOT EXISTS profiles_google_sub_key
+  ON profiles (google_sub)
+  WHERE google_sub IS NOT NULL;
 
 -- ============================================================
 -- 001_init.sql (sin FK a auth.users ni políticas RLS)

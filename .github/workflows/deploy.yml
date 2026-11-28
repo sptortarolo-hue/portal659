@@ -96,6 +96,18 @@ jobs:
             # escribe nada: el meta no sale y el share funciona igual.
             FB_APP_ID_VAL='${{ secrets.FB_APP_ID }}'
             if [ -n "$FB_APP_ID_VAL" ]; then echo "FB_APP_ID=$FB_APP_ID_VAL" >> /opt/portal659/.env; fi
+            # Login con Google (OAuth 2.0): si los secrets no existen se omiten
+            # las líneas y el botón se oculta solo (el resto del sitio funciona
+            # igual). GOOGLE_REDIRECT_URI es opcional: por defecto se deriva de
+            # NEXT_PUBLIC_SITE_URL (/api/auth/google/callback).
+            GOOGLE_ID='${{ secrets.GOOGLE_CLIENT_ID }}'
+            GOOGLE_SECRET='${{ secrets.GOOGLE_CLIENT_SECRET }}'
+            GOOGLE_REDIRECT='${{ secrets.GOOGLE_REDIRECT_URI }}'
+            if [ -n "$GOOGLE_ID" ] && [ -n "$GOOGLE_SECRET" ]; then
+              echo "GOOGLE_CLIENT_ID=$GOOGLE_ID" >> /opt/portal659/.env
+              echo "GOOGLE_CLIENT_SECRET=$GOOGLE_SECRET" >> /opt/portal659/.env
+              if [ -n "$GOOGLE_REDIRECT" ]; then echo "GOOGLE_REDIRECT_URI=$GOOGLE_REDIRECT" >> /opt/portal659/.env; fi
+            fi
             # Alertas del monitor de salud (Telegram). Si los secrets no están
             # se saltea la escritura: el monitor funciona igual y sólo no avisa
             # por el chat (fail-open, mismo criterio que el resto).

@@ -7,7 +7,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Logo } from "@/components/brand/logo";
+import { GoogleButton } from "@/components/auth/google-button";
 import { checkArgPhone } from "@/lib/phone";
+
+// Errores del callback de Google (?error=...) traducidos a mensajes humanos.
+const GOOGLE_ERRORS: Record<string, string> = {
+  google_disabled: "El ingreso con Google no está disponible en este momento.",
+  google_cancelled: "Cancelaste el ingreso con Google.",
+  google_state: "La sesión de Google expiró. Probá de nuevo.",
+  google_exchange: "No pudimos completar el ingreso con Google. Probá de nuevo.",
+  google_token: "No pudimos verificar tu cuenta de Google. Probá de nuevo.",
+  google_conflict: "Ese email ya está vinculado a otra cuenta de Google. Entrá con tu contraseña.",
+  google_staff: "Las cuentas del equipo del local entran con usuario y contraseña (\"Soy del equipo\"), no con Google.",
+  google_migration: "El ingreso con Google todavía no está habilitado en el servidor.",
+  google_error: "No pudimos completar el ingreso con Google. Probá de nuevo.",
+};
 
 function LoginForm() {
   const router = useRouter();
@@ -35,11 +49,14 @@ function LoginForm() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const errorCode = params.get("error") || "";
     if (params.get("verified") === "1") {
       setVerified(true);
       setMessage("Email verificado. Ya podés iniciar sesión.");
-    } else if (params.get("error") === "invalid_confirmation") {
+    } else if (errorCode === "invalid_confirmation") {
       setMessage("El enlace de confirmación es inválido o expiró.");
+    } else if (GOOGLE_ERRORS[errorCode]) {
+      setMessage(GOOGLE_ERRORS[errorCode]);
     }
     const tienda = params.get("tienda");
     if (tienda) {
@@ -116,7 +133,7 @@ function LoginForm() {
         setNeedsConfirmation(true);
         setMessage(data.message || "Confirmá tu email para poder iniciar sesión.");
       } else {
-        setMessage(data.error || "Error al iniciar sesión");
+        setMessage(data.message || data.error || "Error al iniciar sesión");
       }
     } else if (data.need2fa && data.pendingToken) {
       // Desafío 2FA: no hay sesión todavía, pedimos el código TOTP.
@@ -269,6 +286,10 @@ function LoginForm() {
       </form>
       ) : mode === "equipo" ? (
       <form onSubmit={handleTeamLogin} className="space-y-4">
+        <p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          Si trabajás en un comercio (caja, cocina, mostrador) entrá con el usuario que te dio el
+          dueño. Google es solo para cuentas personales y dueños de comercio.
+        </p>
         <div>
           <Label htmlFor="store">Comercio</Label>
           <div className="relative">
@@ -336,7 +357,14 @@ function LoginForm() {
         </Button>
       </form>
       ) : (
-      <form onSubmit={handleLogin} className="space-y-4">
+      <>
+        <div className="mb-6">
+          <GoogleButton
+            next={next}
+            hint="Si tu comercio ya está en Portal 659 con este email, entrás directo a tu panel."
+          />
+        </div>
+        <form onSubmit={handleLogin} className="space-y-4">
         <div>
           <Label htmlFor="email">Correo electrónico o WhatsApp</Label>
           <Input
@@ -387,7 +415,8 @@ function LoginForm() {
         <Button type="submit" className="w-full" disabled={loading}>
           {loading ? "Iniciando sesión..." : "Iniciar sesión"}
         </Button>
-      </form>
+        </form>
+      </>
       )}
     </main>
   );

@@ -19,6 +19,10 @@ const MENU = { vendors: [
   V("leo", "Leo y Mari", [
     { id: "mila", name: "Milanesa Monstruo", price: 37000, category: "Especialidad" },
     { id: "media", name: "Media Mila Monstruo", price: 24000, category: "Especialidad" },
+    { id: "sandwich", name: "Sándwich Milanesa Sola", price: 10000, category: "Especialidad" },
+  ]),
+  V("yema", "YEMA", [
+    { id: "adobo", name: "Adobo para Pizza 100gr", price: 1100, category: "Condimentos" },
   ]),
   V("gráfica", "Soluciones Gráficas SD", [
     { id: "remera", name: "Remeras estampadas", price: 25000, category: "Indumentaria" },
@@ -62,6 +66,12 @@ ok("no arrastra Azahar", !/Azahar/.test(t));
 t = await turn("indumentaria");
 console.log("----- categoría -----\n" + t + "\n");
 ok("búsqueda explícita por categoría encuentra la tienda de moda", /Soluciones Gráficas/.test(t) && !/Milanesa Monstruo/.test(t));
+
+t = await turn("Sandwich de Milanesa sola y media milanesa monstruo");
+console.log("----- frase del playground -----\n" + t + "\n");
+ok("'y' no selecciona YEMA", !/YEMA/.test(t));
+ok("no entra a un comercio cerrado por un match débil", !/está cerrado ahora/.test(t));
+ok("sigue en la lista de comercios por producto", /Encontré en estos comercios/.test(t) && /Leo y Mari/.test(t));
 
 console.log(`\n=== PORTAL SEARCH: ${fails === 0 ? "TODO OK" : `${fails} FALLAS`} ===`);
 process.exit(fails ? 1 : 0);

@@ -4193,18 +4193,19 @@ async function handlePortalInbound({ vendor, waId, body, waPhone, timestamp, age
     //     un comercio de la lista mostrada (o de la zona), entrar directo sin
     //     pedir el número ("pedir de Azahar" → entra a Azahar).
     if (text.length >= 3 && !/^(hola|buenas|buenos|chau|adios|gracias|ok|si|no|cancelar|ayuda|menu|menú|comercios)$/i.test(text.trim())) {
-      const tn = norm(text);
-      const tTokens = tn.split(" ").filter(Boolean).map(stem);
+      // Matcher estricto: antes "y" matcheaba "YEMA" por substring y el bot
+      // entraba a un comercio cerrado que el cliente nunca nombró.
+      const tTokens = searchTokens(text);
       const candidates = (Array.isArray(state.portalVendorList) && state.portalVendorList.length > 0
         ? state.portalVendorList
         : vendorsWithProducts.map((v) => ({ id: v.id, store_name: v.store_name })));
       const nameHit = candidates.find((v) => {
         const vn = norm(v.store_name);
-        const vTokens = vn.split(" ").filter(Boolean).map(stem);
+        const vTokens = searchTokens(v.store_name);
         if (!vTokens.length) return false;
-        // el nombre completo contenido en el mensaje, o todos los tokens del
-        // nombre aparecen en el mensaje ("pedir de heladería 655")
-        return vn === tn || tn.includes(vn) || vTokens.every((vt) => tTokens.some((tt) => tt === vt || tt.includes(vt) || vt.includes(tt)));
+        // Nombre completo (4+ letras) o TODOS los tokens del nombre por palabra.
+        if (vn.length >= 4 && (vn === tTokens.join(" ") || tTokens.join(" ").includes(vn))) return true;
+        return vTokens.every((vt) => tTokens.some((tt) => tokenHit(vt, tt)));
       });
       if (nameHit) {
         const portalData2 = await fetchPortalMenu("");

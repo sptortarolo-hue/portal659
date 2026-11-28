@@ -424,10 +424,10 @@ export default async function HomePage() {
           <div className="relative z-10">
             <p className="pv2-eyebrow mb-3">Para comercios</p>
             <h2 className="pv2-title text-2xl sm:text-3xl max-w-2xl mx-auto">
-              ¿Tenés un comercio? Hacelo trabajar mejor
+              No es solo una vidriera. Es el sistema de tu comercio.
             </h2>
             <p className="pv2-cta-lead mt-3 text-sm sm:text-base max-w-xl mx-auto">
-              Pedidos ordenados, catálogo, QR y WhatsApp directo. Empezá gratis, 0% comisión.
+              Pedidos, mostrador, caja, clientes, turnos e inventario en un solo lugar, sin usar tres apps distintas. Y tus vecinos encontrándote en el barrio. Empezá gratis, 0% de comisión por venta.
             </p>
             <div className="mt-7 flex flex-col sm:flex-row items-center justify-center gap-3">
               <Link
@@ -440,7 +440,7 @@ export default async function HomePage() {
                 href="/comercios"
                 className="pv2-btn pv2-btn-outline border-white/40 px-7 py-3 text-sm text-white"
               >
-                Conocé cómo funciona →
+                Ver todo lo que hace →
               </Link>
             </div>
           </div>

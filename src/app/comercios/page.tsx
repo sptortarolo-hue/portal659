@@ -5,21 +5,35 @@ import { activePromo, formatPrice } from "@/lib/plans";
 import { FEATURE_LABELS } from "@/app/planes/page";
 import { getSiteUrl } from "@/lib/site-url";
 import { ProductImage } from "@/components/product-image";
+import { SectionHeading } from "@/components/home/section-heading";
+import {
+  ArrowRight,
+  BarChart3,
+  LayoutGrid,
+  MessageCircleQuestion,
+  Package,
+  Sparkles,
+  Store,
+  Tag,
+  Users,
+} from "lucide-react";
 import type { Plan, Vendor } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "¿Cuánto tiempo perdés organizando pedidos? Trabajá mejor — 0% comisión | Portal 659",
+  title: "Sistema de gestión para comercios — todo en un solo lugar | Portal 659",
   description:
-    "Portal 659 hace que tu comercio trabaje mejor: el cliente arma el pedido y vos lo recibís ordenado y listo para preparar en tu WhatsApp. Catálogo con QR, mostrador (POS), comanda digital, caja, impresión de tickets, turnera y cobros. Empezá gratis y 0% comisión por venta, para siempre.",
+    "Portal 659 es un sistema de gestión integral para tu comercio: pedidos online, vidriera con QR, mostrador, caja, clientes, turnos e inventario en un solo lugar. Tus vecinos te encuentran en el barrio y te escriben por WhatsApp. Empezá gratis y 0% de comisión por venta, para siempre.",
   keywords: [
-    "sistema de gestión para comercios",
+    "sistema de gestión integral para comercios",
+    "software para comercio de barrio",
     "sistema para kiosco",
     "POS comercio de barrio",
+    "caja y POS para comercio",
     "carta QR",
     "comanda digital",
-    "turnera online estética",
+    "gestión de turnos estética",
     "vender online barrio",
     "Sicardi",
     "Garibaldi",
@@ -30,9 +44,9 @@ export const metadata = {
 const VERTICAL_OFFERS = [
   {
     id: "gastro",
+    icon: "🍔",
     title: "Gastronomía",
     desc: "Rotiserías, hamburgueserías, cafeterías y más.",
-    icon: "🍔",
     benefits: [
       "Carta digital con QR para tus mesas",
       "Pedidos online con carrito y opciones",
@@ -42,21 +56,21 @@ const VERTICAL_OFFERS = [
   },
   {
     id: "comercio",
+    icon: "🛍️",
     title: "Comercio de Barrio",
     desc: "Kioscos, fiambrerías, ferreterías, bazar.",
-    icon: "🛍️",
     benefits: [
       "Catálogo online para tus vecinos",
       "Venta presencial con Mostrador y Caja",
-      "Gestión de stock y clientes",
+      "Stock, clientes y vencimientos",
       "Impresión de comprobantes",
     ],
   },
   {
     id: "moda",
+    icon: "👗",
     title: "Moda y Accesorios",
     desc: "Indumentaria, calzado, joyería y diseño.",
-    icon: "👗",
     benefits: [
       "Variantes de Color y Talle",
       "Sistema de Apartados y Señas",
@@ -66,9 +80,9 @@ const VERTICAL_OFFERS = [
   },
   {
     id: "servicio",
-    title: "Oficios y Servicios",
-    desc: "Plomeros, electricistas, manicuras, etc.",
     icon: "🛠️",
+    title: "Oficios y Servicios",
+    desc: "Plomeros, electricistas y todo servicio a domicilio.",
     benefits: [
       "Solicitudes de presupuestos online",
       "Agenda de turnos coordinada",
@@ -77,13 +91,25 @@ const VERTICAL_OFFERS = [
     ],
   },
   {
+    id: "estetica",
+    icon: "💇",
+    title: "Peluquería y Estética",
+    desc: "Peluquerías, barberías, uñas, pestañas y masajes.",
+    benefits: [
+      "Turnera por profesional con agenda semanal",
+      "Fichas de clientas, packs y giftcards",
+      "Consulta online y seña por Mercado Pago",
+      "Venta de productos en el mismo lugar",
+    ],
+  },
+  {
     id: "taller",
-    title: "Talleres y Reparaciones",
-    desc: "Bicicleterías, servicio técnico de celulares y electrodomésticos, gomerías y todo lo que se repara.",
     icon: "🚲",
+    title: "Talleres y Reparaciones",
+    desc: "Bicicleterías, servicio técnico, gomerías y reparación de calzado.",
     benefits: [
       "Presupuestos con partidas (materiales + mano de obra)",
-      "Venta de repuestos y accesorios online",
+      "Orden de servicio y ficha de equipo",
       "Turnera de recepción y retiro",
       "Seña por Mercado Pago y packs de mantenimiento",
     ],
@@ -94,57 +120,51 @@ const HOW_IT_WORKS = [
   {
     step: "1",
     title: "Creás tu cuenta",
-    desc: "Elegís tu rubro y cargás tus datos, solo y sin instalar nada. En dos minutos ya estás vendiendo.",
+    desc: "Elegís tu rubro y cargás tus datos, horarios y medios de pago. Solo y sin instalar nada.",
   },
   {
     step: "2",
-    title: "Cargás tu catálogo",
-    desc: "Subís tus productos, precios y fotos. Podés usar un Excel para cargar todo rápido.",
+    title: "Cargás tu operación",
+    desc: "Productos o servicios, precios, fotos, stock e impresora. Podés usar un Excel para cargar todo rápido.",
   },
   {
     step: "3",
-    title: "Compartís tu QR",
-    desc: "Lo pegás en tu local o lo mandás por WhatsApp. Cada pedido te llega ordenado, listo para preparar.",
+    title: "Vendés y gestionás",
+    desc: "Compartís tu QR y te escriben por WhatsApp. Desde el panel atendés el mostrador, cobrás y controlás clientes e inventario.",
   },
 ] as const;
 
-const BENEFITS = [
+const PILLARS = [
   {
-    icon: "📲",
-    title: "El pedido llega ordenado",
-    desc: "El cliente arma su pedido con cantidades, opciones y dirección. Vos lo recibís listo para preparar: se acabó el ida y vuelta de mensajes.",
+    icon: Store,
+    title: "Vendé en el barrio",
+    desc: "Tu vidriera pública con QR, pedidos online y WhatsApp directo. Tus vecinos te encuentran sin buscar en diez lugares.",
+    points: ["Vidriera y carta con QR", "Pedidos online", "Contacto por WhatsApp"],
   },
   {
-    icon: "🧾",
-    title: "Herramientas para trabajar mejor",
-    desc: "Mostrador, Caja, clientes, impresión de tickets y cobros. Gastronomía suma comanda digital, mesas y estadísticas.",
+    icon: Package,
+    title: "Operación diaria",
+    desc: "Del pedido al cobro, sin papeles ni mensajes sueltos. Todo queda registrado en el mismo sistema.",
+    points: ["Mostrador (POS) y Caja con cierre Z", "Comanda, mesas e impresión", "Reparto y franjas de entrega"],
   },
   {
-    icon: "💬",
-    title: "Tu WhatsApp de siempre",
-    desc: "Sin intermediarios ni otra app que aprender: todo cae en el WhatsApp que ya usás, sin comisión por venta.",
+    icon: Users,
+    title: "Clientes y crecimiento",
+    desc: "Conocé a quienes te compran y volvé a llegarles. Tu trabajo visible, tus clientes cerca.",
+    points: ["Clientes (CRM) y reseñas", "Estadísticas y reportes", "Giftcards y fidelización"],
   },
   {
-    icon: "💸",
-    title: "0% comisión, la plata es tuya",
-    desc: "Cobrá en efectivo, transferencia o Mercado Pago directo en tu cuenta. Nunca un porcentaje de tus ventas.",
-  },
-  {
-    icon: "📊",
-    title: "Controlá tu negocio",
-    desc: "Sabés qué es lo que más se vende y qué opinan tus clientes para seguir mejorando.",
-  },
-  {
-    icon: "🌐",
-    title: "Y además, quedás visible",
-    desc: "Tu comercio publicado en el celular de tus vecinos, junto a los demás locales del barrio. Más visibilidad, más ventas.",
+    icon: BarChart3,
+    title: "Back office",
+    desc: "Los números y la operación que antes hacías en planillas, ahora adentro del comercio.",
+    points: ["Inventario, costos y recetas", "Turnera, estética y taller", "Facturación electrónica con CAE"],
   },
 ] as const;
 
 const FAQS = [
   {
     q: "¿Cuánto cuesta?",
-    a: "Empezar es gratis: tu comercio con carta, QR y pedidos por WhatsApp. Si después querés más herramientas (cocina, impresora, estadísticas, pedidos online ilimitados), hay planes de pago a precio de barrio. Siempre 0% de comisión por venta.",
+    a: "Empezar es gratis: tu vidriera con QR y contacto por WhatsApp. Los planes pago suman pedidos ilimitados, mostrador, caja, inventario, turnera y estadísticas. Siempre 0% de comisión por venta.",
   },
   {
     q: "¿Tengo que instalar algo?",
@@ -158,10 +178,14 @@ const FAQS = [
     q: "¿Puedo pausar pedidos o la venta online?",
     a: "Sí, con un solo toque en tu panel: apagás la venta y la carta queda visible como vidriera (cada producto pasa a 'Consultar por WhatsApp'). Nada se despublica.",
   },
-    {
-      q: "Ya uso WhatsApp, ¿para qué la app?",
-      a: "Porque con Portal 659 el pedido llega armado (detalle, cantidades, opciones y dirección) en vez de una catarata de mensajes, tu carta queda publicada y actualizada siempre, y tenés QR, comanda y estadísticas. No es otra herramienta para aprender: es tu WhatsApp de siempre, pero sin el desorden.",
-    },
+  {
+    q: "¿Sirve para gestionar el local, no solo para vender online?",
+    a: "Sí. Ese es justamente el cambio: además de la vidriera y los pedidos, usás el mostrador, la caja con arqueo, la comanda, los clientes, el inventario y la turnera desde el mismo panel, sin usar tres apps distintas.",
+  },
+  {
+    q: "Ya uso WhatsApp, ¿para qué el sistema?",
+    a: "Porque el pedido llega armado (detalle, cantidades, opciones y dirección) en vez de una catarata de mensajes, y además tenés un lugar donde cargar productos, cobrar, cerrar la caja y ver qué se vende. Es tu WhatsApp de siempre, pero sin el desorden y con el negocio ordenado atrás.",
+  },
   {
     q: "¿Cobran comisión como las apps de delivery?",
     a: "No, nunca. Ni en el plan gratis ni en los pagos: 0% de comisión por venta, para siempre. Solo pagás la herramienta si elegís un plan pago.",
@@ -192,113 +216,117 @@ export default async function ComerciosLanding() {
   const qrRegister = await QRCode.toDataURL(registerUrl, { width: 640, margin: 1 });
 
   return (
-    <main className="min-h-screen bg-background">
+    <main className="pv2 min-h-screen">
       {/* Hero */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-primary via-primary/90 to-primary">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_30%,rgba(163,230,53,0.18),transparent_50%)]" />
-        <div className="relative z-10 container mx-auto px-4 py-14 sm:py-20 text-center max-w-3xl">
-          <p className="text-xs font-semibold tracking-widest uppercase text-sun mb-3">
-            Para comercios · {zone.name}
+      <section className="pv2-hero relative overflow-hidden">
+        <div className="container mx-auto px-4 py-14 sm:py-20 text-center max-w-3xl relative">
+          <p className="pv2-eyebrow mb-3">Sistema para comercios · {zone.name}</p>
+          <h1 className="pv2-title text-3xl sm:text-5xl leading-tight">
+            Todo tu comercio en un solo lugar. Y en el barrio.
+          </h1>
+          <p className="pv2-subtitle mt-5 max-w-2xl mx-auto">
+            No es solo una vidriera: pedidos, mostrador, caja, clientes, turnos e inventario conectados. Tus vecinos te encuentran y te escriben por WhatsApp. <strong className="text-[var(--pv2-ink-strong)]">Empezá gratis y 0% de comisión por venta.</strong>
           </p>
-           <h1 className="font-display text-3xl sm:text-5xl font-semibold text-white leading-tight">
-              ¿Cuánto tiempo perdés todos los días organizando pedidos?
-              <span className="block text-sun">Portal 659 hace que tu comercio trabaje mejor.</span>
-            </h1>
-            <p className="mt-4 text-sm sm:text-base text-white/85 max-w-xl mx-auto">
-              Vendé. Organizá. Controlá. Crecé. El cliente arma el pedido con
-              cantidades y opciones y vos lo recibís <strong className="text-white">ordenado y listo para preparar</strong>,
-              directo en tu WhatsApp. <strong className="text-white">0% de comisión por venta, para siempre.</strong>
-            </p>
-          <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
-            <Link
-              href="/register"
-              className="rounded-full bg-sun text-ink px-8 py-3 text-sm font-bold hover:bg-sun/90 transition-all hover:scale-105 active:scale-95 shadow-lg"
-            >
+          <div className="mt-7 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <Link href="/register" className="pv2-btn pv2-btn-primary px-8 py-3 text-sm">
               Crear mi comercio gratis
             </Link>
-            <a
-              href="#como-funciona"
-              className="rounded-full border border-white/40 bg-white/10 text-white px-8 py-3 text-sm font-medium hover:bg-white/20 transition-colors"
-            >
-              Cómo funciona ↓
+            <a href="#como-funciona" className="pv2-btn pv2-btn-outline px-8 py-3 text-sm">
+              Ver cómo funciona ↓
             </a>
           </div>
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-[11px] text-white/80">
-            <span className="rounded-full bg-sun/20 border border-sun/40 text-sun px-3 py-1 font-bold">El pedido llega ordenado</span>
-            <span className="rounded-full bg-white/10 px-3 py-1">Sin instalar nada</span>
-            <span className="rounded-full bg-white/10 px-3 py-1">En 10 minutos estás trabajando</span>
-            <span className="rounded-full bg-white/10 px-3 py-1">0% comisión</span>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+            <span className="pv2-chip">Pedidos y vidriera QR</span>
+            <span className="pv2-chip">Mostrador y caja</span>
+            <span className="pv2-chip">Clientes e inventario</span>
+            <span className="pv2-chip pv2-chip-muted">Sin instalar nada</span>
+            <span className="pv2-chip pv2-chip-muted">0% comisión</span>
           </div>
         </div>
       </section>
 
-       {/* Rubros */}
-       <section className="container mx-auto px-4 py-12 max-w-5xl">
-         <h2 className="font-display text-2xl sm:text-3xl font-semibold text-center mb-8">
-           Una solución para cada rubro
-         </h2>
-         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-           {VERTICAL_OFFERS.map((v) => (
-             <div key={v.id} className="rounded-2xl border border-border bg-card p-5 flex flex-col">
-               <div className="text-3xl mb-2">{v.icon}</div>
-               <h3 className="font-display font-semibold text-lg">{v.title}</h3>
-               <p className="text-xs text-muted-foreground mb-4">{v.desc}</p>
-               <ul className="space-y-2 flex-1">
-                 {v.benefits.map((b, i) => (
-                   <li key={i} className="flex items-start gap-2 text-[11px] text-muted-foreground">
-                     <span className="text-primary font-bold flex-shrink-0">✓</span>
-                     {b}
-                   </li>
-                 ))}
-               </ul>
-             </div>
-           ))}
-         </div>
-       </section>
-
-       {/* Cómo funciona */}
-      <section id="como-funciona" className="container mx-auto px-4 py-12 max-w-4xl scroll-mt-20">
-        <h2 className="font-display text-2xl sm:text-3xl font-semibold text-center mb-8">
-          Cómo funciona
-        </h2>
-        <div className="grid sm:grid-cols-3 gap-4">
-          {HOW_IT_WORKS.map((s) => (
-            <div key={s.step} className="rounded-2xl border border-border bg-card p-5 text-center">
-              <div className="mx-auto mb-3 h-10 w-10 rounded-full bg-primary text-primary-foreground font-bold flex items-center justify-center text-lg">
-                {s.step}
-              </div>
-              <h3 className="font-semibold">{s.title}</h3>
-              <p className="mt-1.5 text-sm text-muted-foreground">{s.desc}</p>
+      {/* Rubros */}
+      <section className="container mx-auto px-4 py-12 max-w-6xl">
+        <SectionHeading
+          icon={Store}
+          eyebrow="Un sistema para cada rubro"
+          title="Una solución para cada rubro"
+          description="La misma herramienta se adapta a cómo trabajás, con lo que tu comercio necesita."
+        />
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {VERTICAL_OFFERS.map((v) => (
+            <div key={v.id} className="pv2-card flex flex-col p-5">
+              <span className="pv2-section-icon mb-3">{v.icon}</span>
+              <h3 className="pv2-title text-lg">{v.title}</h3>
+              <p className="pv2-subtitle text-xs mt-1 mb-4">{v.desc}</p>
+              <ul className="space-y-2 flex-1">
+                {v.benefits.map((b, i) => (
+                  <li key={i} className="flex items-start gap-2 text-[11px] text-[var(--pv2-muted)]">
+                    <span className="text-[var(--pv2-ink)] font-bold flex-shrink-0">✓</span>
+                    {b}
+                  </li>
+                ))}
+              </ul>
             </div>
           ))}
         </div>
       </section>
 
-      {/* Beneficios */}
-      <section className="container mx-auto px-4 py-10 max-w-4xl">
-          <h2 className="font-display text-2xl sm:text-3xl font-semibold text-center mb-8">
-            No es solo para mostrar tu negocio. Es para ayudarte a manejarlo.
-          </h2>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {BENEFITS.map((b) => (
-            <div key={b.title} className="rounded-2xl border border-border bg-card p-5">
-              <span className="text-2xl">{b.icon}</span>
-              <h3 className="font-semibold mt-2">{b.title}</h3>
-              <p className="mt-1 text-sm text-muted-foreground">{b.desc}</p>
+      {/* Cómo funciona */}
+      <section id="como-funciona" className="container mx-auto px-4 py-12 max-w-5xl scroll-mt-24">
+        <SectionHeading
+          icon={LayoutGrid}
+          eyebrow="En minutos"
+          title="Cómo funciona"
+          description="De la cuenta abierta a la primera venta, sin instalar nada."
+        />
+        <div className="grid sm:grid-cols-3 gap-4">
+          {HOW_IT_WORKS.map((s) => (
+            <div key={s.step} className="pv2-card p-5 text-center">
+              <div className="pv2-section-icon mx-auto mb-3">{s.step}</div>
+              <h3 className="pv2-title text-base">{s.title}</h3>
+              <p className="pv2-subtitle text-sm mt-2">{s.desc}</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* Los 4 bloques del sistema */}
+      <section className="container mx-auto px-4 py-10 max-w-5xl">
+        <SectionHeading
+          icon={Sparkles}
+          eyebrow="Sistema integral"
+          title="No es solo una vidriera. Es con lo que trabajás."
+          description="Todo conectado, sin parchar tres herramientas distintas."
+        />
+        <div className="grid sm:grid-cols-2 gap-4">
+          {PILLARS.map((p) => {
+            const Icon = p.icon;
+            return (
+              <div key={p.title} className="pv2-card p-6">
+                <span className="pv2-section-icon mb-3"><Icon className="h-5 w-5" strokeWidth={1.8} aria-hidden="true" /></span>
+                <h3 className="pv2-title text-lg">{p.title}</h3>
+                <p className="pv2-subtitle text-sm mt-2">{p.desc}</p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {p.points.map((point) => (
+                    <span key={point} className="pv2-chip">{point}</span>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </section>
 
       {/* Planes */}
-      <section className="container mx-auto px-4 py-10 max-w-4xl">
-        <h2 className="font-display text-2xl sm:text-3xl font-semibold text-center mb-2">
-          Planes para crecer
-        </h2>
-        <p className="text-center text-sm text-muted-foreground mb-8 max-w-xl mx-auto">
-          Empezás gratis y subís de plan cuando quieras. <strong className="text-foreground">0% comisión en todos los planes, para siempre:</strong> solo pagás la herramienta, nunca un porcentaje de tus ventas.
-        </p>
-        <div className="grid md:grid-cols-2 gap-6">
+      <section className="container mx-auto px-4 py-10 max-w-5xl">
+        <SectionHeading
+          icon={Tag}
+          eyebrow="Precios de barrio"
+          title="Planes para crecer"
+          description="Empezás gratis y subís de plan cuando quieras. 0% comisión en todos los planes, para siempre: solo pagás la herramienta, nunca un porcentaje de tus ventas."
+        />
+        <div className="grid md:grid-cols-2 gap-6 mt-6">
           {plansList.map((plan) => {
             const promo = activePromo(plan);
             const features = Object.entries(plan.features as Record<string, any>)
@@ -308,47 +336,38 @@ export default async function ComerciosLanding() {
             return (
               <div
                 key={plan.id}
-                className={`relative flex flex-col rounded-3xl border bg-card p-8 ${
-                  plan.popular ? "border-primary shadow-xl shadow-primary/10" : "border-border"
-                }`}
+                className={`pv2-card flex flex-col p-8 ${plan.popular ? "ring-2 ring-[var(--pv2-accent)]" : ""}`}
               >
-                {/* Pill en flujo (nunca absoluto): no puede tapar el nombre. */}
                 <div className="mb-3 min-h-6">
                   {plan.popular && (
-                    <span className="rounded-full bg-primary text-primary-foreground text-[10px] font-bold px-3 py-1">
-                      MÁS ELEGIDO
-                    </span>
+                    <span className="pv2-chip">MÁS ELEGIDO</span>
                   )}
                 </div>
                 <div className="flex items-baseline gap-2 mb-1">
-                  <h3 className="font-display text-xl font-bold">{plan.name}</h3>
-                  {plan.price_monthly === 0 && <span className="text-xs font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-full">Gratis</span>}
+                  <h3 className="pv2-title text-xl">{plan.name}</h3>
+                  {plan.price_monthly === 0 && <span className="pv2-chip">Gratis</span>}
                 </div>
-                <p className="text-sm text-muted-foreground mb-6">{plan.description}</p>
+                <p className="pv2-subtitle text-sm mb-6">{plan.description}</p>
                 <div className="mb-6">
                   {promo ? (
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-display text-3xl font-bold">{formatPrice(promo.price)}</span>
-                      <span className="text-sm text-muted-foreground line-through">
-                        {formatPrice(promo.listPrice)}
-                      </span>
-                      <span className="rounded-full bg-red-100 text-red-700 text-[10px] font-bold px-1.5 py-0.5">
-                        -{promo.offPct}%
-                      </span>
+                      <span className="pv2-price">{formatPrice(promo.price)}</span>
+                      <span className="pv2-price-old">{formatPrice(promo.listPrice)}</span>
+                      <span className="pv2-chip">-{promo.offPct}%</span>
                     </div>
                   ) : (
-                    <span className="font-display text-3xl font-bold">
+                    <span className="pv2-price">
                       {plan.price_monthly === 0 ? "Gratis" : formatPrice(plan.price_monthly)}
                     </span>
                   )}
                   {plan.slug !== "gratuito" && (
-                    <span className="block text-xs text-muted-foreground">por mes</span>
+                    <span className="pv2-subtitle block text-xs">por mes</span>
                   )}
                 </div>
                 <ul className="space-y-3 flex-1">
                   {features.map((f) => (
-                    <li key={f} className="flex items-center gap-3 text-sm text-muted-foreground">
-                      <span className="h-4 w-4 rounded-full bg-primary/20 text-primary flex items-center justify-center text-[10px] font-bold flex-shrink-0">✓</span>
+                    <li key={f} className="flex items-center gap-3 text-sm text-[var(--pv2-muted)]">
+                      <span className="h-4 w-4 rounded-full text-[var(--pv2-ink-strong)] flex items-center justify-center text-[10px] font-bold flex-shrink-0" style={{ backgroundColor: "color-mix(in srgb, var(--pv2-accent) 40%, transparent)" }}>✓</span>
                       {f}
                     </li>
                   ))}
@@ -358,33 +377,35 @@ export default async function ComerciosLanding() {
           })}
         </div>
         <p className="text-center mt-5">
-          <Link href="/planes" className="text-sm font-medium text-primary hover:underline">
-            Ver todos los detalles y el comparativo →
+          <Link href="/planes" className="text-sm font-medium text-[var(--pv2-ink)] hover:underline inline-flex items-center gap-1">
+            Ver todos los detalles y el comparativo <ArrowRight className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
           </Link>
         </p>
       </section>
 
       {/* Prueba social */}
       {vendors.length >= 3 && (
-        <section className="container mx-auto px-4 py-10 max-w-4xl">
-          <h2 className="font-display text-2xl sm:text-3xl font-semibold text-center mb-8">
-            Ya están adentro
-          </h2>
+        <section className="container mx-auto px-4 py-10 max-w-5xl">
+          <SectionHeading
+            icon={Users}
+            title="Ya están adentro"
+            description={`Comercios de ${zone.name} que ya trabajan con Portal 659`}
+          />
           <div className="grid grid-cols-3 gap-3">
             {vendors.map((v) => (
               <Link
                 key={v.id}
                 href={`/tienda/${v.slug}`}
-                className="rounded-2xl border border-border bg-card p-4 flex flex-col items-center text-center hover:border-primary transition-colors"
+                className="pv2-card p-4 flex flex-col items-center text-center"
               >
                 <ProductImage
                   src={v.logo_url || v.image_url}
                   name={v.store_name}
                   vertical={v.vertical}
                   alt={v.store_name}
-                  className="h-14 w-14 rounded-full"
+                  className="pv2-card-logo h-14 w-14"
                 />
-                <p className="mt-2 text-xs font-medium truncate w-full">{v.store_name}</p>
+                <p className="pv2-subtitle mt-2 text-xs font-medium truncate w-full">{v.store_name}</p>
               </Link>
             ))}
           </div>
@@ -392,21 +413,23 @@ export default async function ComerciosLanding() {
       )}
 
       {/* FAQ */}
-      <section className="container mx-auto px-4 py-10 max-w-2xl">
-        <h2 className="font-display text-2xl sm:text-3xl font-semibold text-center mb-8">
-          Preguntas frecuentes
-        </h2>
-        <div className="space-y-3">
+      <section className="container mx-auto px-4 py-10 max-w-3xl">
+        <SectionHeading
+          icon={MessageCircleQuestion}
+          title="Preguntas frecuentes"
+          description="Las dudas más comunes antes de empezar."
+        />
+        <div className="space-y-3 mt-6">
           {FAQS.map((f) => (
             <details
               key={f.q}
-              className="rounded-xl border border-border bg-card px-4 py-3 open:bg-muted/40"
+              className="pv2-card px-4 py-3 open:bg-[var(--pv2-surface)]"
             >
-              <summary className="cursor-pointer font-medium text-sm list-none flex items-center justify-between gap-2">
+              <summary className="cursor-pointer pv2-title text-sm list-none flex items-center justify-between gap-2">
                 {f.q}
-                <span className="text-muted-foreground flex-shrink-0">⌄</span>
+                <span className="text-[var(--pv2-muted)] flex-shrink-0">⌄</span>
               </summary>
-              <p className="mt-2 text-sm text-muted-foreground">{f.a}</p>
+              <p className="pv2-subtitle text-sm mt-2">{f.a}</p>
             </details>
           ))}
         </div>
@@ -414,14 +437,12 @@ export default async function ComerciosLanding() {
 
       {/* CTA final */}
       <section className="container mx-auto px-4 py-12">
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary to-primary/80 p-8 sm:p-12 text-center max-w-3xl mx-auto">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_30%,rgba(163,230,53,0.2),transparent_50%)]" />
+        <div className="pv2-cta relative overflow-hidden p-8 sm:p-12 text-center max-w-3xl mx-auto">
           <div className="relative z-10">
-            <h2 className="font-display text-2xl sm:text-3xl font-semibold text-white">
-              Empezá gratis hoy, sin comisión
-            </h2>
-            <p className="mt-2 text-sm text-white/85 max-w-md mx-auto">
-              Escaneá el código o apretá el botón. En minutos estás trabajando mejor, 0% por venta.
+            <p className="pv2-eyebrow mb-3">Empezá hoy</p>
+            <h2 className="pv2-title text-2xl sm:text-3xl">Empezá gratis y armá tu sistema</h2>
+            <p className="pv2-cta-lead mt-2 text-sm max-w-md mx-auto">
+              Cargá tu catálogo, abrí tu vidriera y manejá tu comercio desde el celu. 0% por venta.
             </p>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -430,10 +451,7 @@ export default async function ComerciosLanding() {
               className="mx-auto mt-5 w-36 h-36 rounded-xl bg-white p-1.5"
             />
             <div className="mt-5 flex flex-col sm:flex-row items-center justify-center gap-3">
-              <Link
-                href="/register"
-                className="rounded-full bg-sun text-ink px-8 py-3 text-sm font-bold hover:bg-sun/90 transition-all hover:scale-105 active:scale-95 shadow-lg"
-              >
+              <Link href="/register" className="pv2-btn pv2-btn-primary px-8 py-3 text-sm">
                 Crear mi comercio gratis
               </Link>
             </div>
@@ -445,7 +463,7 @@ export default async function ComerciosLanding() {
         </div>
       </section>
 
-      <footer className="container mx-auto px-4 pb-10 max-w-4xl text-center text-xs text-muted-foreground space-x-4">
+      <footer className="container mx-auto px-4 pb-10 max-w-4xl text-center pv2-subtitle text-xs space-x-4">
         <Link href="/" className="hover:underline">Volver al inicio</Link>
         <Link href="/privacidad" className="hover:underline">Privacidad</Link>
         <Link href="/planes" className="hover:underline">Planes</Link>

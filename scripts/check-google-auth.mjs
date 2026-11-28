@@ -108,6 +108,14 @@ if (!/if \[ -n "\$GOOGLE_ID" \] && \[ -n "\$GOOGLE_SECRET" \]/.test(deploy)) {
 mustInclude(".github/workflows/deploy.yml", "GOOGLE_CLIENT_ID=$GOOGLE_ID", "deploy.yml");
 mustInclude(".github/workflows/deploy.yml", "GOOGLE_CLIENT_SECRET=$GOOGLE_SECRET", "deploy.yml");
 
+// OJO: el compose pasa las variables con una lista `environment:` explícita:
+// escribirlas en .env no alcanza, hay que mapearlas acá también.
+const compose = read("docker-compose.yml");
+for (const name of ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI", "GOOGLE_AUTH_ENABLED"]) {
+  if (!compose.includes(`- ${name}=`)) fail(`docker-compose.yml: falta mapear ${name} al contenedor app`);
+  else ok(`docker-compose.yml: ${name} mapeada al contenedor app`);
+}
+
 // 8) Login por contraseña: fix del SQL y aviso de cuenta solo-Google
 const loginRoute = read("src/app/api/auth/login/route.ts");
 if (/FROM profiles'/.test(loginRoute)) fail("login/route.ts: comilla suelta en el SELECT por WhatsApp");

@@ -59,6 +59,12 @@ services:
       - CRON_SECRET=${CRON_SECRET}
       # Meta de verificación de Search Console (layout.tsx lo lee en runtime).
       - GOOGLE_SITE_VERIFICATION=${GOOGLE_SITE_VERIFICATION:-}
+      # Login con Google (OAuth 2.0): el deploy escribe las credenciales al
+      # .env solo si los secrets existen; sin ellas el botón se autooculta.
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-}
+      - GOOGLE_AUTH_ENABLED=${GOOGLE_AUTH_ENABLED:-}
       # Sólo para el botón "Enviar alerta de prueba" de /admin/monitor. El cron
       # del host los lee del mismo .env; acá el panel nunca los muestra.
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}

@@ -3,9 +3,9 @@
 /**
  * Botón de soporte dentro del panel (v1: mail + fallback de WhatsApp).
  *
- * Componente NUEVO, sin tabla ni estado global. Se monta apagado por defecto:
- * se habilita con `?support=1` en la URL o con
- * `localStorage.setItem("portal659-support-ui", "1")`. Si se borra el
+ * Componente NUEVO, sin tabla ni estado global. Se muestra por defecto en
+ * el header del panel. Se puede ocultar con `?support=0` en la URL o con
+ * `localStorage.setItem("portal659-support-ui", "0")`. Si se borra el
  * componente y las dos líneas de los layouts, el panel queda idéntico.
  *
  * No es flotante: va en el header para no chocar con el botón rojo de Comanda
@@ -29,11 +29,12 @@ export function SupportButton({ area }: { area: "vendor" | "admin" }) {
 
   useEffect(() => {
     try {
-      const fromUrl = new URLSearchParams(window.location.search).get("support") === "1";
-      const fromStorage = window.localStorage.getItem("portal659-support-ui") === "1";
-      setEnabled(fromUrl || fromStorage);
+      const url = new URLSearchParams(window.location.search);
+      const offByUrl = url.get("support") === "0";
+      const offByStorage = window.localStorage.getItem("portal659-support-ui") === "0";
+      setEnabled(!offByUrl && !offByStorage);
     } catch {
-      setEnabled(false);
+      setEnabled(true);
     }
     const onOpen = () => setOpen(true);
     window.addEventListener("portal:open-support", onOpen);

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { MpQrModal } from "@/components/vendor/mp-qr-modal";
+import { PosSuccessModal, type PosSuccessData } from "@/components/vendor/pos-success-modal";
 import { ModifierPicker } from "@/components/offers/modifier-picker";
 import { ProductPickCard } from "@/components/vendor/product-pick-card";
 import { CustomerPicker, type LookupCustomer } from "@/components/vendor/customer-picker";
@@ -240,6 +241,20 @@ export function Mostrador({
   const [qrOpen, setQrOpen] = useState(false);
   const [qrOrderId, setQrOrderId] = useState<string | null>(null);
   const [qrAmount, setQrAmount] = useState<number>(0);
+  // Pantalla de éxito del cobro (Paso 1): activa por defecto. Se puede apagar
+  // con ?posSuccess=0 o localStorage portal659-pos-success=0. El toast sigue.
+  const [successData, setSuccessData] = useState<PosSuccessData | null>(null);
+  const [successEnabled, setSuccessEnabled] = useState(false);
+  useEffect(() => {
+    try {
+      const url = new URLSearchParams(window.location.search);
+      const offByUrl = url.get("posSuccess") === "0";
+      const offByStorage = window.localStorage.getItem("portal659-pos-success") === "0";
+      setSuccessEnabled(!offByUrl && !offByStorage);
+    } catch {
+      setSuccessEnabled(true);
+    }
+  }, []);
   // Descuento manual por venta ($ o % con motivo). Lo calcula el servidor
   // (fuente de verdad); acá se espeja en vivo sobre el neto de mercadería.
   const [discountOpen, setDiscountOpen] = useState(false);
@@ -2137,6 +2152,33 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         if (serr) setMsg(`${baseMsg} · ⚠️ ${serr}`);
       }).catch(() => {});
     }
+    // Pantalla de éxito (opt-in): el toast de siempre sigue igual, esto se
+    // muestra encima con el número de venta, vuelto y comprobante.
+    if (successEnabled && data.orderId) {
+      const fOk = (data as any)?.fiscal?.ok && (data as any)?.fiscal?.invoice;
+      const methodKey = String(data.order?.payment_method ?? payment);
+      const methodLabel =
+        splitRows && splitRows.length > 0
+          ? splitRows.map((p) => `${PAYMENT_OPTIONS.find((o) => o.key === p.method)?.label || p.method} $${Number(p.amount).toLocaleString("es-AR")}`).join(" + ")
+          : PAYMENT_OPTIONS.find((o) => o.key === methodKey)?.label || methodKey;
+      setSuccessData({
+        orderId: String(data.orderId),
+        orderNumber: data.order?.order_number ? String(data.order.order_number) : null,
+        total: netTotal,
+        paymentLabel: methodLabel,
+        cashAmount: !splitRows?.length && methodKey === "efectivo" && cashToSend ? cashToSend : null,
+        invoice: fOk
+          ? {
+              punto_venta: (data as any).fiscal.invoice.punto_venta,
+              cbte_nro: (data as any).fiscal.invoice.cbte_nro,
+              cae: (data as any).fiscal.invoice.cae,
+            }
+          : null,
+        customerPhone: (data.order as any)?.customer_phone ?? null,
+        storeName: (data as any)?.store?.name ?? storeBrand?.name ?? null,
+        isRetail,
+      });
+    }
     setRecent((prev) =>
       [{ id: data.orderId, total: Number(data.order?.total ?? total), payment_method: data.order?.payment_method ?? payment, paid_at: data.order?.paid_at ?? new Date().toISOString(), status: data.order?.status ?? (direct ? "completed" : "preparing"), created_at: data.order?.created_at ?? new Date().toISOString(), pickup_number: data.order?.pickup_number ?? null, method: data.order?.method ?? (direct ? "pickup" : method) }, ...prev].slice(0, 20)
     );
@@ -3647,6 +3689,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           </div>
         </div>
       )}
+      <PosSuccessModal data={successData} onClose={() => setSuccessData(null)} />
       <MpQrModal
         open={qrOpen}
         onClose={() => {

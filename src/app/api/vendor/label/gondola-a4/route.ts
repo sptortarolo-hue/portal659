@@ -1,18 +1,18 @@
 import { NextResponse } from "next/server";
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { queryOne } from "@/lib/db";
-import { buildGondolaA4Pdf } from "@/lib/gondola-a4";
+import { buildGondolaA4FullPdf } from "@/lib/gondola-a4-full";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Hoja A4 con etiquetas de góndola (solo lectura, no imprime).
+ * Hoja A4 apaisada con etiquetas de góndola completas (70 × 35 mm, 4 × 5).
  *
- * GET /api/vendor/label/gondola-a4?productIds=id,id&net=1
+ * GET /api/vendor/label/gondola-a4?productIds=id,id
  *
- * Ruta NUEVA: no toca `/api/print` ni `/api/vendor/label/preview`. Si falta,
- * el panel sigue funcionando igual (las solapas viejas quedan intactas).
+ * Ruta existente, ahora alimentada por el módulo nuevo. No toca `/api/print`
+ * ni los motores de la etiqueta térmica / adhesiva.
  */
 export async function GET(request: Request) {
   const { vendor: gateVendor } = await getVendorByRequest(request);
@@ -38,11 +38,7 @@ export async function GET(request: Request) {
     return new NextResponse("Comercio no encontrado", { status: 404 });
   }
 
-  const built = await buildGondolaA4Pdf({
-    vendor,
-    productIds,
-    includeTaxLine: url.searchParams.get("net") === "1",
-  });
+  const built = await buildGondolaA4FullPdf({ vendor, productIds });
   if (!built.ok) {
     return new NextResponse(built.error, { status: built.status });
   }

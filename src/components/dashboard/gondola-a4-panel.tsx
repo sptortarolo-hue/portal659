@@ -27,7 +27,6 @@ const money = (n: number | null | undefined) =>
 export function GondolaA4Panel({ offers }: { offers: A4Offer[] }) {
   const [search, setSearch] = useState("");
   const [checked, setChecked] = useState<Set<string>>(new Set());
-  const [includeNet, setIncludeNet] = useState(false);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -59,14 +58,15 @@ export function GondolaA4Panel({ offers }: { offers: A4Offer[] }) {
     selected.length > 0
       ? `/api/vendor/label/gondola-a4?productIds=${encodeURIComponent(
           selected.map((o) => o.id).join(",")
-        )}${includeNet ? "&net=1" : ""}`
+        )}`
       : null;
 
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-        Papel A4, 32 etiquetas por hoja (4 × 8). No necesita impresora de
-        etiquetas: es un PDF para imprimir en cualquier impresora.
+        A4 apaisada, 20 etiquetas de 70 × 35 mm por hoja (4 × 5), con marcas
+        de corte. No necesita impresora de etiquetas: es un PDF para imprimir
+        en cualquier impresora.
       </div>
 
       <div>
@@ -116,23 +116,6 @@ export function GondolaA4Panel({ offers }: { offers: A4Offer[] }) {
           </button>
         </div>
       </div>
-
-      <label className="flex items-start gap-2 text-sm">
-        <input
-          type="checkbox"
-          className="mt-0.5 h-4 w-4 accent-primary"
-          checked={includeNet}
-          onChange={(e) => setIncludeNet(e.target.checked)}
-        />
-        <span>
-          Incluir precio sin impuestos nacionales
-          <span className="block text-xs text-muted-foreground">
-            La etiqueta lleva una línea abajo con el precio neto (IVA 21% sobre
-            el precio de lista) o la leyenda &ldquo;IVA incluido (no
-            discriminado)&rdquo;.
-          </span>
-        </span>
-      </label>
 
       <div className="flex flex-wrap gap-2 border-t border-border pt-3">
         {href ? (
